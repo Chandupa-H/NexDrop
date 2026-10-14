@@ -1,0 +1,34 @@
+import enum
+from typing import Optional
+from sqlalchemy import String, Integer, Float, Enum, Text
+from sqlalchemy.orm import Mapped, mapped_column
+from app.db.base import Base, TimestampMixin
+
+
+class ParcelStatus(str, enum.Enum):
+    PENDING = "pending"
+    PICKED_UP = "picked_up"
+    IN_TRANSIT = "in_transit"
+    OUT_FOR_DELIVERY = "out_for_delivery"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+
+class Parcel(Base, TimestampMixin):
+    __tablename__ = "parcels"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    tracking_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    sender_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    recipient_phone: Mapped[str] = mapped_column(String(32), nullable=False)
+    delivery_address: Mapped[str] = mapped_column(String(255), nullable=False)
+    delivery_city: Mapped[str] = mapped_column(String(100), nullable=False)
+    weight_kg: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    dimensions: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # e.g., "20x15x10"
+    status: Mapped[ParcelStatus] = mapped_column(
+        Enum(ParcelStatus, name="parcel_status_enum"),
+        default=ParcelStatus.PENDING,
+        nullable=False,
+    )
+    special_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
