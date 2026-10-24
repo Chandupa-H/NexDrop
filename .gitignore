@@ -19,8 +19,7 @@ develop-eggs/
 dist/
 downloads/
 eggs/
-.eggs/
-# Python packaging build artifacts
+# Python packaging build artifacts (root-only)
 /lib/
 /lib64/
 parts/
