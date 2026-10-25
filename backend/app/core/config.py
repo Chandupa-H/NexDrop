@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: Optional[str] = None
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env", "backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
