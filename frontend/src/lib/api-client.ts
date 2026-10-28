@@ -46,6 +46,14 @@ export interface PriceEstimateResponse {
   total_price: number;
 }
 
+export interface DispatcherDashboardStats {
+  total_parcels: number;
+  unassigned_parcels: number;
+  active_deliveries: number;
+  completed_deliveries: number;
+  failed_deliveries: number;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -115,6 +123,10 @@ export const apiClient = {
   // Instant pricing estimate helper
   getPricingEstimate: (data: PriceEstimateRequest) =>
     apiClient.post<PriceEstimateResponse>("/pricing/estimate", data),
+
+  // Dispatcher dashboard stats helper (strictly read-only)
+  getDispatcherStats: () =>
+    apiClient.get<DispatcherDashboardStats>("/dispatch/dashboard/stats"),
 };
 
 export default apiClient;

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Package, ShieldCheck, Activity } from "lucide-react";
+import { Package, ShieldCheck, Activity, LayoutDashboard } from "lucide-react";
 
 interface NavbarProps {
   backendHealthy?: boolean | null;
@@ -24,16 +24,23 @@ export function Navbar({ backendHealthy }: NavbarProps) {
         </Link>
 
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#1F2937]">
-          <a href="#features" className="hover:text-[#16A34A] transition-colors">
+          <Link
+            href="/dispatch"
+            className="flex items-center gap-1.5 text-[#064E3B] font-semibold hover:text-[#16A34A] transition-colors"
+          >
+            <LayoutDashboard className="h-4 w-4 text-[#16A34A]" />
+            Dispatcher Dashboard
+          </Link>
+          <a href="/#features" className="hover:text-[#16A34A] transition-colors">
             Modules
           </a>
-          <a href="#architecture" className="hover:text-[#16A34A] transition-colors">
+          <a href="/#architecture" className="hover:text-[#16A34A] transition-colors">
             Architecture
           </a>
-          <a href="#api" className="hover:text-[#16A34A] transition-colors">
+          <a href="/#api" className="hover:text-[#16A34A] transition-colors">
             API Specs
           </a>
-          <a href="#team" className="hover:text-[#16A34A] transition-colors">
+          <a href="/#team" className="hover:text-[#16A34A] transition-colors">
             Team Workspace
           </a>
         </nav>

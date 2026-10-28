@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Dict
 from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
 from app.modules.dispatch.schemas import DispatchCreate, DispatchStatusUpdate
 from app.modules.dispatch.repository import DispatchRepository
@@ -39,3 +39,6 @@ class DispatchService:
             assignment.completed_at = datetime.now(timezone.utc)
         await self.repository.session.flush()
         return assignment
+
+    async def get_dashboard_stats(self) -> Dict[str, int]:
+        return await self.repository.get_dashboard_stats()

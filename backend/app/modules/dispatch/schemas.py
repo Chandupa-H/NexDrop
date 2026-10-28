@@ -27,3 +27,12 @@ class DispatchResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DispatcherDashboardStats(BaseModel):
+    total_parcels: int
+    unassigned_parcels: int
+    active_deliveries: int
+    completed_deliveries: int
+    failed_deliveries: int
+

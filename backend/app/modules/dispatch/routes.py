@@ -1,16 +1,30 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_db
-from app.modules.dispatch.schemas import DispatchResponse, DispatchCreate, DispatchStatusUpdate
+from app.db.session import get_db, get_optional_db
+from app.modules.dispatch.schemas import (
+    DispatchResponse,
+    DispatchCreate,
+    DispatchStatusUpdate,
+    DispatcherDashboardStats,
+)
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
 
 router = APIRouter(prefix="/dispatch", tags=["Dispatch"])
 
 
-def get_dispatch_service(session: AsyncSession = Depends(get_db)) -> DispatchService:
+def get_dispatch_service(session: Optional[AsyncSession] = Depends(get_optional_db)) -> DispatchService:
     return DispatchService(DispatchRepository(session))
+
+
+@router.get("/dashboard/stats", response_model=DispatcherDashboardStats)
+async def get_dashboard_stats(
+    service: DispatchService = Depends(get_dispatch_service),
+) -> DispatcherDashboardStats:
+    """Strictly read-only delivery statistics for dispatcher dashboard."""
+    stats = await service.get_dashboard_stats()
+    return DispatcherDashboardStats(**stats)
 
 
 @router.get("", response_model=List[DispatchResponse])
