@@ -1,0 +1,181 @@
+/**
+ * Courier-specific design tokens and component overrides.
+ * Scoped to `.courier-theme` — zero impact on other teams' routes.
+ * Imported only by: src/app/courier/layout.tsx
+ */
+
+/* ── Design tokens ──────────────────────────────────────────────────────── */
+.courier-theme {
+  --ct-page-bg:   #F2F7F3;
+  --ct-surface:   #FFFFFF;
+  --ct-hairline:  #E5EEE8;
+  --ct-text:      #0F2A1D;
+  --ct-muted:     #5B7266;
+  --ct-primary:   #16A34A;
+  --ct-deep:      #0B3D2A;
+  --ct-lime-from: #B6F36B;
+  --ct-lime-to:   #6FD64A;
+
+  /* Card */
+  --ct-radius-card: 20px;
+  --ct-shadow-card: 0 1px 2px rgb(16 42 29 / 0.04), 0 12px 32px -16px rgb(16 94 50 / 0.18);
+
+  /* Controls */
+  --ct-radius-ctrl: 12px;
+  --ct-ctrl-h: 44px;
+
+  /* Typography: tighter tracking on headings */
+  --ct-tracking-heading: -0.02em;
+
+  background-color: var(--ct-page-bg);
+  color: var(--ct-text);
+
+  /* Fix: override default border color inside the courier layout so bare
+     `border` classes use the hairline colour instead of currentColor.
+     border-color is not inherited, but setting it here gives a baseline for
+     components that explicitly reference it. All new courier components
+     avoid `border` without an explicit colour class anyway. */
+  border-color: var(--ct-hairline);
+}
+
+/* ── Body font tuning ───────────────────────────────────────────────────── */
+.courier-theme {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Tabular numbers everywhere in the courier theme */
+.courier-theme .tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+.courier-sidebar-bg {
+  background: linear-gradient(180deg, #0b3d2a 0%, #06291c 100%);
+}
+
+/* Active nav pill: lime gradient */
+.courier-nav-active {
+  background: linear-gradient(135deg, #b6f36b, #6fd64a);
+  color: #0b3d2a !important;
+}
+
+/* Disabled nav item */
+.courier-nav-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Promo card at sidebar bottom */
+.courier-promo-card {
+  background: linear-gradient(135deg, #145233 0%, #083520 100%);
+  border: 1px solid rgba(255 255 255 / 0.08);
+}
+
+/* ── Card ───────────────────────────────────────────────────────────────── */
+.ct-card {
+  background: var(--ct-surface);
+  border-radius: var(--ct-radius-card);
+  box-shadow: var(--ct-shadow-card);
+  padding: 24px;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
+.courier-topbar {
+  background: rgba(242 247 243 / 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ── Greeting banner ────────────────────────────────────────────────────── */
+.courier-greeting-banner {
+  background: linear-gradient(135deg, #0b3d2a 0%, #145233 55%, #0b4d30 100%);
+}
+
+/* ── Lime button ────────────────────────────────────────────────────────── */
+.courier-btn-lime {
+  background: linear-gradient(135deg, var(--ct-lime-from), var(--ct-lime-to));
+  color: var(--ct-deep);
+}
+.courier-btn-lime:hover {
+  background: linear-gradient(135deg, #a8ec5e, #60c43a);
+}
+
+/* ── Bar chart ──────────────────────────────────────────────────────────── */
+.courier-bar {
+  background: linear-gradient(to top, #16a34a, #b6f36b);
+  border-radius: 6px 6px 0 0;
+  transition: opacity 0.15s;
+}
+.courier-bar:hover,
+.courier-bar:focus-visible {
+  opacity: 0.8;
+  outline: 2px solid #16a34a;
+  outline-offset: 2px;
+}
+.courier-bar-today {
+  background: linear-gradient(to top, #0b3d2a, #16a34a);
+}
+
+/* ── Parcel drawer (native <dialog>) ────────────────────────────────────── */
+.courier-parcel-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(440px, 100vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: var(--ct-surface);
+  box-shadow: -8px 0 40px rgb(0 0 0 / 0.15);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.courier-parcel-drawer::backdrop {
+  background: rgb(11 61 42 / 0.45);
+  backdrop-filter: blur(3px);
+}
+@media (max-width: 1023px) {
+  .courier-parcel-drawer {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: auto;
+    max-height: 92dvh;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 40px rgb(0 0 0 / 0.15);
+  }
+}
+
+/* ── Nav drawer (mobile sidebar) ────────────────────────────────────────── */
+.courier-nav-drawer {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 264px;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: visible;
+}
+.courier-nav-drawer::backdrop {
+  background: rgb(0 0 0 / 0.4);
+  backdrop-filter: blur(2px);
+}
+
+/* ── Focus ring ─────────────────────────────────────────────────────────── */
+.courier-theme :focus-visible {
+  outline: 2px solid var(--ct-primary);
+  outline-offset: 2px;
+}
+
+/* ── Reduce motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .courier-theme *,
+  .courier-theme *::before,
+  .courier-theme *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
