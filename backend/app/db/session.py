@@ -38,7 +38,7 @@ def get_engine() -> Optional[AsyncEngine]:
         if db_url:
             # Neon serverless PostgreSQL works well with pre-ping
             connect_args = {}
-            if "neon.tech" in db_url:
+            if any(host in db_url for host in ("neon.tech", "supabase.com", "supabase.co")):
                 connect_args["ssl"] = "require"
 
             _engine = create_async_engine(
