@@ -1,0 +1,109 @@
+/* ==============================================================================
+   NexDrop Supabase Auth UI Theme
+   Matches the emerald, forest green, and lime aesthetic of NexDrop
+   ============================================================================== */
+
+.nexdrop-auth-card {
+  --nexdrop-primary: #059669;
+  --nexdrop-primary-dark: #047857;
+  --nexdrop-deep-forest: #0b3d2a;
+  --nexdrop-lime-accent: #b6f36b;
+  --nexdrop-border-subtle: #e5eee8;
+  --nexdrop-input-bg: #f8faf8;
+}
+
+/* Base button styling */
+.nexdrop-auth-card button {
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-radius: 12px !important;
+  font-size: 14px !important;
+}
+
+/* Primary Submit Button (Sign in / Sign up) */
+.nexdrop-auth-card button[type="submit"] {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 12px 18px !important;
+  box-shadow: 0 4px 14px -2px rgba(16, 185, 129, 0.35) !important;
+}
+
+.nexdrop-auth-card button[type="submit"]:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px -2px rgba(16, 185, 129, 0.45) !important;
+}
+
+.nexdrop-auth-card button[type="submit"]:active {
+  transform: translateY(0) !important;
+}
+
+/* Social Buttons (Google OAuth) */
+.nexdrop-auth-card button:not([type="submit"]) {
+  background-color: #ffffff !important;
+  border: 1.5px solid #e2ece5 !important;
+  color: #0b3d2a !important;
+  padding: 11px 18px !important;
+  box-shadow: 0 1px 3px 0 rgba(11, 61, 42, 0.04) !important;
+}
+
+.nexdrop-auth-card button:not([type="submit"]):hover {
+  background-color: #f6fbf8 !important;
+  border-color: #86efac !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px -2px rgba(16, 185, 129, 0.15) !important;
+}
+
+/* Input Fields */
+.nexdrop-auth-card input {
+  background-color: var(--nexdrop-input-bg) !important;
+  border: 1.5px solid var(--nexdrop-border-subtle) !important;
+  color: #0b3d2a !important;
+  border-radius: 12px !important;
+  padding: 11px 14px !important;
+  font-size: 14px !important;
+  transition: all 0.15s ease-in-out !important;
+}
+
+.nexdrop-auth-card input::placeholder {
+  color: #8da194 !important;
+}
+
+.nexdrop-auth-card input:focus {
+  background-color: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18) !important;
+  outline: none !important;
+}
+
+/* Labels */
+.nexdrop-auth-card label {
+  color: #0b3d2a !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  margin-bottom: 6px !important;
+}
+
+/* Links & Anchors */
+.nexdrop-auth-card a {
+  color: #059669 !important;
+  font-weight: 500 !important;
+  font-size: 13px !important;
+  text-decoration: none !important;
+  transition: color 0.15s ease !important;
+}
+
+.nexdrop-auth-card a:hover {
+  color: #047857 !important;
+  text-decoration: underline !important;
+}
+
+/* Messages & Alerts */
+.nexdrop-auth-card .supabase-auth-ui_ui-message {
+  font-size: 13px !important;
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+}
+

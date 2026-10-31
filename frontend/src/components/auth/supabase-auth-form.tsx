@@ -18,7 +18,7 @@ export function SupabaseAuthForm({
   view = "sign_in",
   redirectTo,
   onSuccessRedirect = "/courier/dashboard",
-  providers = [],
+  providers = ["google"],
 }: SupabaseAuthFormProps) {
   const router = useRouter();
   const [callbackUrl, setCallbackUrl] = useState<string>("");
@@ -42,7 +42,7 @@ export function SupabaseAuthForm({
   }, [router, redirectTo, onSuccessRedirect]);
 
   return (
-    <div className="w-full">
+    <div className="w-full nexdrop-auth-card">
       <Auth
         supabaseClient={supabase}
         view={view}
@@ -51,18 +51,39 @@ export function SupabaseAuthForm({
           variables: {
             default: {
               colors: {
-                brand: "#2563eb",
-                brandAccent: "#1d4ed8",
-                inputBackground: "#ffffff",
-                inputText: "#111827",
-                inputBorder: "#e5e7eb",
-                inputBorderFocus: "#2563eb",
-                inputBorderHover: "#d1d5db",
+                brand: "#059669",
+                brandAccent: "#047857",
+                brandButtonText: "#ffffff",
+                defaultButtonBackground: "#ffffff",
+                defaultButtonBackgroundHover: "#f6fbf8",
+                defaultButtonBorder: "#e2ece5",
+                defaultButtonText: "#0b3d2a",
+                dividerBackground: "#e5eee8",
+                inputBackground: "#f8faf8",
+                inputBorder: "#e5eee8",
+                inputBorderFocus: "#10b981",
+                inputBorderHover: "#86efac",
+                inputText: "#0b3d2a",
+                inputLabelText: "#0b3d2a",
+                inputPlaceholder: "#8da194",
+                anchorTextColor: "#059669",
+                anchorTextHoverColor: "#047857",
               },
               radii: {
-                borderRadiusButton: "0.5rem",
-                buttonBorderRadius: "0.5rem",
-                inputBorderRadius: "0.5rem",
+                borderRadiusButton: "0.75rem",
+                buttonBorderRadius: "0.75rem",
+                inputBorderRadius: "0.75rem",
+              },
+              space: {
+                spaceSmall: "4px",
+                spaceMedium: "8px",
+                spaceLarge: "16px",
+                labelBottomMargin: "6px",
+                anchorBottomMargin: "4px",
+                emailInputSpacing: "6px",
+                socialAuthSpacing: "10px",
+                buttonPadding: "12px 18px",
+                inputPadding: "12px 14px",
               },
             },
           },
