@@ -7,6 +7,7 @@ from app.modules.dispatch.schemas import (
     DispatchCreate,
     DispatchStatusUpdate,
     DispatcherDashboardStats,
+    DispatcherMeResponse,
 )
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
@@ -16,6 +17,12 @@ router = APIRouter(prefix="/dispatch", tags=["Dispatch"])
 
 def get_dispatch_service(session: Optional[AsyncSession] = Depends(get_optional_db)) -> DispatchService:
     return DispatchService(DispatchRepository(session))
+
+
+@router.get("/dispatcher/me", response_model=DispatcherMeResponse)
+async def get_dispatcher_me() -> DispatcherMeResponse:
+    """Return dispatcher profile for authenticated user / user chip."""
+    return DispatcherMeResponse(id=1, full_name="Nuwan Bandara", role="dispatcher")
 
 
 @router.get("/dashboard/stats", response_model=DispatcherDashboardStats)

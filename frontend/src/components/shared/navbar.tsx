@@ -25,7 +25,7 @@ export function Navbar({ backendHealthy }: NavbarProps) {
 
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[#1F2937]">
           <Link
-            href="/dispatch"
+            href="/dispatcher/dashboard"
             className="flex items-center gap-1.5 text-[#064E3B] font-semibold hover:text-[#16A34A] transition-colors"
           >
             <LayoutDashboard className="h-4 w-4 text-[#16A34A]" />

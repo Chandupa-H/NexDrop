@@ -36,3 +36,10 @@ class DispatcherDashboardStats(BaseModel):
     completed_deliveries: int
     failed_deliveries: int
 
+
+class DispatcherMeResponse(BaseModel):
+    id: int
+    full_name: str
+    role: str = "dispatcher"
+
+
