@@ -1,12 +1,8 @@
 /* ==============================================================================
-   NexDrop Minimalist Atmospheric Theme (Inspired by Waypoint Go)
-   Clean, pastel-mint architectural aesthetic with floating card
-   Includes full Light and Dark Mode styling
+   NexDrop Minimalist Clean Card Theme (Exact Match to Waypoint Go)
+   Pure white card, dark bold typography, soft-tinted inputs, black button
    ============================================================================== */
 
-/* ------------------------------------------------------------------------------
-   LIGHT THEME
-   ------------------------------------------------------------------------------ */
 .waypoint-auth-card {
   --waypoint-btn-bg: #071911;
   --waypoint-btn-hover: #04100b;
@@ -20,31 +16,32 @@
   gap: 14px !important;
 }
 
-/* Primary Submit button (Jet dark forest black) */
+/* Primary "Sign in" Submit button (Jet dark forest black, 50px height, 16px radius) */
 .waypoint-auth-card button[type="submit"] {
   background-color: var(--waypoint-btn-bg) !important;
   color: #ffffff !important;
   border-radius: 16px !important;
   height: 50px !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   font-size: 15px !important;
   border: none !important;
-  box-shadow: 0 4px 12px rgba(7, 25, 17, 0.12) !important;
+  box-shadow: 0 4px 12px rgba(7, 25, 17, 0.15) !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
   margin-top: 4px !important;
+  cursor: pointer !important;
 }
 
 .waypoint-auth-card button[type="submit"]:hover {
   background-color: var(--waypoint-btn-hover) !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 6px 18px rgba(7, 25, 17, 0.18) !important;
+  box-shadow: 0 6px 18px rgba(7, 25, 17, 0.22) !important;
 }
 
 .waypoint-auth-card button[type="submit"]:active {
   transform: translateY(0) !important;
 }
 
-/* Social Buttons (Google OAuth) */
+/* Social Buttons (Google OAuth: Clean white pill button) */
 .waypoint-auth-card button:not([type="submit"]) {
   background-color: #ffffff !important;
   border: 1.5px solid #e1ece5 !important;
@@ -55,6 +52,7 @@
   font-size: 14px !important;
   box-shadow: 0 1px 3px rgba(7, 25, 17, 0.04) !important;
   transition: all 0.15s ease !important;
+  cursor: pointer !important;
 }
 
 .waypoint-auth-card button:not([type="submit"]):hover {
@@ -63,7 +61,7 @@
   transform: translateY(-1px) !important;
 }
 
-/* Soft Filled Input Fields */
+/* Soft Filled Input Fields (#eff4f1 soft mint fill) */
 .waypoint-auth-card input {
   background-color: var(--waypoint-input-bg) !important;
   border: 1.5px solid transparent !important;
@@ -72,6 +70,7 @@
   padding: 0 16px !important;
   color: #071911 !important;
   font-size: 14px !important;
+  font-weight: 500 !important;
   transition: all 0.15s ease-in-out !important;
 }
 
@@ -82,118 +81,47 @@
 .waypoint-auth-card input:focus {
   background-color: #ffffff !important;
   border-color: #071911 !important;
-  box-shadow: 0 0 0 1px #071911 !important;
+  box-shadow: 0 0 0 1.5px #071911 !important;
   outline: none !important;
 }
 
-/* Field Labels */
-.waypoint-auth-card label {
+/* Field Labels (High-contrast bold dark black #071911) */
+.waypoint-auth-card label,
+.waypoint-auth-card .supabase-auth-ui_ui-label {
   color: #071911 !important;
   font-size: 13px !important;
-  font-weight: 500 !important;
+  font-weight: 700 !important;
   margin-bottom: 4px !important;
 }
 
-/* Helper Links & Anchors */
-.waypoint-auth-card a {
-  color: #557063 !important;
+/* Helper Links & Anchors (Forgot password?, Sign up) */
+.waypoint-auth-card a,
+.waypoint-auth-card .supabase-auth-ui_ui-anchor {
+  color: #1e3b2e !important;
   font-size: 13px !important;
+  font-weight: 600 !important;
   text-decoration: none !important;
   transition: color 0.15s ease !important;
 }
 
-.waypoint-auth-card a:hover {
+.waypoint-auth-card a:hover,
+.waypoint-auth-card .supabase-auth-ui_ui-anchor:hover {
   color: #071911 !important;
   text-decoration: underline !important;
 }
 
-/* Divider */
+/* Divider line */
 .waypoint-auth-card .supabase-auth-ui_ui-divider {
   background-color: #e5eee8 !important;
   margin: 16px 0 !important;
 }
 
-/* Auth messages */
+/* Auth messages / alerts */
 .waypoint-auth-card .supabase-auth-ui_ui-message {
   border-radius: 12px !important;
   font-size: 13px !important;
   padding: 10px 14px !important;
-}
-
-/* ------------------------------------------------------------------------------
-   DARK THEME OVERRIDES
-   ------------------------------------------------------------------------------ */
-.dark .waypoint-auth-card {
-  --waypoint-btn-bg: #22c55e;
-  --waypoint-btn-hover: #16a34a;
-  --waypoint-input-bg: #12281e;
-}
-
-/* Primary Submit button in Dark Mode (Vibrant emerald button) */
-.dark .waypoint-auth-card button[type="submit"] {
-  background-color: #22c55e !important;
-  color: #05140d !important;
-  font-weight: 700 !important;
-  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.28) !important;
-}
-
-.dark .waypoint-auth-card button[type="submit"]:hover {
-  background-color: #16a34a !important;
-  box-shadow: 0 6px 20px rgba(34, 197, 94, 0.38) !important;
-}
-
-/* Social Buttons (Google OAuth) in Dark Mode */
-.dark .waypoint-auth-card button:not([type="submit"]) {
-  background-color: #12281e !important;
-  border: 1.5px solid #1e4533 !important;
-  color: #f1f8f4 !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
-}
-
-.dark .waypoint-auth-card button:not([type="submit"]):hover {
-  background-color: #173528 !important;
-  border-color: #2a6147 !important;
-}
-
-/* Dark Mode Inputs */
-.dark .waypoint-auth-card input {
-  background-color: #12281e !important;
-  border: 1.5px solid #1e4533 !important;
-  color: #f1f8f4 !important;
-}
-
-.dark .waypoint-auth-card input::placeholder {
-  color: #5d8371 !important;
-}
-
-.dark .waypoint-auth-card input:focus {
-  background-color: #0c1e16 !important;
-  border-color: #22c55e !important;
-  box-shadow: 0 0 0 1px #22c55e !important;
-}
-
-/* Dark Mode Labels */
-.dark .waypoint-auth-card label {
-  color: #cfe5da !important;
-}
-
-/* Dark Mode Links & Anchors */
-.dark .waypoint-auth-card a {
-  color: #79c99d !important;
-}
-
-.dark .waypoint-auth-card a:hover {
-  color: #a7f3d0 !important;
-}
-
-/* Dark Mode Divider */
-.dark .waypoint-auth-card .supabase-auth-ui_ui-divider {
-  background-color: #1e4533 !important;
-}
-
-/* Dark Mode Auth Messages */
-.dark .waypoint-auth-card .supabase-auth-ui_ui-message {
-  background-color: #12281e !important;
-  color: #f1f8f4 !important;
-  border-color: #1e4533 !important;
+  background-color: #fee2e2 !important;
+  color: #991b1b !important;
+  border: 1px solid #fecaca !important;
 }
