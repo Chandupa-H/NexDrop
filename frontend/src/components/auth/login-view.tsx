@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Sun, Moon } from "lucide-react";
+import type { ViewType } from "@supabase/auth-ui-shared";
 import { NexDropLogo } from "@/components/shared/nexdrop-logo";
 import { LogisticsSceneBackground } from "@/components/auth/logistics-scene-background";
 import { SupabaseAuthForm } from "@/components/auth/supabase-auth-form";
@@ -10,10 +11,16 @@ import { SupabaseAuthForm } from "@/components/auth/supabase-auth-form";
 export function LoginView() {
   const [isDark, setIsDark] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
+  const [authView, setAuthView] = useState<ViewType>("sign_in");
 
   useEffect(() => {
     setMounted(true);
     const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get("view");
+    if (viewParam === "sign_up") {
+      setAuthView("sign_up");
+    }
+
     const themeParam = params.get("theme");
     if (themeParam === "dark") {
       setIsDark(true);
@@ -90,7 +97,7 @@ export function LoginView() {
                     : "text-[#071911] drop-shadow-[0_1px_2px_rgba(255,255,255,0.9)]"
                 }`}
               >
-                Welcome back
+                {authView === "sign_up" ? "Create an account" : "Welcome back"}
               </h1>
               <p
                 className={`mt-1.5 text-[15px] font-semibold transition-colors duration-300 ${
@@ -99,7 +106,9 @@ export function LoginView() {
                     : "text-[#1e3b2e] drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)]"
                 }`}
               >
-                Sign in to open your workspace.
+                {authView === "sign_up"
+                  ? "Sign up to start dispatching and delivering."
+                  : "Sign in to open your workspace."}
               </p>
             </div>
 
@@ -112,6 +121,7 @@ export function LoginView() {
               }`}
             >
               <SupabaseAuthForm
+                view={authView}
                 isDark={isDark}
                 providers={["google"]}
                 onSuccessRedirect="/courier/dashboard"
