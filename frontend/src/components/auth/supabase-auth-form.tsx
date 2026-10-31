@@ -12,6 +12,7 @@ interface SupabaseAuthFormProps {
   redirectTo?: string;
   onSuccessRedirect?: string;
   providers?: Provider[];
+  theme?: "light" | "dark";
 }
 
 export function SupabaseAuthForm({
@@ -19,6 +20,7 @@ export function SupabaseAuthForm({
   redirectTo,
   onSuccessRedirect = "/courier/dashboard",
   providers = ["google"],
+  theme = "light",
 }: SupabaseAuthFormProps) {
   const router = useRouter();
   const [callbackUrl, setCallbackUrl] = useState<string>("");
@@ -86,9 +88,35 @@ export function SupabaseAuthForm({
                 inputPadding: "12px 16px",
               },
             },
+            dark: {
+              colors: {
+                brand: "#22c55e",
+                brandAccent: "#16a34a",
+                brandButtonText: "#071911",
+                defaultButtonBackground: "#11281e",
+                defaultButtonBackgroundHover: "#163629",
+                defaultButtonBorder: "#1e4534",
+                defaultButtonText: "#f1f8f4",
+                dividerBackground: "#1e4534",
+                inputBackground: "#11281e",
+                inputBorder: "#1e4534",
+                inputBorderFocus: "#22c55e",
+                inputBorderHover: "#2a5f47",
+                inputText: "#f1f8f4",
+                inputLabelText: "#d1e7dc",
+                inputPlaceholder: "#628775",
+                anchorTextColor: "#8dd8af",
+                anchorTextHoverColor: "#4ade80",
+              },
+              radii: {
+                borderRadiusButton: "1rem",
+                buttonBorderRadius: "1rem",
+                inputBorderRadius: "1rem",
+              },
+            },
           },
         }}
-        theme="light"
+        theme={theme}
         providers={providers}
         redirectTo={callbackUrl}
       />
