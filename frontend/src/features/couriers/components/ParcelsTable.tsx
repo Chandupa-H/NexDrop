@@ -1,215 +1,232 @@
-"use client";
+/**
+ * Parcels table with filters and actions.
+ * Props:
+ * - parcels: ParcelListItem[] - list of parcels to display
+ * - total: number - total count for "Showing X of Y"
+ * - filter: TableFilter - currently selected filter
+ * - onFilterChange: (filter: TableFilter) => void
+ * - onOpen: (trackingId: string, action?: ActionType) => void - open drawer with optional pre-expanded action
+ * - loading?: boolean - show skeleton rows
+ * - error?: string - error message
+ * - onRetry?: () => void - retry handler for errors
+ */
 
-import { cn } from "@/lib/utils";
-import type { AssignedParcel, ParcelStatus, TableFilter } from "../types";
+import { useState } from "react";
+import { SectionCard, StatusBadge, EmptyState } from "@/components/dashboard";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { MoreVertical, ArrowRight } from "lucide-react";
+import { getStatusLabel, getStatusTone } from "../lib/status";
+import type { ParcelListItem, TableFilter, ActionType } from "../types";
 
-// ── Status badge config ──────────────────────────────────────────────────
-const STATUS_CFG: Record<ParcelStatus, { label: string; bg: string; text: string }> = {
-  PENDING:          { label: "Pending",          bg: "#FFF1D6", text: "#9A5B00" },
-  PICKED_UP:        { label: "Picked Up",        bg: "#DDF4F1", text: "#0F766E" },
-  IN_TRANSIT:       { label: "In Transit",       bg: "#E4EEFF", text: "#1D4ED8" },
-  OUT_FOR_DELIVERY: { label: "Out for Delivery", bg: "#E4EEFF", text: "#1D4ED8" },
-  DELIVERED:        { label: "Delivered",        bg: "#E3F6E8", text: "#12703A" },
-  FAILED:           { label: "Failed",           bg: "#FDE4E4", text: "#B42318" },
-};
-
-function StatusBadge({ status }: { status: ParcelStatus }) {
-  const { label, bg, text } = STATUS_CFG[status];
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap"
-      style={{ background: bg, color: text }}
-    >
-      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: text }} aria-hidden="true" />
-      {label}
-    </span>
-  );
-}
-
-// ── Filter pills config ──────────────────────────────────────────────────
-const PILLS: { label: string; value: TableFilter }[] = [
-  { label: "All",        value: "ALL" },
-  { label: "Pending",    value: "PENDING" },
-  { label: "In transit", value: "IN_TRANSIT_GROUP" },
-  { label: "Delivered",  value: "DELIVERED" },
-  { label: "Failed",     value: "FAILED" },
+const filters: Array<{ key: TableFilter; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "pending", label: "Pending" },
+  { key: "in_transit_group", label: "In transit" },
+  { key: "delivered", label: "Delivered" },
+  { key: "failed", label: "Failed" },
 ];
 
-interface ParcelsTableProps {
-  parcels: AssignedParcel[];
-  totalAssigned: number;
-  activeFilter: TableFilter;
-  onFilterChange: (f: TableFilter) => void;
-  onRowClick: (p: AssignedParcel) => void;
-}
-
-function InitialsAvatar({ initials }: { initials: string }) {
-  return (
-    <span
-      className="inline-flex h-8 w-8 rounded-full items-center justify-center text-xs font-bold text-white shrink-0"
-      style={{ background: "#0b3d2a" }}
-      aria-hidden="true"
-    >
-      {initials}
-    </span>
-  );
-}
-
-/** Stacked card for mobile view */
-function ParcelCard({ parcel, onClick }: { parcel: AssignedParcel; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full text-left rounded-2xl border border-[#E5EEE8] bg-white p-4 space-y-2.5 hover:bg-[#F2F7F3] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]"
-      aria-label={`Open details for ${parcel.trackingId}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <InitialsAvatar initials={parcel.customerInitials} />
-          <div className="min-w-0">
-            <p className="font-semibold text-sm text-[#0F2A1D]">{parcel.customerName}</p>
-            <p className="text-xs text-[#5B7266] font-mono">{parcel.trackingId}</p>
-          </div>
-        </div>
-        <StatusBadge status={parcel.status} />
-      </div>
-      <p className="text-xs text-[#5B7266] truncate">{parcel.destination}</p>
-      <p className="text-xs text-[#5B7266]">{parcel.assignedAtDisplay}</p>
-    </button>
-  );
-}
-
 export function ParcelsTable({
-  parcels, totalAssigned, activeFilter, onFilterChange, onRowClick,
-}: ParcelsTableProps) {
+  parcels,
+  total,
+  filter,
+  onFilterChange,
+  onOpen,
+  loading,
+  error,
+  onRetry,
+}: {
+  parcels: ParcelListItem[];
+  total: number;
+  filter: TableFilter;
+  onFilterChange: (filter: TableFilter) => void;
+  onOpen: (trackingId: string, action?: ActionType) => void;
+  loading?: boolean;
+  error?: string;
+  onRetry?: () => void;
+}) {
   return (
-    <div className="ct-card flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-        <div>
-          <h2 className="text-lg font-semibold text-[#0F2A1D]" style={{ letterSpacing: "-0.01em" }}>
-            Today&apos;s Assigned Parcels
-          </h2>
-          <p className="text-xs text-[#5B7266] mt-0.5">
-            Showing {parcels.length} of {totalAssigned} (mock)
-          </p>
-        </div>
-        <span
-          className="text-xs font-medium text-[#5B7266] cursor-not-allowed"
-          aria-disabled="true"
-          title="Coming soon"
+    <SectionCard
+      title="Today's Assigned Parcels"
+      subtitle={`Showing ${parcels.length} of ${total}`}
+      action={
+        <button
+          disabled
+          className="text-sm text-[var(--dashboard-primary)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed flex items-center gap-1"
         >
-          View all
-        </span>
-      </div>
-
-      {/* Filter pills */}
-      <div className="flex gap-1.5 mb-4 flex-wrap" role="group" aria-label="Filter parcels by status">
-        {PILLS.map((pill) => (
-          <button
-            key={pill.value}
-            type="button"
-            onClick={() => onFilterChange(pill.value)}
-            aria-pressed={activeFilter === pill.value}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]",
-              activeFilter === pill.value
-                ? "bg-[#0b3d2a] text-white"
-                : "bg-[#F2F7F3] text-[#5B7266] hover:bg-[#E5EEE8]"
-            )}
-          >
-            {pill.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Empty state */}
-      {parcels.length === 0 && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12">
-          <p className="text-sm text-[#5B7266]">No parcels in this status</p>
-          <button
-            type="button"
-            onClick={() => onFilterChange("ALL")}
-            className="text-xs font-semibold text-[#16A34A] underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A] rounded"
-          >
-            Clear filter
-          </button>
-        </div>
-      )}
-
-      {/* Desktop table */}
-      {parcels.length > 0 && (
-        <div className="hidden lg:block overflow-x-auto">
-          <table className="w-full" role="grid" aria-label="Assigned parcels">
-            <thead>
-              <tr className="border-b border-[#E5EEE8]">
-                {["Tracking ID", "Customer", "Destination", "Status", "Assigned at", ""].map((h) => (
-                  <th
-                    key={h}
-                    className="pb-3 text-left text-xs font-semibold text-[#5B7266] uppercase tracking-wider pr-4 last:pr-0"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {parcels.map((p) => (
-                <tr
-                  key={p.id}
-                  onClick={() => onRowClick(p)}
-                  className="border-b border-[#E5EEE8] last:border-0 hover:bg-[#F2F7F3] cursor-pointer transition-colors"
-                  style={{ height: 56 }}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`Open details for ${p.trackingId}`}
-                  onKeyDown={(e) => e.key === "Enter" && onRowClick(p)}
-                >
-                  <td className="pr-4 py-0">
-                    <span className="font-semibold text-sm text-[#0b3d2a] font-mono">{p.trackingId}</span>
-                  </td>
-                  <td className="pr-4 py-0">
-                    <div className="flex items-center gap-2.5">
-                      <InitialsAvatar initials={p.customerInitials} />
-                      <span className="text-sm font-medium text-[#0F2A1D]">{p.customerName}</span>
-                    </div>
-                  </td>
-                  <td className="pr-4 py-0 max-w-[180px]">
-                    <span className="text-sm text-[#5B7266] truncate block">{p.destination}</span>
-                  </td>
-                  <td className="pr-4 py-0">
-                    <StatusBadge status={p.status} />
-                  </td>
-                  <td className="pr-4 py-0">
-                    <span className="text-xs text-[#5B7266] tabular-nums">{p.assignedAtDisplay}</span>
-                  </td>
-                  <td className="py-0">
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onRowClick(p); }}
-                      aria-label={`Open actions for ${p.trackingId}`}
-                      className="p-1.5 rounded-lg text-[#5B7266] hover:bg-[#E5EEE8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#16A34A]"
-                    >
-                      <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                        <circle cx="2" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="14" cy="8" r="1.5" />
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Mobile card list */}
-      {parcels.length > 0 && (
-        <div className="lg:hidden space-y-2.5">
-          {parcels.map((p) => (
-            <ParcelCard key={p.id} parcel={p} onClick={() => onRowClick(p)} />
+          View all <ArrowRight className="w-3 h-3" />
+        </button>
+      }
+    >
+      <div className="space-y-4" aria-busy={loading}>
+        <div className="flex flex-wrap gap-2">
+          {filters.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => onFilterChange(f.key)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                filter === f.key
+                  ? "bg-[var(--dashboard-primary)] text-white"
+                  : "bg-[var(--dashboard-neutral-bg)] text-[var(--dashboard-text)] hover:bg-[var(--dashboard-neutral-bg)]/70"
+              }`}
+            >
+              {f.label}
+            </button>
           ))}
         </div>
+
+        {error && (
+          <div className="flex items-center justify-between p-4 bg-red-50 text-red-700 rounded-xl text-sm">
+            <span>{error}</span>
+            {onRetry && <Button onClick={onRetry} size="sm" variant="outline">Retry</Button>}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-14" />
+            ))}
+          </div>
+        ) : parcels.length === 0 ? (
+          <EmptyState
+            icon="package"
+            title="No parcels in this status"
+            description="Try selecting a different filter to see more parcels."
+            action={
+              filter !== "all" ? (
+                <Button onClick={() => onFilterChange("all")} variant="outline">
+                  Clear filter
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <>
+            <div className="hidden lg:block overflow-hidden rounded-xl border border-[var(--dashboard-hairline)]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tracking ID</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Destination</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Assigned at</TableHead>
+                    <TableHead className="w-12"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {parcels.map((parcel) => (
+                    <TableRow
+                      key={parcel.trackingId}
+                      onClick={() => onOpen(parcel.trackingId)}
+                      className="cursor-pointer h-14 hover:bg-[#e8f5ec]/50"
+                    >
+                      <TableCell className="font-semibold">{parcel.trackingId}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Avatar size="sm">
+                            <AvatarFallback className="bg-[var(--dashboard-primary)] text-white text-xs">
+                              {parcel.customerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{parcel.customerName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>{parcel.destination}</TableCell>
+                      <TableCell>
+                        <StatusBadge label={getStatusLabel(parcel.status)} tone={getStatusTone(parcel.status)} />
+                      </TableCell>
+                      <TableCell className="text-[var(--dashboard-muted)]">{parcel.assignedAtDisplay}</TableCell>
+                      <TableCell>
+                        <ActionMenu onSelect={(action) => onOpen(parcel.trackingId, action)} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="lg:hidden space-y-3">
+              {parcels.map((parcel) => (
+                <button
+                  key={parcel.trackingId}
+                  onClick={() => onOpen(parcel.trackingId)}
+                  className="w-full p-4 bg-white rounded-xl border border-[var(--dashboard-hairline)] text-left hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                      <Avatar size="sm">
+                        <AvatarFallback className="bg-[var(--dashboard-primary)] text-white text-xs">
+                          {parcel.customerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-semibold text-sm">{parcel.trackingId}</div>
+                        <div className="text-xs text-[var(--dashboard-muted)]">{parcel.customerName}</div>
+                      </div>
+                    </div>
+                    <StatusBadge label={getStatusLabel(parcel.status)} tone={getStatusTone(parcel.status)} />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-[var(--dashboard-muted)]">
+                    <span>{parcel.destination}</span>
+                    <span>{parcel.assignedAtDisplay}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
+function ActionMenu({ onSelect }: { onSelect: (action: ActionType) => void }) {
+  const [open, setOpen] = useState(false);
+
+  const actions: Array<{ type: ActionType; label: string }> = [
+    { type: "update-status", label: "View details" },
+    { type: "update-status", label: "Update status" },
+    { type: "add-note", label: "Add note" },
+    { type: "upload-proof", label: "Upload proof" },
+    { type: "report-failed", label: "Report failed delivery" },
+  ];
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+        className="w-8 h-8 rounded-lg hover:bg-[var(--dashboard-neutral-bg)] flex items-center justify-center"
+        aria-label="Actions"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-[var(--dashboard-hairline)] py-2 z-50">
+            {actions.map((action) => (
+              <button
+                key={action.label}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(action.type);
+                  setOpen(false);
+                }}
+                className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--dashboard-page-bg)] transition-colors"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
