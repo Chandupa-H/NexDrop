@@ -117,7 +117,9 @@ export function NexDropLogo({
             <span className={dropColor}>Drop</span>
           </div>
           <span
-            className={`font-medium tracking-wider uppercase text-emerald-600/80 mt-0.5 ${currentSize.sub}`}
+            className={`font-semibold tracking-wider uppercase mt-0.5 ${currentSize.sub} ${
+              variant === "dark" ? "text-emerald-300" : "text-emerald-900/80"
+            }`}
           >
             Courier & Logistics
           </span>

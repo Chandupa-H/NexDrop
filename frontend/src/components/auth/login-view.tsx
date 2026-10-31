@@ -13,6 +13,16 @@ export function LoginView() {
 
   useEffect(() => {
     setMounted(true);
+    const params = new URLSearchParams(window.location.search);
+    const themeParam = params.get("theme");
+    if (themeParam === "dark") {
+      setIsDark(true);
+      return;
+    }
+    if (themeParam === "light") {
+      setIsDark(false);
+      return;
+    }
     const saved = localStorage.getItem("nexdrop-theme");
     if (saved === "dark") {
       setIsDark(true);
@@ -102,6 +112,7 @@ export function LoginView() {
               }`}
             >
               <SupabaseAuthForm
+                isDark={isDark}
                 providers={["google"]}
                 onSuccessRedirect="/courier/dashboard"
               />
@@ -111,7 +122,7 @@ export function LoginView() {
             <p
               className={`mt-6 max-w-[340px] text-center text-xs font-semibold leading-relaxed transition-colors duration-300 ${
                 isDark
-                  ? "text-[#9ec4b2]"
+                  ? "text-emerald-200 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]"
                   : "text-[#1e3b2e] drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)]"
               }`}
             >
@@ -124,7 +135,7 @@ export function LoginView() {
         <footer
           className={`relative z-20 py-4 text-center text-[11px] font-semibold transition-colors duration-300 ${
             isDark
-              ? "text-[#6b8f7e]"
+              ? "text-emerald-300/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]"
               : "text-[#1e3b2e] drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]"
           }`}
         >

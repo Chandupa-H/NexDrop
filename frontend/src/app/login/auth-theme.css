@@ -201,3 +201,71 @@
   color: #f1f8f4 !important;
   border-color: #1e4735 !important;
 }
+
+/* ==============================================================================
+   LIVE AMBIENT LOGISTICS SCENE ANIMATIONS
+   ============================================================================== */
+
+@keyframes sceneLiveDrift {
+  0% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: scale(1.035) translate3d(-0.6%, -0.4%, 0);
+  }
+  100% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+}
+
+.animate-scene-live {
+  animation: sceneLiveDrift 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes sonarPing {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+.animate-sonar-ping {
+  animation: sonarPing 3s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+
+@keyframes liveMoteFloat {
+  0% {
+    transform: translateY(0) scale(0.8);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(-40px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+.animate-mote-1 {
+  animation: liveMoteFloat 7s ease-in-out infinite;
+}
+
+.animate-mote-2 {
+  animation: liveMoteFloat 9s ease-in-out infinite 2.5s;
+}
+
+.animate-mote-3 {
+  animation: liveMoteFloat 8s ease-in-out infinite 4s;
+}
