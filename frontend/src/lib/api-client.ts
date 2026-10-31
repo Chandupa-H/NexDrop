@@ -3,6 +3,12 @@
  * Connects frontend to the FastAPI modular monolith backend.
  */
 
+import type {
+  MerchantRegisterRequest,
+  MerchantRegistrationResponse,
+  MerchantStatusResponse,
+} from "@/features/merchants";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000/api/v1";
 
@@ -115,6 +121,18 @@ export const apiClient = {
   // Instant pricing estimate helper
   getPricingEstimate: (data: PriceEstimateRequest) =>
     apiClient.post<PriceEstimateResponse>("/pricing/estimate", data),
+
+  // ---------------------------------------------------------------------------
+  // Merchant — Registration & Approval
+  // ---------------------------------------------------------------------------
+
+  /** Submit a new merchant registration application. */
+  registerMerchant: (data: MerchantRegisterRequest) =>
+    apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
+
+  /** Check an applicant's approval status by their merchant ID. */
+  getMerchantStatus: (merchantId: number) =>
+    apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
 };
 
 export default apiClient;
