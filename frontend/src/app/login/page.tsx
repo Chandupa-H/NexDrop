@@ -30,7 +30,10 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl border border-gray-200/80 bg-white p-8 shadow-sm">
-          <SupabaseAuthForm onSuccessRedirect="/courier/dashboard" />
+          <SupabaseAuthForm
+            providers={["google"]}
+            onSuccessRedirect="/courier/dashboard"
+          />
         </div>
 
         <p className="text-center text-xs text-gray-400">
