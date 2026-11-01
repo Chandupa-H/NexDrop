@@ -57,7 +57,8 @@ async def run_async_migrations() -> None:
     configuration["sqlalchemy.url"] = get_url()
 
     connect_args = {}
-    if "neon.tech" in configuration["sqlalchemy.url"]:
+    db_url = configuration.get("sqlalchemy.url", "")
+    if any(host in db_url for host in ("neon.tech", "supabase.com", "supabase.co")):
         connect_args["ssl"] = "require"
 
     connectable = async_engine_from_config(

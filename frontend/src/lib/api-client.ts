@@ -3,22 +3,31 @@
  * Connects frontend to the FastAPI modular monolith backend.
  */
 
+import type {
+  MerchantRegisterRequest,
+  MerchantRegistrationResponse,
+  MerchantStatusResponse,
+} from "@/features/merchants";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000/api/v1";
 
 export interface ApiErrorResponse {
   detail?: string | Array<{ msg: string; loc: string[] }>;
   message?: string;
+  code?: string;
 }
 
 export class ApiError extends Error {
   status: number;
+  code?: string;
   data: ApiErrorResponse;
 
   constructor(status: number, message: string, data: ApiErrorResponse = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = data.code;
     this.data = data;
   }
 }
@@ -57,11 +66,19 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
 
+  // Add 8-second timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  
   try {
     const response = await fetch(url, {
       ...options,
       headers,
+      signal: options.signal || controller.signal,
+      cache: options.cache || "no-store",
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       let errorData: ApiErrorResponse = {};
@@ -81,9 +98,17 @@ async function request<T>(
 
     return (await response.json()) as T;
   } catch (error) {
+    clearTimeout(timeoutId);
+    
     if (error instanceof ApiError) {
       throw error;
     }
+    
+    // Handle abort/timeout
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
+    }
+    
     throw new ApiError(500, (error as Error).message || "Network error communicating with backend");
   }
 }
@@ -115,6 +140,18 @@ export const apiClient = {
   // Instant pricing estimate helper
   getPricingEstimate: (data: PriceEstimateRequest) =>
     apiClient.post<PriceEstimateResponse>("/pricing/estimate", data),
+
+  // ---------------------------------------------------------------------------
+  // Merchant — Registration & Approval
+  // ---------------------------------------------------------------------------
+
+  /** Submit a new merchant registration application. */
+  registerMerchant: (data: MerchantRegisterRequest) =>
+    apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
+
+  /** Check an applicant's approval status by their merchant ID. */
+  getMerchantStatus: (merchantId: number) =>
+    apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
 };
 
 export default apiClient;

@@ -27,12 +27,16 @@ class Settings(BaseSettings):
     RABBITMQ_URL: Optional[str] = None
     RABBITMQ_ENABLED: bool = False
 
-    # Security placeholders (for future implementation)
+    # Security & Supabase Auth
     SECRET_KEY: str = "development-secret-key-change-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_JWT_SECRET: Optional[str] = None
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env", "backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
