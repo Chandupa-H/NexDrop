@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Package,
   Truck,
@@ -17,6 +18,8 @@ import {
   Compass,
   Bell,
   Webhook,
+  LogIn,
+  UserPlus,
 } from "lucide-react";
 import { Navbar } from "@/components/shared/navbar";
 import { Footer } from "@/components/shared/footer";
@@ -151,9 +154,23 @@ export default function Home() {
                 clean architectural separation to power 10 independent feature teams.
               </p>
 
-              <div className="flex flex-wrap gap-4 pt-2">
+              <div className="flex flex-wrap items-center gap-3.5 pt-2">
+                <Link href="/login">
+                  <Button variant="primary" size="lg" className="shadow-sm font-bold">
+                    <LogIn className="h-4 w-4" />
+                    Sign In
+                  </Button>
+                </Link>
+
+                <Link href="/login?view=sign_up">
+                  <Button variant="lime" size="lg" className="shadow-sm font-bold">
+                    <UserPlus className="h-4 w-4" />
+                    Sign Up
+                  </Button>
+                </Link>
+
                 <Button
-                  variant="primary"
+                  variant="outline"
                   size="lg"
                   onClick={() => {
                     const el = document.getElementById("modules");
@@ -165,7 +182,7 @@ export default function Home() {
                 </Button>
 
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="lg"
                   onClick={() => {
                     const el = document.getElementById("calculator");
@@ -175,18 +192,6 @@ export default function Home() {
                   <Calculator className="h-4 w-4 text-[#16A34A]" />
                   Pricing Engine
                 </Button>
-
-                <a
-                  href="http://localhost:8000/api/v1/health"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex"
-                >
-                  <Button variant="ghost" size="lg">
-                    <Server className="h-4 w-4 text-[#064E3B]" />
-                    Test Health API
-                  </Button>
-                </a>
               </div>
             </div>
 
