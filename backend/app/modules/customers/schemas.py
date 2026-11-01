@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from typing import Optional, List
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CustomerBase(BaseModel):
@@ -30,3 +30,99 @@ class CustomerResponse(CustomerBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ── Customer Dashboard Schemas ─────────────────────────────────────
+
+
+class CustomerMeResponse(BaseModel):
+    """GET /customer/me - Customer profile for the authenticated user."""
+    id: int
+    full_name: str
+    email: str
+    phone: str
+    role: str = "customer"
+    default_address: str
+    city: str
+    postal_code: str
+
+
+class CustomerDashboardTotals(BaseModel):
+    """Order and delivery counts summary."""
+    total_orders: int
+    active_deliveries: int  # picked_up + in_transit + out_for_delivery
+    delivered: int
+    pending: int
+    cancelled: int
+
+
+class CustomerDashboardKPI(BaseModel):
+    """Key performance indicator with delta percentage."""
+    key: str
+    value: int
+    delta_pct: int
+
+
+class CustomerWeeklyOrder(BaseModel):
+    """Daily orders count for the bar chart."""
+    date: str  # ISO 8601 date
+    orders: int
+
+
+class CustomerDashboardSummaryResponse(BaseModel):
+    """GET /customer/dashboard/summary - Dashboard metrics."""
+    totals: CustomerDashboardTotals
+    kpis: List[CustomerDashboardKPI]
+    weekly_orders: List[CustomerWeeklyOrder]
+
+
+class CustomerParcelListItem(BaseModel):
+    """Parcel item for customer dashboard list view."""
+    tracking_id: str
+    recipient_name: str
+    destination: str
+    status: str
+    created_at: str  # ISO 8601 with timezone
+    estimated_fee: float
+    weight_kg: float
+    eta: Optional[str] = None
+
+
+class CustomerParcelListResponse(BaseModel):
+    """GET /customer/parcels - Paginated list of customer parcels."""
+    items: List[CustomerParcelListItem]
+    total: int
+
+
+class CustomerTimelineEvent(BaseModel):
+    """Timeline event in delivery history."""
+    status: str
+    label: str
+    occurred_at: str  # ISO 8601 with timezone
+    location: Optional[str] = None
+
+
+class CustomerParcelDetailResponse(BaseModel):
+    """GET /customer/parcels/{tracking_id} - Full parcel details for customer."""
+    tracking_id: str
+    recipient_name: str
+    recipient_phone_masked: str
+    sender_name: str
+    delivery_address: str
+    delivery_city: str
+    pickup_address: str
+    pickup_city: str
+    status: str
+    created_at: str  # ISO 8601 with timezone
+    eta: Optional[str] = None
+    fee: float
+    weight_kg: float
+    dimensions: Optional[str] = None
+    special_instructions: Optional[str] = None
+    notes: List[str] = Field(default_factory=list)
+    timeline: List[CustomerTimelineEvent]
+
+
+class CustomerCancelParcelRequest(BaseModel):
+    """POST /customer/parcels/{tracking_id}/cancel - Cancel pending delivery."""
+    reason: Optional[str] = None

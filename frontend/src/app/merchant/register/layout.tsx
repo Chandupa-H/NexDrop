@@ -49,7 +49,7 @@ export default function MerchantRegisterLayout({
       {/* Minimal footer */}
       <footer className="border-t border-[#E5E7EB] bg-white py-4 px-6">
         <p className="text-center text-xs text-[#64748B]">
-          © {new Date().getFullYear()} NexDrop. All rights reserved. &nbsp;·&nbsp;
+          © 2026 NexDrop. All rights reserved. &nbsp;·&nbsp;
           <Link href="/privacy" className="hover:text-[#064E3B] transition-colors">Privacy</Link>
           &nbsp;·&nbsp;
           <Link href="/terms" className="hover:text-[#064E3B] transition-colors">Terms</Link>
