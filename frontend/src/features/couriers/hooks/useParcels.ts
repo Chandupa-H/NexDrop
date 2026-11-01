@@ -31,18 +31,23 @@ export function useParcels(
 
   useEffect(() => {
     if (filter === "all") {
-      setState({
-        parcels: initialParcels,
-        total: initialTotal,
-        loading: false,
-        error: null,
+      queueMicrotask(() => {
+        setState({
+          parcels: initialParcels,
+          total: initialTotal,
+          loading: false,
+          error: null,
+        });
       });
       return;
     }
 
     const controller = new AbortController();
 
-    setState((current) => ({ ...current, loading: true, error: null }));
+    queueMicrotask(() => {
+      setState((current) => ({ ...current, loading: true, error: null }));
+    });
+
     fetchParcelsAction(filter)
       .then((response) => {
         if (controller.signal.aborted) return;
@@ -58,15 +63,20 @@ export function useParcels(
         setState((current) => ({
           ...current,
           loading: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Unable to load parcels. Please try again.",
+          error: error instanceof Error ? error.message : "Failed to load parcels",
         }));
       });
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+    };
   }, [filter, initialParcels, initialTotal, requestVersion]);
 
-  return { ...state, refetch };
+  return {
+    parcels: state.parcels,
+    total: state.total,
+    loading: state.loading,
+    error: state.error,
+    refetch,
+  };
 }

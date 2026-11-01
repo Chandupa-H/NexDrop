@@ -1,47 +1,81 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Sun, Moon } from "lucide-react";
-import type { ViewType } from "@supabase/auth-ui-shared";
 import { NexDropLogo } from "@/components/shared/nexdrop-logo";
 import { LogisticsSceneBackground } from "@/components/auth/logistics-scene-background";
-import { SupabaseAuthForm } from "@/components/auth/supabase-auth-form";
+import { AuthForm } from "@/components/auth/auth-form";
+import { VerifyEmailForm } from "@/components/auth/verify-email-form";
 
 export function LoginView() {
   const [isDark, setIsDark] = useState<boolean>(false);
-  const [mounted, setMounted] = useState<boolean>(false);
-  const [authView, setAuthView] = useState<ViewType>("sign_in");
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
+  const [authStep, setAuthStep] = useState<"credentials" | "verify_email">("credentials");
+  const [pendingEmail, setPendingEmail] = useState<string>("");
 
   useEffect(() => {
-    setMounted(true);
+    // Read URL params and stored theme on mount without blocking initial effect
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get("view");
-    if (viewParam === "sign_up") {
-      setAuthView("sign_up");
-    }
-
+    const stepParam = params.get("step");
+    const emailParam = params.get("email");
     const themeParam = params.get("theme");
-    if (themeParam === "dark") {
-      setIsDark(true);
-      return;
-    }
-    if (themeParam === "light") {
-      setIsDark(false);
-      return;
-    }
-    const saved = localStorage.getItem("nexdrop-theme");
-    if (saved === "dark") {
-      setIsDark(true);
-    } else {
-      setIsDark(false);
-    }
+    const savedTheme = localStorage.getItem("nexdrop-theme");
+
+    queueMicrotask(() => {
+      if (viewParam === "sign_up") {
+        setAuthMode("sign_up");
+      }
+
+      if (stepParam === "verify") {
+        setAuthStep("verify_email");
+        if (emailParam) {
+          setPendingEmail(emailParam);
+        }
+      }
+
+      if (themeParam === "dark") {
+        setIsDark(true);
+        return;
+      }
+      if (themeParam === "light") {
+        setIsDark(false);
+        return;
+      }
+      if (savedTheme === "dark") {
+        setIsDark(true);
+      } else {
+        setIsDark(false);
+      }
+    });
   }, []);
 
   const toggleTheme = () => {
     const nextTheme = !isDark;
     setIsDark(nextTheme);
     localStorage.setItem("nexdrop-theme", nextTheme ? "dark" : "light");
+  };
+
+  const getHeaderTitle = () => {
+    if (authStep === "verify_email") {
+      return "Confirm your email";
+    }
+    return authMode === "sign_up" ? "Create an account" : "Welcome back";
+  };
+
+  const getHeaderSubtitle = () => {
+    if (authStep === "verify_email") {
+      return "Enter the 6-digit confirmation code below.";
+    }
+    return authMode === "sign_up"
+      ? "Sign up to start dispatching and delivering."
+      : "Sign in to open your workspace.";
   };
 
   return (
@@ -88,7 +122,7 @@ export function LoginView() {
         {/* 3. Dead-Center Authentication Experience */}
         <div className="relative z-20 flex flex-1 flex-col items-center justify-center px-4 py-6 sm:px-6">
           <div className="w-full max-w-[420px] flex flex-col items-center">
-            {/* Welcome Header */}
+            {/* Dynamic Welcome Header */}
             <div className="text-center mb-6">
               <h1
                 className={`text-3xl sm:text-[38px] font-extrabold tracking-tight leading-tight transition-colors duration-300 ${
@@ -97,7 +131,7 @@ export function LoginView() {
                     : "text-[#071911] drop-shadow-[0_1px_2px_rgba(255,255,255,0.9)]"
                 }`}
               >
-                {authView === "sign_up" ? "Create an account" : "Welcome back"}
+                {getHeaderTitle()}
               </h1>
               <p
                 className={`mt-1.5 text-[15px] font-semibold transition-colors duration-300 ${
@@ -106,9 +140,7 @@ export function LoginView() {
                     : "text-[#1e3b2e] drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)]"
                 }`}
               >
-                {authView === "sign_up"
-                  ? "Sign up to start dispatching and delivering."
-                  : "Sign in to open your workspace."}
+                {getHeaderSubtitle()}
               </p>
             </div>
 
@@ -120,12 +152,25 @@ export function LoginView() {
                   : "bg-white border border-[#e5eee8] shadow-[0_20px_50px_rgba(7,25,17,0.09)]"
               }`}
             >
-              <SupabaseAuthForm
-                view={authView}
-                isDark={isDark}
-                providers={["google"]}
-                onSuccessRedirect="/courier/dashboard"
-              />
+              {authStep === "verify_email" ? (
+                <VerifyEmailForm
+                  email={pendingEmail || "courier@nexdrop.com"}
+                  isDark={isDark}
+                  onSuccessRedirect="/courier/dashboard"
+                  onChangeEmail={() => setAuthStep("credentials")}
+                />
+              ) : (
+                <AuthForm
+                  isDark={isDark}
+                  mode={authMode}
+                  onModeChange={setAuthMode}
+                  onSuccessRedirect="/courier/dashboard"
+                  onRequireVerification={(email) => {
+                    setPendingEmail(email);
+                    setAuthStep("verify_email");
+                  }}
+                />
+              )}
             </div>
 
             {/* Offline Sync Subtitle Note */}
