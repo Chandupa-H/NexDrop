@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Sun, Moon } from "lucide-react";
 import { NexDropLogo } from "@/components/shared/nexdrop-logo";
@@ -10,43 +10,50 @@ import { VerifyEmailForm } from "@/components/auth/verify-email-form";
 
 export function LoginView() {
   const [isDark, setIsDark] = useState<boolean>(false);
-  const [mounted, setMounted] = useState<boolean>(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [authStep, setAuthStep] = useState<"credentials" | "verify_email">("credentials");
   const [pendingEmail, setPendingEmail] = useState<string>("");
 
   useEffect(() => {
-    setMounted(true);
+    // Read URL params and stored theme on mount without blocking initial effect
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get("view");
-    if (viewParam === "sign_up") {
-      setAuthMode("sign_up");
-    }
-
     const stepParam = params.get("step");
     const emailParam = params.get("email");
-    if (stepParam === "verify") {
-      setAuthStep("verify_email");
-      if (emailParam) {
-        setPendingEmail(emailParam);
-      }
-    }
-
     const themeParam = params.get("theme");
-    if (themeParam === "dark") {
-      setIsDark(true);
-      return;
-    }
-    if (themeParam === "light") {
-      setIsDark(false);
-      return;
-    }
-    const saved = localStorage.getItem("nexdrop-theme");
-    if (saved === "dark") {
-      setIsDark(true);
-    } else {
-      setIsDark(false);
-    }
+    const savedTheme = localStorage.getItem("nexdrop-theme");
+
+    queueMicrotask(() => {
+      if (viewParam === "sign_up") {
+        setAuthMode("sign_up");
+      }
+
+      if (stepParam === "verify") {
+        setAuthStep("verify_email");
+        if (emailParam) {
+          setPendingEmail(emailParam);
+        }
+      }
+
+      if (themeParam === "dark") {
+        setIsDark(true);
+        return;
+      }
+      if (themeParam === "light") {
+        setIsDark(false);
+        return;
+      }
+      if (savedTheme === "dark") {
+        setIsDark(true);
+      } else {
+        setIsDark(false);
+      }
+    });
   }, []);
 
   const toggleTheme = () => {

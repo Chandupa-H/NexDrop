@@ -22,7 +22,19 @@ export function DonutChart({
   const displayTotal = total ?? segments.reduce((sum, segment) => sum + segment.value, 0);
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
-  let currentOffset = 0;
+
+  const computedSegments = segments.map((segment, i) => {
+    const pct = percentages[i];
+    const dashLength = (pct / 100) * circumference;
+    const dashOffset = percentages
+      .slice(0, i)
+      .reduce((sum, p) => sum + (p / 100) * circumference, 0);
+    return {
+      segment,
+      dashLength,
+      dashOffset,
+    };
+  });
 
   const summary = segments
     .map((s, i) => `${s.label}: ${s.value} (${percentages[i]}%)`)
@@ -44,12 +56,7 @@ export function DonutChart({
             stroke="var(--dashboard-chart-track)"
             strokeWidth="12"
           />
-          {segments.map((segment, i) => {
-            const pct = percentages[i];
-            const dashLength = (pct / 100) * circumference;
-            const dashOffset = currentOffset;
-            currentOffset += dashLength;
-
+          {computedSegments.map(({ segment, dashLength, dashOffset }) => {
             return (
               <circle
                 key={segment.key}
