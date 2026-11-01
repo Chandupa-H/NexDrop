@@ -23,6 +23,13 @@ import {
   Search,
   Menu,
   X,
+  Users,
+  Store,
+  Radio,
+  DollarSign,
+  BarChart3,
+  Settings,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 import type { NavIconName } from "@/lib/dashboard/types";
@@ -48,6 +55,13 @@ export const iconMap: Record<NavIconName, LucideIcon> = {
   search: Search,
   menu: Menu,
   x: X,
+  users: Users,
+  store: Store,
+  radio: Radio,
+  "dollar-sign": DollarSign,
+  "bar-chart-3": BarChart3,
+  settings: Settings,
+  shield: Shield,
 };
 
 export function getIcon(name: NavIconName): LucideIcon {

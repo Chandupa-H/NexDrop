@@ -21,9 +21,9 @@ export default function CourierDashboardError({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold mb-2">Can't reach the courier service</h2>
+      <h2 className="text-xl font-semibold mb-2">Can&apos;t reach the courier service</h2>
       <p className="text-sm text-muted-foreground mb-6 max-w-md">
-        We're having trouble loading your dashboard. Please check your connection and try again.
+        We&apos;re having trouble loading your dashboard. Please check your connection and try again.
       </p>
       <Button onClick={reset}>Retry</Button>
     </div>

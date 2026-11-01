@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import apiClient, { HealthStatus } from "@/lib/api-client";
 
 export function useBackendHealth() {
@@ -9,7 +9,7 @@ export function useBackendHealth() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const checkStatus = async () => {
+  const checkStatus = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await apiClient.getHealth();
@@ -22,10 +22,31 @@ export function useBackendHealth() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    checkStatus();
+    let active = true;
+    apiClient
+      .getHealth()
+      .then((data) => {
+        if (!active) return;
+        setHealth(data);
+        setIsHealthy(data.status === "healthy");
+        setError(null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setIsHealthy(false);
+        setError((err as Error).message || "Failed to reach backend");
+      })
+      .finally(() => {
+        if (!active) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   return { health, isHealthy, isLoading, error, refetch: checkStatus };
