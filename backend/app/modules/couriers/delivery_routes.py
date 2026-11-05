@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
@@ -13,6 +13,8 @@ from app.modules.couriers.schemas import (
     CourierLocationResponse,
     CourierLocationUpdateRequest,
     CourierLocationUpdateResponse,
+    DeliveryDetail,
+    DeliveryHistoryResponse,
     DeliveryListItem,
     DeliveryStatusUpdateRequest,
     DeliveryTrackingResponse,
@@ -28,6 +30,41 @@ def get_courier_service(session: AsyncSession = Depends(get_db)) -> CourierServi
     return CourierService(CourierRepository(session))
 
 
+@router.get("/deliveries/history", response_model=DeliveryHistoryResponse)
+async def get_courier_delivery_history(
+    status: Optional[ParcelStatus] = Query(None),
+    from_date: Optional[date] = Query(None, alias="from"),
+    to_date: Optional[date] = Query(None, alias="to"),
+    q: Optional[str] = Query(None, max_length=100),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    courier: Courier = Depends(get_authenticated_courier),
+    service: CourierService = Depends(get_courier_service),
+) -> DeliveryHistoryResponse:
+    if status is not None and status not in {
+        ParcelStatus.DELIVERED,
+        ParcelStatus.CANCELLED,
+    }:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="History status must be delivered or cancelled.",
+        )
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="'from' date must not be after 'to' date.",
+        )
+    return await service.get_courier_delivery_history(
+        courier.id,
+        status,
+        from_date,
+        to_date,
+        q,
+        page,
+        page_size,
+    )
+
+
 @router.get("/deliveries", response_model=List[DeliveryListItem])
 @router.get("/deliveries/today", response_model=List[DeliveryListItem])
 async def get_today_courier_deliveries(
@@ -41,13 +78,13 @@ async def get_today_courier_deliveries(
     return await service.get_courier_deliveries(courier.id, status, today)
 
 
-@router.get("/deliveries/{delivery_id}", response_model=DeliveryListItem)
+@router.get("/deliveries/{delivery_id}", response_model=DeliveryDetail)
 async def get_courier_delivery(
     delivery_id: int,
     courier: Courier = Depends(get_authenticated_courier),
     service: CourierService = Depends(get_courier_service),
-) -> DeliveryListItem:
-    delivery = await service.get_assigned_delivery(courier.id, delivery_id)
+) -> DeliveryDetail:
+    delivery = await service.get_assigned_delivery_detail(courier.id, delivery_id)
     if delivery is None:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
@@ -64,7 +101,12 @@ async def update_courier_delivery_status(
     service: CourierService = Depends(get_courier_service),
 ) -> DeliveryListItem:
     delivery = await service.update_assigned_delivery_status(
-        courier.id, delivery_id, payload.status
+        courier.id,
+        delivery_id,
+        payload.status,
+        note=payload.note,
+        proof_reference=payload.proof_reference,
+        failure_reason=payload.failure_reason,
     )
     if delivery is None:
         raise HTTPException(

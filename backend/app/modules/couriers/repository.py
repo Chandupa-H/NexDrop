@@ -2,14 +2,14 @@ from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional, List
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.customers.models import Customer
 from app.modules.couriers.models import Courier, CourierLocation
 from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
-from app.modules.parcels.models import Parcel, ParcelStatus
+from app.modules.parcels.models import Parcel, ParcelStatus, ParcelStatusHistory
 
 
 class CourierRepository:
@@ -88,6 +88,15 @@ class CourierRepository:
         return list(result.mappings().all())
 
     def _delivery_statement(self, courier_id: int, delivery_id: int):
+        completed_at = case(
+            (
+                Parcel.status.in_(
+                    [ParcelStatus.DELIVERED, ParcelStatus.CANCELLED]
+                ),
+                func.coalesce(DispatchAssignment.completed_at, Parcel.updated_at),
+            ),
+            else_=None,
+        ).label("completed_at")
         return (
             select(
                 Parcel.id.label("parcel_id"),
@@ -108,6 +117,8 @@ class CourierRepository:
                 DispatchAssignment.assigned_at,
                 Customer.default_address.label("sender_address"),
                 Customer.city.label("sender_city"),
+                completed_at,
+                Parcel.failure_reason,
             )
             .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
             .outerjoin(Customer, Customer.id == Parcel.sender_id)
@@ -125,6 +136,140 @@ class CourierRepository:
             self._delivery_statement(courier_id, delivery_id)
         )
         return result.mappings().first()
+
+    async def parcel_exists(self, delivery_id: int) -> bool:
+        result = await self.session.execute(
+            select(Parcel.id).where(Parcel.id == delivery_id)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def get_status_history(self, delivery_id: int) -> List[ParcelStatusHistory]:
+        result = await self.session.execute(
+            select(ParcelStatusHistory)
+            .where(ParcelStatusHistory.parcel_id == delivery_id)
+            .order_by(
+                ParcelStatusHistory.occurred_at.asc(),
+                ParcelStatusHistory.id.asc(),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def list_delivery_history(
+        self,
+        courier_id: int,
+        statuses: List[ParcelStatus],
+        start_at: Optional[datetime],
+        end_before: Optional[datetime],
+        query: Optional[str],
+        page: int,
+        page_size: int,
+    ) -> tuple[List[RowMapping], int, int, int]:
+        completed_at = func.coalesce(
+            DispatchAssignment.completed_at, Parcel.updated_at
+        ).label("completed_at")
+        base_filters = [
+            DispatchAssignment.courier_id == courier_id,
+            DispatchAssignment.status != DispatchStatus.REJECTED,
+            Parcel.status.in_(statuses),
+        ]
+        if start_at is not None:
+            base_filters.append(completed_at >= start_at)
+        if end_before is not None:
+            base_filters.append(completed_at < end_before)
+        if query:
+            escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            base_filters.append(
+                or_(
+                    Parcel.tracking_number.ilike(pattern, escape="\\"),
+                    Parcel.recipient_name.ilike(pattern, escape="\\"),
+                )
+            )
+
+        statement = (
+            select(
+                Parcel.id.label("parcel_id"),
+                Parcel.tracking_number,
+                Parcel.status,
+                func.coalesce(
+                    Parcel.pickup_address,
+                    Customer.default_address,
+                    "Address unavailable",
+                ).label("pickup_address"),
+                Parcel.delivery_address,
+                Parcel.delivery_city,
+                Parcel.recipient_name,
+                Parcel.failure_reason,
+                completed_at,
+            )
+            .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
+            .outerjoin(Customer, Customer.id == Parcel.sender_id)
+            .where(*base_filters)
+            .order_by(completed_at.desc(), Parcel.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        count_statement = (
+            select(
+                func.count(Parcel.id).label("total"),
+                func.coalesce(
+                    func.sum(
+                        case((Parcel.status == ParcelStatus.DELIVERED, 1), else_=0)
+                    ),
+                    0,
+                ).label("delivered"),
+                func.coalesce(
+                    func.sum(
+                        case((Parcel.status == ParcelStatus.CANCELLED, 1), else_=0)
+                    ),
+                    0,
+                ).label("cancelled"),
+            )
+            .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
+            .where(*base_filters)
+        )
+        rows_result = await self.session.execute(statement)
+        count_result = await self.session.execute(count_statement)
+        counts = count_result.mappings().one()
+        return (
+            list(rows_result.mappings().all()),
+            counts["total"],
+            counts["delivered"],
+            counts["cancelled"],
+        )
+
+    async def save_status_history(
+        self,
+        parcel_id: int,
+        status: ParcelStatus,
+        actor: str,
+        note: Optional[str] = None,
+        proof_reference: Optional[str] = None,
+    ) -> ParcelStatusHistory:
+        entry = ParcelStatusHistory(
+            parcel_id=parcel_id,
+            status=status,
+            occurred_at=datetime.now(timezone.utc),
+            actor=actor,
+            note=note,
+            proof_reference=proof_reference,
+        )
+        self.session.add(entry)
+        await self.session.flush()
+        return entry
+
+    async def complete_assignment(
+        self, courier_id: int, delivery_id: int, completed_at: datetime
+    ) -> None:
+        await self.session.execute(
+            update(DispatchAssignment)
+            .where(
+                DispatchAssignment.courier_id == courier_id,
+                DispatchAssignment.parcel_id == delivery_id,
+                DispatchAssignment.status != DispatchStatus.REJECTED,
+            )
+            .values(status=DispatchStatus.COMPLETED, completed_at=completed_at)
+        )
 
     async def get_assigned_parcel_for_update(
         self, courier_id: int, delivery_id: int

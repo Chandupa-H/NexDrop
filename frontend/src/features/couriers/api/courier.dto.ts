@@ -92,6 +92,52 @@ export interface DeliveryListItemDTO {
   delivery_instructions: string | null;
 }
 
+export interface StatusHistoryEntryDTO {
+  status: import("../types").ParcelStatus;
+  timestamp: string;
+  note: string | null;
+  proof_reference: string | null;
+  actor: string | null;
+}
+
+export interface DeliveryDetailDTO extends DeliveryListItemDTO {
+  completed_at: string | null;
+  failure_reason: string | null;
+  status_history: StatusHistoryEntryDTO[];
+}
+
+export interface DeliveryHistoryItemDTO {
+  parcel_id: number;
+  tracking_number: string;
+  status: "delivered" | "cancelled";
+  pickup_address: string;
+  dropoff_address: string;
+  recipient_name: string;
+  completed_at: string;
+  failure_reason: string | null;
+}
+
+export interface DeliveryHistoryResponseDTO {
+  items: DeliveryHistoryItemDTO[];
+  total: number;
+  page: number;
+  page_size: number;
+  history_summary: {
+    delivered: number;
+    cancelled: number;
+    total: number;
+  };
+}
+
+export interface DeliveryHistoryParams {
+  status?: "delivered" | "cancelled";
+  from?: string;
+  to?: string;
+  q?: string;
+  page?: number;
+  page_size?: number;
+}
+
 export interface CourierLocationDTO {
   lat: number;
   lng: number;

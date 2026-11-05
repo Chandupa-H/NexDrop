@@ -1,6 +1,7 @@
 import enum
+from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, Integer, Float, Enum, Text
+from sqlalchemy import String, Integer, Float, Enum, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin
 
@@ -37,3 +38,28 @@ class Parcel(Base, TimestampMixin):
         nullable=False,
     )
     special_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    failure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class ParcelStatusHistory(Base):
+    __tablename__ = "parcel_status_history"
+    __table_args__ = (
+        Index("ix_parcel_status_history_parcel_occurred", "parcel_id", "occurred_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    parcel_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("parcels.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[ParcelStatus] = mapped_column(
+        Enum(ParcelStatus, name="parcel_status_enum"),
+        nullable=False,
+    )
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proof_reference: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    actor: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

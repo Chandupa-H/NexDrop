@@ -27,11 +27,12 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 let getCourierDeliveries: typeof import("./courier.api").getCourierDeliveries;
+let getDeliveryHistory: typeof import("./courier.api").getDeliveryHistory;
 
 describe("getCourierDeliveries", () => {
   beforeEach(async () => {
     vi.resetModules();
-    ({ getCourierDeliveries } = await import("./courier.api"));
+    ({ getCourierDeliveries, getDeliveryHistory } = await import("./courier.api"));
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES", "true");
     vi.clearAllMocks();
@@ -116,5 +117,30 @@ describe("getCourierDeliveries", () => {
     get.mockRejectedValue(error);
 
     await expect(getCourierDeliveries()).rejects.toBe(error);
+  });
+
+  it("requests paginated history with URL-safe filter parameters", async () => {
+    const result = {
+      items: [],
+      total: 0,
+      page: 2,
+      page_size: 8,
+      history_summary: { delivered: 0, cancelled: 0, total: 0 },
+    };
+    get.mockResolvedValue(result);
+
+    await expect(
+      getDeliveryHistory({
+        status: "cancelled",
+        from: "2026-10-01",
+        to: "2026-11-01",
+        q: "Ruwan & Nugegoda",
+        page: 2,
+        page_size: 8,
+      })
+    ).resolves.toEqual(result);
+    expect(get).toHaveBeenCalledWith(
+      "/courier/deliveries/history?status=cancelled&from=2026-10-01&to=2026-11-01&q=Ruwan+%26+Nugegoda&page=2&page_size=8"
+    );
   });
 });
