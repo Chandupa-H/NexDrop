@@ -26,11 +26,12 @@ export const courierDashboardConfig: DashboardRoleConfig = {
           match: "exact",
         },
         {
-          id: "parcels",
-          label: "Assigned Parcels",
-          href: "/courier/parcels",
+          id: "deliveries",
+          label: "Assigned Deliveries",
+          href: "/courier/deliveries",
           icon: "package",
-          availability: "planned",
+          availability: "live",
+          match: "exact",
         },
         {
           id: "status",

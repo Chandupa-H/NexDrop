@@ -8,6 +8,7 @@ export const statusMeta: Record<ParcelStatus, { label: string; tone: StatusTone 
   in_transit: { label: "In Transit", tone: "info" },
   out_for_delivery: { label: "Out for Delivery", tone: "info" },
   delivered: { label: "Delivered", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "danger" },
   failed: { label: "Failed", tone: "danger" },
 };
 
@@ -17,6 +18,7 @@ export const validNextStatuses: Record<ParcelStatus, ParcelStatus[]> = {
   in_transit: ["out_for_delivery", "failed"],
   out_for_delivery: ["delivered", "failed"],
   delivered: [],
+  cancelled: [],
   failed: [],
 };
 
