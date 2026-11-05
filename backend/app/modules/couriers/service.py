@@ -1,7 +1,13 @@
+from datetime import date
 from typing import Optional, List
 from app.modules.couriers.models import Courier
-from app.modules.couriers.schemas import CourierCreate, CourierLocationUpdate
+from app.modules.couriers.schemas import (
+    CourierCreate,
+    CourierLocationUpdate,
+    DeliveryListItem,
+)
 from app.modules.couriers.repository import CourierRepository
+from app.modules.parcels.models import ParcelStatus
 
 
 class CourierService:
@@ -34,3 +40,34 @@ class CourierService:
         courier.current_longitude = payload.current_longitude
         await self.repository.session.flush()
         return courier
+
+    async def get_courier_deliveries(
+        self,
+        courier_id: int,
+        status: Optional[List[ParcelStatus]],
+        delivery_date: date,
+    ) -> List[DeliveryListItem]:
+        rows = await self.repository.get_courier_deliveries(
+            courier_id, status, delivery_date
+        )
+        return [
+            DeliveryListItem(
+                parcel_id=row["parcel_id"],
+                tracking_number=row["tracking_number"],
+                status=row["status"],
+                pickup_address=", ".join(
+                    part for part in (row["sender_address"], row["sender_city"]) if part
+                ),
+                dropoff_address=", ".join(
+                    part
+                    for part in (row["delivery_address"], row["delivery_city"])
+                    if part
+                ),
+                size=row["size"],
+                weight=row["weight"],
+                recipient_name=row["recipient_name"],
+                recipient_phone=row["recipient_phone"],
+                assigned_at=row["assigned_at"],
+            )
+            for row in rows
+        ]

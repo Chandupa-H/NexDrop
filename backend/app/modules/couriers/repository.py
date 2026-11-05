@@ -1,7 +1,15 @@
+from datetime import date, datetime, time, timedelta
 from typing import Optional, List
+from zoneinfo import ZoneInfo
+
 from sqlalchemy import select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.customers.models import Customer
 from app.modules.couriers.models import Courier
+from app.modules.dispatch.models import DispatchAssignment
+from app.modules.parcels.models import Parcel, ParcelStatus
 
 
 class CourierRepository:
@@ -31,3 +39,43 @@ class CourierRepository:
         await self.session.flush()
         await self.session.refresh(courier)
         return courier
+
+    async def get_courier_deliveries(
+        self,
+        courier_id: int,
+        status: Optional[List[ParcelStatus]],
+        delivery_date: date,
+    ) -> List[RowMapping]:
+        day_start = datetime.combine(
+            delivery_date, time.min, tzinfo=ZoneInfo("Asia/Colombo")
+        )
+        day_end = day_start + timedelta(days=1)
+        statement = (
+            select(
+                Parcel.id.label("parcel_id"),
+                Parcel.tracking_number,
+                Parcel.status,
+                Parcel.delivery_address,
+                Parcel.delivery_city,
+                Parcel.dimensions.label("size"),
+                Parcel.weight_kg.label("weight"),
+                Parcel.recipient_name,
+                Parcel.recipient_phone,
+                DispatchAssignment.assigned_at,
+                Customer.default_address.label("sender_address"),
+                Customer.city.label("sender_city"),
+            )
+            .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
+            .outerjoin(Customer, Customer.id == Parcel.sender_id)
+            .where(
+                DispatchAssignment.courier_id == courier_id,
+                DispatchAssignment.assigned_at >= day_start,
+                DispatchAssignment.assigned_at < day_end,
+            )
+            .order_by(DispatchAssignment.assigned_at.asc())
+        )
+        if status:
+            statement = statement.where(Parcel.status.in_(status))
+
+        result = await self.session.execute(statement)
+        return list(result.mappings().all())

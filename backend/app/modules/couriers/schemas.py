@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, ConfigDict, Field
+from app.modules.parcels.models import ParcelStatus
 
 
 class CourierBase(BaseModel):
@@ -111,3 +112,16 @@ class ParcelStatusUpdateRequest(BaseModel):
     status: str
     note: Optional[str] = None
     failure_reason: Optional[str] = None  # Required when status is "failed"
+
+
+class DeliveryListItem(BaseModel):
+    parcel_id: int
+    tracking_number: str
+    status: ParcelStatus
+    pickup_address: str
+    dropoff_address: str
+    size: Optional[str] = None
+    weight: float
+    recipient_name: str
+    recipient_phone: str
+    assigned_at: datetime
