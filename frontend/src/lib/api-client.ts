@@ -66,6 +66,22 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
 
+  const requiresCourierAuth = endpoint.split("?")[0] === "/courier/deliveries";
+  if (
+    requiresCourierAuth &&
+    typeof window !== "undefined" &&
+    !headers.has("Authorization")
+  ) {
+    const { supabase } = await import("@/lib/supabase/client");
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      throw new ApiError(401, error.message);
+    }
+    if (data.session?.access_token) {
+      headers.set("Authorization", `Bearer ${data.session.access_token}`);
+    }
+  }
+
   // Add 8-second timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);

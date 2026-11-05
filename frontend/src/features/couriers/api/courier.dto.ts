@@ -73,3 +73,16 @@ export interface ParcelStatusUpdateRequestDTO {
   note?: string;
   failure_reason?: string;
 }
+
+export interface DeliveryListItemDTO {
+  parcel_id: number;
+  tracking_number: string;
+  status: import("../types").DeliveryStatus;
+  pickup_address: string;
+  dropoff_address: string;
+  size: string | null;
+  weight: number;
+  recipient_name: string;
+  recipient_phone: string;
+  assigned_at: string;
+}
