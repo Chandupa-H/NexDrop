@@ -55,6 +55,12 @@ export interface PriceEstimateResponse {
   total_price: number;
 }
 
+export interface CourierRegistrationResponse {
+  courier_id: number;
+  approval_status: "pending" | "approved" | "rejected";
+  message: string;
+}
+
 async function request<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -68,7 +74,7 @@ async function request<T>(
 
   // Add 8-second timeout
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), options.body instanceof FormData ? 60000 : 8000);
   
   try {
     const response = await fetch(url, {
@@ -91,6 +97,8 @@ async function request<T>(
       const errorMessage =
         typeof errorData.detail === "string"
           ? errorData.detail
+          : Array.isArray(errorData.detail)
+            ? errorData.detail.map((item) => `${item.loc?.[item.loc.length - 1] ?? "Request"}: ${item.msg}`).join(" ")
           : errorData.message || `Request failed with status ${response.status}`;
 
       throw new ApiError(response.status, errorMessage, errorData);
@@ -113,6 +121,44 @@ async function request<T>(
   }
 }
 
+function requestFormWithProgress<T>(
+  endpoint: string,
+  body: FormData,
+  onProgress: (loaded: number, total: number) => void
+): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.timeout = 60000;
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    };
+    xhr.onerror = () => reject(new ApiError(500, "Network error communicating with backend"));
+    xhr.ontimeout = () => reject(new ApiError(408, "Request timeout - server did not respond within 60 seconds"));
+    xhr.onload = () => {
+      let data: ApiErrorResponse = {};
+      try {
+        data = JSON.parse(xhr.responseText) as ApiErrorResponse;
+      } catch {
+        data = { message: xhr.statusText };
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const detail = data.detail;
+        const message = typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((item) => `${item.loc?.[item.loc.length - 1] ?? "Request"}: ${item.msg}`).join(" ")
+            : data.message || `Request failed with status ${xhr.status}`;
+        reject(new ApiError(xhr.status, message, data));
+        return;
+      }
+      resolve(data as T);
+    };
+    xhr.send(body);
+  });
+}
+
 export const apiClient = {
   get: <T>(endpoint: string, options?: RequestInit) =>
     request<T>(endpoint, { ...options, method: "GET" }),
@@ -123,6 +169,11 @@ export const apiClient = {
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
     }),
+
+  postForm: <T>(endpoint: string, body: FormData, onProgress?: (loaded: number, total: number) => void) =>
+    onProgress
+      ? requestFormWithProgress<T>(endpoint, body, onProgress)
+      : request<T>(endpoint, { method: "POST", body }),
 
   patch: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
     request<T>(endpoint, {
@@ -152,6 +203,10 @@ export const apiClient = {
   /** Check an applicant's approval status by their merchant ID. */
   getMerchantStatus: (merchantId: number) =>
     apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
+
+  /** Submit a courier application and its private verification documents. */
+  registerCourier: (data: FormData, onProgress?: (loaded: number, total: number) => void) =>
+    apiClient.postForm<CourierRegistrationResponse>("/couriers/register", data, onProgress),
 };
 
 export default apiClient;

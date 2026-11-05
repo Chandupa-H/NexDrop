@@ -1,6 +1,8 @@
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, Form, UploadFile
+from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.modules.couriers.schemas import (
@@ -19,12 +21,92 @@ from app.modules.couriers.schemas import (
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.service import CourierService
+from app.modules.couriers.schemas import CourierRegistrationRequest, CourierRegistrationResponse
+from app.modules.couriers.documents import DocumentValidationError, remove_stored_documents, validate_and_store_documents
 
 router = APIRouter(prefix="/couriers", tags=["Couriers"])
 
 
 def get_courier_service(session: AsyncSession = Depends(get_db)) -> CourierService:
     return CourierService(CourierRepository(session))
+
+
+@router.post(
+    "/register",
+    response_model=CourierRegistrationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit courier registration application",
+)
+async def register_courier(
+    full_name: str = Form(...), email: str = Form(...), password: str = Form(...),
+    confirm_password: str = Form(...), date_of_birth: str = Form(...), gender: str = Form(...),
+    nic_number: str = Form(...), nationality: str = Form(...), phone: str = Form(...),
+    alternative_phone: Optional[str] = Form(None), residential_address: str = Form(...),
+    city: str = Form(...), district: str = Form(...), postal_code: Optional[str] = Form(None),
+    vehicle_type: str = Form(...), license_plate: str = Form(...), vehicle_brand: str = Form(...),
+    vehicle_model: str = Form(...), vehicle_color: str = Form(...), vehicle_year: str = Form(...),
+    driving_licence_number: str = Form(...), driving_licence_expiry: str = Form(...),
+    emergency_contact_name: str = Form(...), emergency_contact_relationship: str = Form(...),
+    emergency_contact_phone: str = Form(...), agree_terms: bool = Form(...),
+    agree_privacy: bool = Form(...), confirm_accuracy: bool = Form(...),
+    nic_front: UploadFile = File(...), nic_back: UploadFile = File(...),
+    licence_front: UploadFile = File(...), licence_back: Optional[UploadFile] = File(None),
+    vehicle_registration: UploadFile = File(...), profile_photo: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db),
+) -> CourierRegistrationResponse:
+    """Persist an inactive courier account for administrator review."""
+    values = {
+        "full_name": full_name, "email": email, "password": password,
+        "confirm_password": confirm_password, "date_of_birth": date_of_birth,
+        "gender": gender, "nic_number": nic_number, "nationality": nationality,
+        "phone": phone, "alternative_phone": alternative_phone,
+        "residential_address": residential_address, "city": city, "district": district,
+        "postal_code": postal_code, "vehicle_type": vehicle_type,
+        "license_plate": license_plate, "vehicle_brand": vehicle_brand,
+        "vehicle_model": vehicle_model, "vehicle_color": vehicle_color,
+        "vehicle_year": vehicle_year, "driving_licence_number": driving_licence_number,
+        "driving_licence_expiry": driving_licence_expiry,
+        "emergency_contact_name": emergency_contact_name,
+        "emergency_contact_relationship": emergency_contact_relationship,
+        "emergency_contact_phone": emergency_contact_phone,
+        "agree_terms": agree_terms, "agree_privacy": agree_privacy,
+        "confirm_accuracy": confirm_accuracy,
+    }
+    try:
+        payload = CourierRegistrationRequest.model_validate(values)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors(include_input=False)) from exc
+
+    documents: dict[str, str] = {}
+    try:
+        documents = await validate_and_store_documents({
+            "nic_front": nic_front, "nic_back": nic_back,
+            "licence_front": licence_front, "licence_back": licence_back,
+            "vehicle_registration": vehicle_registration, "profile_photo": profile_photo,
+        })
+        service = CourierService(CourierRepository(session))
+        courier = await service.register_courier(payload, documents)
+        await session.commit()
+        return CourierRegistrationResponse(
+            courier_id=courier.id,
+            approval_status=courier.approval_status,
+            message="Your application has been submitted and is pending administrator review.",
+        )
+    except DocumentValidationError as exc:
+        remove_stored_documents(documents)
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        await session.rollback()
+        remove_stored_documents(documents)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        await session.rollback()
+        remove_stored_documents(documents)
+        raise HTTPException(status_code=409, detail="An account with these registration details already exists.") from exc
+    except Exception:
+        await session.rollback()
+        remove_stored_documents(documents)
+        raise
 
 
 # ── Existing Courier Fleet Routes ──────────────────────────────────

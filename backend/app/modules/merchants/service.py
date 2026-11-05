@@ -1,4 +1,3 @@
-import hashlib
 import secrets
 import logging
 from typing import Optional, List
@@ -10,6 +9,7 @@ from app.modules.merchants.schemas import MerchantRegisterRequest, MerchantCreat
 from app.modules.merchants.repository import MerchantRepository
 from app.modules.users.models import User, UserRole
 from app.modules.users.repository import UserRepository
+from app.modules.auth.service import AuthService
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +42,7 @@ class MerchantService:
 
     @staticmethod
     def _hash_password(plain: str) -> str:
-        """
-        Placeholder password hashing using SHA-256.
-        This MUST be replaced with Argon2 / Passlib in the auth milestone.
-        """
-        return hashlib.sha256(plain.encode()).hexdigest()
+        return AuthService.hash_password(plain)
 
     async def register_merchant(
         self,
