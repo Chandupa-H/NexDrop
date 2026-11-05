@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional, List
 from zoneinfo import ZoneInfo
 
@@ -7,8 +7,8 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.customers.models import Customer
-from app.modules.couriers.models import Courier
-from app.modules.dispatch.models import DispatchAssignment
+from app.modules.couriers.models import Courier, CourierLocation
+from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
 from app.modules.parcels.models import Parcel, ParcelStatus
 
 
@@ -55,12 +55,18 @@ class CourierRepository:
                 Parcel.id.label("parcel_id"),
                 Parcel.tracking_number,
                 Parcel.status,
+                Parcel.pickup_address,
+                Parcel.pickup_lat,
+                Parcel.pickup_lng,
                 Parcel.delivery_address,
                 Parcel.delivery_city,
+                Parcel.dropoff_lat,
+                Parcel.dropoff_lng,
                 Parcel.dimensions.label("size"),
                 Parcel.weight_kg.label("weight"),
                 Parcel.recipient_name,
                 Parcel.recipient_phone,
+                Parcel.special_instructions.label("delivery_instructions"),
                 DispatchAssignment.assigned_at,
                 Customer.default_address.label("sender_address"),
                 Customer.city.label("sender_city"),
@@ -71,6 +77,7 @@ class CourierRepository:
                 DispatchAssignment.courier_id == courier_id,
                 DispatchAssignment.assigned_at >= day_start,
                 DispatchAssignment.assigned_at < day_end,
+                DispatchAssignment.status != DispatchStatus.REJECTED,
             )
             .order_by(DispatchAssignment.assigned_at.asc())
         )
@@ -79,3 +86,140 @@ class CourierRepository:
 
         result = await self.session.execute(statement)
         return list(result.mappings().all())
+
+    def _delivery_statement(self, courier_id: int, delivery_id: int):
+        return (
+            select(
+                Parcel.id.label("parcel_id"),
+                Parcel.tracking_number,
+                Parcel.status,
+                Parcel.pickup_address,
+                Parcel.pickup_lat,
+                Parcel.pickup_lng,
+                Parcel.delivery_address,
+                Parcel.delivery_city,
+                Parcel.dropoff_lat,
+                Parcel.dropoff_lng,
+                Parcel.dimensions.label("size"),
+                Parcel.weight_kg.label("weight"),
+                Parcel.recipient_name,
+                Parcel.recipient_phone,
+                Parcel.special_instructions.label("delivery_instructions"),
+                DispatchAssignment.assigned_at,
+                Customer.default_address.label("sender_address"),
+                Customer.city.label("sender_city"),
+            )
+            .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
+            .outerjoin(Customer, Customer.id == Parcel.sender_id)
+            .where(
+                DispatchAssignment.courier_id == courier_id,
+                DispatchAssignment.parcel_id == delivery_id,
+                DispatchAssignment.status != DispatchStatus.REJECTED,
+            )
+        )
+
+    async def get_assigned_delivery(
+        self, courier_id: int, delivery_id: int
+    ) -> Optional[RowMapping]:
+        result = await self.session.execute(
+            self._delivery_statement(courier_id, delivery_id)
+        )
+        return result.mappings().first()
+
+    async def get_assigned_parcel_for_update(
+        self, courier_id: int, delivery_id: int
+    ) -> Optional[Parcel]:
+        result = await self.session.execute(
+            select(Parcel)
+            .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
+            .where(
+                DispatchAssignment.courier_id == courier_id,
+                DispatchAssignment.parcel_id == delivery_id,
+                DispatchAssignment.status != DispatchStatus.REJECTED,
+            )
+            .with_for_update()
+        )
+        return result.scalars().first()
+
+    async def get_active_assigned_delivery(
+        self, courier_id: int, delivery_id: Optional[int] = None
+    ) -> Optional[Parcel]:
+        statement = (
+            select(Parcel)
+            .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
+            .where(
+                DispatchAssignment.courier_id == courier_id,
+                DispatchAssignment.status.in_(
+                    [DispatchStatus.ASSIGNED, DispatchStatus.ACCEPTED]
+                ),
+                Parcel.status.in_(
+                    [
+                        ParcelStatus.PENDING,
+                        ParcelStatus.PICKED_UP,
+                        ParcelStatus.IN_TRANSIT,
+                        ParcelStatus.OUT_FOR_DELIVERY,
+                    ]
+                ),
+            )
+            .order_by(DispatchAssignment.assigned_at.asc())
+        )
+        if delivery_id is not None:
+            statement = statement.where(Parcel.id == delivery_id)
+        result = await self.session.execute(statement.limit(1))
+        return result.scalars().first()
+
+    async def get_latest_location(self, courier_id: int) -> Optional[CourierLocation]:
+        result = await self.session.execute(
+            select(CourierLocation).where(CourierLocation.courier_id == courier_id)
+        )
+        return result.scalars().first()
+
+    async def save_location(
+        self,
+        courier_id: int,
+        lat: float,
+        lng: float,
+        accuracy: Optional[float],
+        heading: Optional[float],
+        speed: Optional[float],
+        delivery_id: int,
+    ) -> tuple[CourierLocation, bool]:
+        location = await self.get_latest_location(courier_id)
+        now = datetime.now(timezone.utc)
+        if location is not None:
+            updated_at = location.updated_at
+            if updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+            if (now - updated_at).total_seconds() < 3:
+                return location, False
+            location.lat = lat
+            location.lng = lng
+            location.accuracy = accuracy
+            location.heading = heading
+            location.speed = speed
+            location.active_delivery_id = delivery_id
+            location.updated_at = now
+        else:
+            location = CourierLocation(
+                courier_id=courier_id,
+                lat=lat,
+                lng=lng,
+                accuracy=accuracy,
+                heading=heading,
+                speed=speed,
+                active_delivery_id=delivery_id,
+                updated_at=now,
+            )
+            self.session.add(location)
+        await self.session.flush()
+        return location, True
+
+    async def update_delivery_status(
+        self, courier_id: int, delivery_id: int, new_status: ParcelStatus
+    ) -> Optional[Parcel]:
+        parcel = await self.get_assigned_parcel_for_update(courier_id, delivery_id)
+        if parcel is None:
+            return None
+        parcel.status = new_status
+        await self.session.flush()
+        return parcel

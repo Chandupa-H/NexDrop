@@ -125,3 +125,59 @@ class DeliveryListItem(BaseModel):
     recipient_name: str
     recipient_phone: str
     assigned_at: datetime
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
+    dropoff_lat: Optional[float] = None
+    dropoff_lng: Optional[float] = None
+    delivery_instructions: Optional[str] = None
+
+
+class CourierLocationUpdateRequest(BaseModel):
+    lat: float = Field(strict=True, ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(strict=True, ge=-180, le=180, allow_inf_nan=False)
+    accuracy: Optional[float] = Field(
+        default=None, strict=True, ge=0, allow_inf_nan=False
+    )
+    heading: Optional[float] = Field(
+        default=None, strict=True, ge=0, le=360, allow_inf_nan=False
+    )
+    speed: Optional[float] = Field(
+        default=None, strict=True, ge=0, allow_inf_nan=False
+    )
+    delivery_id: Optional[int] = Field(default=None, gt=0, alias="deliveryId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CourierLocationResponse(BaseModel):
+    courier_id: int
+    lat: float
+    lng: float
+    accuracy: Optional[float] = None
+    heading: Optional[float] = None
+    speed: Optional[float] = None
+    updated_at: datetime
+    active_delivery_id: Optional[int] = None
+
+
+class CourierLocationUpdateResponse(BaseModel):
+    location: CourierLocationResponse
+    accepted: bool
+
+
+class DeliveryDestination(BaseModel):
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class DeliveryTrackingResponse(BaseModel):
+    delivery: DeliveryListItem
+    courier_location: Optional[CourierLocationResponse] = None
+    location_source: str
+    next_destination: Optional[DeliveryDestination] = None
+    next_action: str
+
+
+class DeliveryStatusUpdateRequest(BaseModel):
+    status: ParcelStatus

@@ -122,7 +122,7 @@ export default function AdminPricingPage() {
                   className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
                 />
               </div>
-              <p className="text-[11px] text-[#5b7266] mt-1">Computed by shortest Google Maps route trajectory.</p>
+              <p className="text-[11px] text-[#5b7266] mt-1">Computed using the shortest OSRM road route.</p>
             </div>
 
             <div>

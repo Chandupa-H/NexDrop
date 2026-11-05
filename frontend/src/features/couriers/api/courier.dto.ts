@@ -85,4 +85,52 @@ export interface DeliveryListItemDTO {
   recipient_name: string;
   recipient_phone: string;
   assigned_at: string;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  dropoff_lat: number | null;
+  dropoff_lng: number | null;
+  delivery_instructions: string | null;
+}
+
+export interface CourierLocationDTO {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  heading: number | null;
+  speed: number | null;
+  updated_at: string;
+  active_delivery_id: number | null;
+}
+
+export interface DeliveryDestinationDTO {
+  address: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface DeliveryTrackingDTO {
+  delivery: DeliveryListItemDTO;
+  courier_location: CourierLocationDTO | null;
+  location_source: "live" | "simulated" | "unavailable";
+  next_destination: DeliveryDestinationDTO | null;
+  next_action: string;
+  simulation_route?: Array<{ lat: number; lng: number }>;
+}
+
+export interface CourierLocationUpdateDTO {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  heading?: number;
+  speed?: number;
+  deliveryId?: number;
+}
+
+export interface CourierLocationUpdateResponseDTO {
+  location: CourierLocationDTO;
+  accepted: boolean;
+}
+
+export interface DeliveryStatusUpdateDTO {
+  status: import("../types").DeliveryStatus;
 }

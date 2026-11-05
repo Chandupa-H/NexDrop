@@ -12,74 +12,46 @@ import type {
   ParcelDetailDTO,
   ParcelStatusUpdateRequestDTO,
   DeliveryListItemDTO,
+  DeliveryStatusUpdateDTO,
+  DeliveryTrackingDTO,
+  CourierLocationDTO,
+  CourierLocationUpdateDTO,
+  CourierLocationUpdateResponseDTO,
 } from "./courier.dto";
 import type { DeliveryStatus } from "../types";
 
-const MOCK_COURIER_DELIVERIES: DeliveryListItemDTO[] = [
-  {
-    parcel_id: 1001,
-    tracking_number: "ND-2026-001",
-    status: "pending",
-    pickup_address: "Colombo 03",
-    dropoff_address: "Rajagiriya",
-    size: "Medium",
-    weight: 2.5,
-    recipient_name: "Kasun Perera",
-    recipient_phone: "0771234567",
-    assigned_at: "2026-11-05T08:30:00+05:30",
-  },
-  {
-    parcel_id: 1002,
-    tracking_number: "ND-2026-002",
-    status: "picked_up",
-    pickup_address: "Nugegoda",
-    dropoff_address: "Maharagama",
-    size: "Small",
-    weight: 1.2,
-    recipient_name: "Nimal Silva",
-    recipient_phone: "0712345678",
-    assigned_at: "2026-11-05T09:15:00+05:30",
-  },
-  {
-    parcel_id: 1003,
-    tracking_number: "ND-2026-003",
-    status: "in_transit",
-    pickup_address: "Bambalapitiya",
-    dropoff_address: "Dehiwala",
-    size: "Large",
-    weight: 5,
-    recipient_name: "Amal Fernando",
-    recipient_phone: "0759876543",
-    assigned_at: "2026-11-05T10:00:00+05:30",
-  },
-  {
-    parcel_id: 1004,
-    tracking_number: "ND-2026-004",
-    status: "delivered",
-    pickup_address: "Wellawatte",
-    dropoff_address: "Mount Lavinia",
-    size: "Small",
-    weight: 0.8,
-    recipient_name: "Saman Kumara",
-    recipient_phone: "0765554444",
-    assigned_at: "2026-11-05T07:45:00+05:30",
-  },
-];
+let usingDevelopmentMockApi = false;
 
-function shouldUseMockCourierDeliveries(): boolean {
+export function isDevelopmentCourierMockEnabled(): boolean {
   return (
     process.env.NODE_ENV === "development" &&
     process.env.NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES !== "false"
   );
 }
 
-function getMockCourierDeliveries(
-  statuses: DeliveryStatus[]
-): DeliveryListItemDTO[] {
-  if (statuses.length === 0) return MOCK_COURIER_DELIVERIES;
-  return MOCK_COURIER_DELIVERIES.filter((delivery) =>
-    statuses.includes(delivery.status)
-  );
+async function courierRequest<T>(
+  request: () => Promise<T>,
+  mockRequest: () => T | Promise<T>
+): Promise<T> {
+  if (usingDevelopmentMockApi && isDevelopmentCourierMockEnabled()) {
+    return mockRequest();
+  }
+  try {
+    return await request();
+  } catch (error) {
+    if (
+      isDevelopmentCourierMockEnabled() &&
+      error instanceof ApiError &&
+      error.status === 401
+    ) {
+      usingDevelopmentMockApi = true;
+      console.warn(
+        "Courier API returned 401; using development mock data. Configure a valid Supabase session to use the API."
+      );
+      return mockRequest();
+    }
+    throw error;
+  }
 }
 
 /**
@@ -128,23 +100,73 @@ export async function getCourierDeliveries(
   statuses.forEach((value) => searchParams.append("status", value));
 
   const query = searchParams.toString();
-  try {
-    return await apiClient.get<DeliveryListItemDTO[]>(
-      `/courier/deliveries${query ? `?${query}` : ""}`
-    );
-  } catch (error) {
-    if (
-      shouldUseMockCourierDeliveries() &&
-      error instanceof ApiError &&
-      error.status === 401
-    ) {
-      console.warn(
-        "Courier deliveries returned 401; using development mock data. Configure a valid Supabase session to use the API."
-      );
-      return getMockCourierDeliveries(statuses);
-    }
-    throw error;
-  }
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryListItemDTO[]>(
+        `/courier/deliveries/today${query ? `?${query}` : ""}`
+      ),
+    async () => (await import("./courier.mock")).listMockDeliveries(statuses)
+  );
+}
+
+export async function getCourierDelivery(
+  deliveryId: number
+): Promise<DeliveryListItemDTO> {
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryListItemDTO>(`/courier/deliveries/${deliveryId}`),
+    async () => (await import("./courier.mock")).getMockDelivery(deliveryId)
+  );
+}
+
+export async function updateCourierDeliveryStatus(
+  deliveryId: number,
+  payload: DeliveryStatusUpdateDTO
+): Promise<DeliveryListItemDTO> {
+  return courierRequest(
+    () =>
+      apiClient.patch<DeliveryListItemDTO>(
+        `/courier/deliveries/${deliveryId}/status`,
+        payload
+      ),
+    async () =>
+      (await import("./courier.mock")).updateMockDeliveryStatus(
+        deliveryId,
+        payload.status
+      )
+  );
+}
+
+export async function getCourierTracking(
+  deliveryId: number
+): Promise<DeliveryTrackingDTO> {
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryTrackingDTO>(
+        `/deliveries/${deliveryId}/tracking`
+      ),
+    async () => (await import("./courier.mock")).getMockTracking(deliveryId)
+  );
+}
+
+export async function postCourierLocation(
+  payload: CourierLocationUpdateDTO
+): Promise<CourierLocationUpdateResponseDTO> {
+  return courierRequest(
+    () =>
+      apiClient.post<CourierLocationUpdateResponseDTO>(
+        "/courier/location",
+        payload
+      ),
+    async () => (await import("./courier.mock")).postMockLocation(payload)
+  );
+}
+
+export async function getMyCourierLocation(): Promise<CourierLocationDTO | null> {
+  return courierRequest(
+    () => apiClient.get<CourierLocationDTO | null>("/courier/location/me"),
+    async () => (await import("./courier.mock")).getLatestMockLocation()
+  );
 }
 
 /**

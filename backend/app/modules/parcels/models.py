@@ -24,6 +24,11 @@ class Parcel(Base, TimestampMixin):
     recipient_phone: Mapped[str] = mapped_column(String(32), nullable=False)
     delivery_address: Mapped[str] = mapped_column(String(255), nullable=False)
     delivery_city: Mapped[str] = mapped_column(String(100), nullable=False)
+    pickup_address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    pickup_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pickup_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dropoff_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    dropoff_lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     weight_kg: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     dimensions: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # e.g., "20x15x10"
     status: Mapped[ParcelStatus] = mapped_column(

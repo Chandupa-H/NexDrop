@@ -26,10 +26,12 @@ vi.mock("@/lib/api-client", () => ({
   ApiError,
 }));
 
-import { getCourierDeliveries } from "./courier.api";
+let getCourierDeliveries: typeof import("./courier.api").getCourierDeliveries;
 
 describe("getCourierDeliveries", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ getCourierDeliveries } = await import("./courier.api"));
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES", "true");
     vi.clearAllMocks();
@@ -46,7 +48,7 @@ describe("getCourierDeliveries", () => {
 
     const deliveries = await getCourierDeliveries();
 
-    expect(get).toHaveBeenCalledWith("/courier/deliveries");
+    expect(get).toHaveBeenCalledWith("/courier/deliveries/today");
     expect(deliveries).toHaveLength(4);
     expect(deliveries.map((delivery) => delivery.status)).toEqual([
       "pending",
@@ -90,7 +92,7 @@ describe("getCourierDeliveries", () => {
     get.mockResolvedValue(result);
 
     await expect(getCourierDeliveries("pending")).resolves.toEqual(result);
-    expect(get).toHaveBeenCalledWith("/courier/deliveries?status=pending");
+    expect(get).toHaveBeenCalledWith("/courier/deliveries/today?status=pending");
   });
 
   it("does not use mocks in production", async () => {

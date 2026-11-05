@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowRight, Package, Weight } from "lucide-react";
 import { StatusBadge } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
@@ -8,9 +7,13 @@ import { Card } from "@/components/ui/card";
 import { getStatusLabel, getStatusTone } from "../lib/status";
 import type { DeliveryListItemDTO } from "../api/courier.dto";
 
-export function DeliveryCard({ delivery }: { delivery: DeliveryListItemDTO }) {
-  const router = useRouter();
-
+export function DeliveryCard({
+  delivery,
+  onViewDetails,
+}: {
+  delivery: DeliveryListItemDTO;
+  onViewDetails: (deliveryId: number) => void;
+}) {
   return (
     <Card className="flex h-full min-w-0 flex-col gap-3.5 border-border/80 p-4 shadow-sm">
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -65,11 +68,7 @@ export function DeliveryCard({ delivery }: { delivery: DeliveryListItemDTO }) {
           type="button"
           variant="outline"
           className="min-h-10 shrink-0 px-3"
-          onClick={() =>
-            router.push(
-              `/courier/dashboard?tracking_id=${encodeURIComponent(delivery.tracking_number)}`
-            )
-          }
+          onClick={() => onViewDetails(delivery.parcel_id)}
         >
           View Details <ArrowRight className="size-4" aria-hidden="true" />
         </Button>

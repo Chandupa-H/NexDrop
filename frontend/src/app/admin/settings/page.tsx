@@ -151,8 +151,8 @@ export default function AdminSettingsPage() {
                   MAP
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-[#0f2a1d]">Google Maps Platform & Distance Matrix</p>
-                  <p className="text-[11px] text-[#5b7266]">Geocoding and real-time transit telemetry</p>
+                  <p className="text-xs font-bold text-[#0f2a1d]">OpenStreetMap & OSRM Routing</p>
+                  <p className="text-[11px] text-[#5b7266]">Courier maps, road routes, and distance estimates</p>
                 </div>
               </div>
               <Badge variant="success">Connected</Badge>

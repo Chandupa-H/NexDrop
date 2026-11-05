@@ -13,11 +13,13 @@ describe("Courier delivery API authentication", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchMock.mockResolvedValue(
-      new Response("[]", {
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response("[]", {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      })
+        })
+      )
     );
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -34,6 +36,27 @@ describe("Courier delivery API authentication", () => {
     expect(new Headers(options.headers).get("Authorization")).toBe(
       "Bearer courier-access-token"
     );
+  });
+
+  it("authenticates courier detail, status, location, and tracking endpoints", async () => {
+    getSession.mockResolvedValue({
+      data: { session: { access_token: "courier-access-token" } },
+      error: null,
+    });
+
+    await apiClient.get("/courier/deliveries/today");
+    await apiClient.get("/courier/deliveries/7");
+    await apiClient.patch("/courier/deliveries/7/status", { status: "picked_up" });
+    await apiClient.post("/courier/location", { lat: 6.9, lng: 79.8 });
+    await apiClient.get("/courier/location/me");
+    await apiClient.get("/deliveries/7/tracking");
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    for (const [, options] of fetchMock.mock.calls as [string, RequestInit][]) {
+      const authorization = new Headers(options.headers).get("Authorization");
+      expect(authorization?.startsWith("Bearer ")).toBe(true);
+      expect(authorization?.length).toBeGreaterThan(7);
+    }
   });
 
   it("does not require Supabase configuration for public API requests", async () => {

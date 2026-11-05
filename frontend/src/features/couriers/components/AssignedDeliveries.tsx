@@ -13,6 +13,7 @@ import { getCourierDeliveries } from "../api/courier.api";
 import type { DeliveryListItemDTO } from "../api/courier.dto";
 import type { DeliveryStatus } from "../types";
 import { DeliveryCard } from "./DeliveryCard";
+import { DeliveryDetailsDialog } from "./DeliveryDetailsDialog";
 
 const tabs = [
   { key: "all", label: "All" },
@@ -111,6 +112,7 @@ export function AssignedDeliveries() {
     [activeTab]
   );
   const [retryCount, setRetryCount] = useState(0);
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState<number | null>(null);
   const requestKey = `${selectedStatuses?.join(",") ?? "all"}:${retryCount}`;
 
   const [result, setResult] = useState<{
@@ -316,11 +318,22 @@ export function AssignedDeliveries() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {deliveries.map((delivery) => (
-              <DeliveryCard key={delivery.parcel_id} delivery={delivery} />
+              <DeliveryCard
+                key={delivery.parcel_id}
+                delivery={delivery}
+                onViewDetails={setSelectedDeliveryId}
+              />
             ))}
           </div>
         )}
       </div>
+      {selectedDeliveryId !== null && (
+        <DeliveryDetailsDialog
+          deliveryId={selectedDeliveryId}
+          onClose={() => setSelectedDeliveryId(null)}
+          onStatusUpdated={() => setRetryCount((count) => count + 1)}
+        />
+      )}
     </div>
   );
 }

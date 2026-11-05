@@ -5,7 +5,10 @@ from app.modules.users.routes import router as users_router
 from app.modules.customers.routes import router as customers_router
 from app.modules.merchants.routes import router as merchants_router
 from app.modules.couriers.routes import router as couriers_router
-from app.modules.couriers.delivery_routes import router as courier_deliveries_router
+from app.modules.couriers.delivery_routes import (
+    router as courier_deliveries_router,
+    tracking_router as delivery_tracking_router,
+)
 from app.modules.parcels.routes import router as parcels_router
 from app.modules.dispatch.routes import router as dispatch_router
 from app.modules.pricing.routes import router as pricing_router
@@ -24,6 +27,7 @@ api_router.include_router(customers_router)
 api_router.include_router(merchants_router)
 api_router.include_router(couriers_router)
 api_router.include_router(courier_deliveries_router)
+api_router.include_router(delivery_tracking_router)
 api_router.include_router(parcels_router)
 api_router.include_router(dispatch_router)
 api_router.include_router(pricing_router)

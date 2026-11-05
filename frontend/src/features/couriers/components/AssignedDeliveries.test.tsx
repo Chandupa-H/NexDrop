@@ -1,8 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getCourierDeliveries, push, readSearchParams } = vi.hoisted(() => ({
+const {
+  getCourierDeliveries,
+  getCourierTracking,
+  updateCourierDeliveryStatus,
+  isDevelopmentCourierMockEnabled,
+  push,
+  readSearchParams,
+} = vi.hoisted(() => ({
   getCourierDeliveries: vi.fn(),
+  getCourierTracking: vi.fn(),
+  updateCourierDeliveryStatus: vi.fn(),
+  isDevelopmentCourierMockEnabled: vi.fn(() => false),
   push: vi.fn(),
   readSearchParams: vi.fn(),
 }));
@@ -15,6 +25,16 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/features/couriers/api/courier.api", () => ({
   getCourierDeliveries,
+  getCourierTracking,
+  updateCourierDeliveryStatus,
+  postCourierLocation: vi.fn(),
+  isDevelopmentCourierMockEnabled,
+}));
+
+vi.mock("./DeliveryMapPanel", () => ({
+  DeliveryMapPanel: ({ tracking }: { tracking: { delivery: { pickup_lat: number } } }) => (
+    <div data-testid="delivery-map">Pickup coordinate: {tracking.delivery.pickup_lat}</div>
+  ),
 }));
 
 import { AssignedDeliveries } from "./AssignedDeliveries";
@@ -23,6 +43,34 @@ describe("AssignedDeliveries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     readSearchParams.mockReturnValue("");
+    getCourierTracking.mockResolvedValue({
+      delivery: {
+        parcel_id: 17,
+        tracking_number: "ND-0000000017",
+        status: "pending",
+        pickup_address: "10 Main Street, Colombo",
+        dropoff_address: "20 Lake Road, Colombo",
+        pickup_lat: 6.9147,
+        pickup_lng: 79.8521,
+        dropoff_lat: 6.9094,
+        dropoff_lng: 79.8933,
+        size: "20x15x10",
+        weight: 2,
+        recipient_name: "Test Recipient",
+        recipient_phone: "0771234567",
+        assigned_at: "2026-11-05T08:00:00+05:30",
+        delivery_instructions: null,
+      },
+      courier_location: { lat: 6.9344, lng: 79.8428 },
+      location_source: "simulated",
+      next_destination: {
+        address: "10 Main Street, Colombo",
+        lat: 6.9147,
+        lng: 79.8521,
+      },
+      next_action: "Navigate to pickup location",
+      simulation_route: [],
+    });
   });
 
   it("renders a delivery returned by the API", async () => {
@@ -51,9 +99,9 @@ describe("AssignedDeliveries", () => {
       "tel:0771234567"
     );
     fireEvent.click(screen.getByRole("button", { name: /View Details/ }));
-    expect(push).toHaveBeenCalledWith(
-      "/courier/dashboard?tracking_id=ND-0000000017"
-    );
+    expect(await screen.findByText("Test Recipient")).toBeInTheDocument();
+    expect(getCourierTracking).toHaveBeenCalledWith(17);
+    expect(await screen.findByTestId("delivery-map")).toHaveTextContent("6.9147");
   });
 
   it("shows the required empty state when the API returns no deliveries", async () => {

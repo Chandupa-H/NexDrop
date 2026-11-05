@@ -66,7 +66,10 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  const requiresCourierAuth = endpoint.split("?")[0] === "/courier/deliveries";
+  const endpointPath = endpoint.split("?")[0];
+  const requiresCourierAuth =
+    endpointPath.startsWith("/courier/") ||
+    /^\/deliveries\/[^/]+\/tracking$/.test(endpointPath);
   if (
     requiresCourierAuth &&
     typeof window !== "undefined" &&
