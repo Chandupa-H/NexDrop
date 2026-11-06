@@ -34,6 +34,9 @@ class ParcelService:
             dimensions=payload.dimensions,
             status=ParcelStatus.PENDING,
             special_instructions=payload.special_instructions,
+            delivery_method=payload.delivery_method,
+            current_location_type=payload.current_location_type,
+            current_warehouse_id=payload.current_warehouse_id,
         )
         return await self.repository.create(parcel)
 
@@ -42,5 +45,9 @@ class ParcelService:
         if not parcel:
             return None
         parcel.status = payload.status
+        if payload.current_location_type is not None:
+            parcel.current_location_type = payload.current_location_type
+        if payload.current_warehouse_id is not None:
+            parcel.current_warehouse_id = payload.current_warehouse_id
         await self.repository.session.flush()
         return parcel
