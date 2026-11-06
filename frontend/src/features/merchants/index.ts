@@ -63,3 +63,14 @@ export interface MerchantStatusResponse {
   approval_status: ApprovalStatus;
   rejection_reason?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard exports
+// ---------------------------------------------------------------------------
+
+export * from "./types";
+export * from "./data/mock-merchant-data";
+export * from "./config/dashboard.config";
+export { MerchantDashboardView } from "./components/MerchantDashboardView";
+export { MerchantTopbarUser } from "./components/MerchantTopbarUser";
+export { ParcelDetailModal } from "./components/ParcelDetailModal";
