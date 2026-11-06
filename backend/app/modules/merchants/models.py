@@ -29,7 +29,11 @@ class Merchant(Base, TimestampMixin):
 
     # Admin approval workflow
     approval_status: Mapped[ApprovalStatus] = mapped_column(
-        Enum(ApprovalStatus, name="merchant_approval_status_enum"),
+        Enum(
+            ApprovalStatus,
+            name="merchant_approval_status_enum",
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         default=ApprovalStatus.PENDING,
         nullable=False,
     )

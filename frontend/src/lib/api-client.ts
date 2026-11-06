@@ -108,8 +108,16 @@ async function request<T>(
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
     }
-    
-    throw new ApiError(500, (error as Error).message || "Network error communicating with backend");
+
+    const rawMsg = (error as Error).message || "";
+    if (rawMsg === "Failed to fetch" || rawMsg.includes("Failed to fetch")) {
+      throw new ApiError(
+        503,
+        "Cannot connect to the NexDrop backend server. Please verify the backend is running on http://localhost:8000."
+      );
+    }
+
+    throw new ApiError(500, rawMsg || "Network error communicating with backend");
   }
 }
 
