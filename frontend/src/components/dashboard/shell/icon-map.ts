@@ -23,6 +23,10 @@ import {
   Search,
   Menu,
   X,
+  Key,
+  Webhook,
+  PlusCircle,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { NavIconName } from "@/lib/dashboard/types";
@@ -48,6 +52,10 @@ export const iconMap: Record<NavIconName, LucideIcon> = {
   search: Search,
   menu: Menu,
   x: X,
+  key: Key,
+  webhook: Webhook,
+  "plus-circle": PlusCircle,
+  "shield-check": ShieldCheck,
 };
 
 export function getIcon(name: NavIconName): LucideIcon {

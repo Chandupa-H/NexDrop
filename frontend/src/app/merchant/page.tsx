@@ -108,22 +108,28 @@ export default function MerchantPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
-              <Link href="/login" className="block">
+              <Link href="/merchant/dashboard" className="block">
                 <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
-                  Sign In to Merchant Portal →
+                  Open Merchant Dashboard →
                 </Button>
               </Link>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
+                <Link href="/merchant/login">
+                  <Button variant="secondary" size="sm" className="w-full">
+                    Merchant Sign In
+                  </Button>
+                </Link>
+
                 <Link href="/merchant/register">
-                  <Button variant="secondary" size="md" className="w-full">
-                    Register New Merchant
+                  <Button variant="secondary" size="sm" className="w-full">
+                    Register Business
                   </Button>
                 </Link>
 
                 <Link href="/merchant/application-status">
-                  <Button variant="outline" size="md" className="w-full">
-                    Check Application Status
+                  <Button variant="outline" size="sm" className="w-full">
+                    Check Status
                   </Button>
                 </Link>
               </div>

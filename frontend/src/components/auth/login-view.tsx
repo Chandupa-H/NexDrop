@@ -12,6 +12,7 @@ export function LoginView() {
   const [isDark, setIsDark] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
   const [authView, setAuthView] = useState<ViewType>("sign_in");
+  const [successRedirect, setSuccessRedirect] = useState<string>("/courier/dashboard");
 
   useEffect(() => {
     setMounted(true);
@@ -19,6 +20,11 @@ export function LoginView() {
     const viewParam = params.get("view");
     if (viewParam === "sign_up") {
       setAuthView("sign_up");
+    }
+
+    const redirectParam = params.get("redirect");
+    if (redirectParam) {
+      setSuccessRedirect(redirectParam);
     }
 
     const themeParam = params.get("theme");
@@ -124,7 +130,7 @@ export function LoginView() {
                 view={authView}
                 isDark={isDark}
                 providers={["google"]}
-                onSuccessRedirect="/courier/dashboard"
+                onSuccessRedirect={successRedirect}
               />
             </div>
 

@@ -6,6 +6,6 @@ export const metadata = {
 };
 
 export default function MerchantLoginPage() {
-  redirect("/login");
+  redirect("/login?redirect=/merchant/dashboard");
 }
 

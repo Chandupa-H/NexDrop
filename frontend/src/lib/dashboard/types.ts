@@ -34,7 +34,11 @@ export type NavIconName =
   | "bell"
   | "search"
   | "menu"
-  | "x";
+  | "x"
+  | "key"
+  | "webhook"
+  | "plus-circle"
+  | "shield-check";
 
 export interface NavItem {
   id: string;
