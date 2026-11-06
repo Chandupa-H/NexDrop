@@ -164,7 +164,23 @@ export function useMerchantRegister() {
     try {
       const response = await apiClient.registerMerchant(payload);
       setResult(response);
-      setStep(3); // Final success screen
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            "nexdrop_merchant_application",
+            JSON.stringify({
+              merchant_id: response.merchant_id,
+              business_name: payload.business_name,
+              email: payload.email,
+              approval_status: response.approval_status || "pending",
+              submitted_at: new Date().toISOString(),
+            })
+          );
+        } catch {
+          // ignore localstorage quota errors
+        }
+      }
+      setStep(3); // Final pending review screen
     } catch (error) {
       if (error instanceof ApiError) {
         setServerError(error.message);

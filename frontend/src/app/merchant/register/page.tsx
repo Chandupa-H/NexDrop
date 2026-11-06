@@ -12,6 +12,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Modal } from "@/components/ui/modal";
 import { TermsOfServiceContent, PrivacyPolicyContent } from "@/components/legal/legal-content";
 import { useMerchantRegister } from "@/features/merchants/use-merchant-register";
+import apiClient from "@/lib/api-client";
 import type {
   AccountFormData,
   BusinessFormData,
@@ -264,58 +265,203 @@ function StepReview() {
 }
 
 // ---------------------------------------------------------------------------
-// Success screen
+// Step 4 — Pending Approval & Review Status Screen
 // ---------------------------------------------------------------------------
 
-function SuccessScreen() {
-  const { result, accountData } = useMerchantRegisterContext();
+function PendingApprovalScreen() {
+  const { result, accountData, businessData } = useMerchantRegisterContext();
+  const [copied, setCopied] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<string>(result?.approval_status || "pending");
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+
+  const merchantId = result?.merchant_id;
+  const refCode = `MER-${String(merchantId ?? 0).padStart(6, "0")}`;
+
+  const copyReference = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(refCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const checkLiveStatus = async () => {
+    if (!merchantId) return;
+    setChecking(true);
+    setStatusFeedback(null);
+    try {
+      const data = await apiClient.getMerchantStatus(merchantId);
+      setLiveStatus(data.approval_status);
+      if (data.approval_status === "approved") {
+        setStatusFeedback("Great news! An administrator has approved your merchant account.");
+      } else if (data.approval_status === "rejected") {
+        setStatusFeedback(`Application update: Rejected (${data.rejection_reason || "Please reach out to support"}).`);
+      } else {
+        setStatusFeedback("Status verified: Your application is currently under admin review.");
+      }
+    } catch {
+      setStatusFeedback("Could not refresh status. Please try again shortly.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  // If approved by admin
+  if (liveStatus === "approved") {
+    return (
+      <div className="space-y-6 py-4 text-center">
+        <div className="mx-auto h-20 w-20 rounded-full bg-emerald-50 border-4 border-emerald-200 flex items-center justify-center">
+          <svg className="h-10 w-10 text-[#16A34A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-[#064E3B] text-xs font-semibold">
+            <span>✓</span> Application Approved
+          </div>
+          <h2 className="text-2xl font-bold text-[#064E3B]">Account Approved & Activated!</h2>
+          <p className="text-sm text-[#4B5563] max-w-sm mx-auto">
+            Congratulations! Your merchant account for <strong>{businessData.business_name || "your business"}</strong> is approved. You can now access your merchant dashboard.
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <Link href="/login">
+            <Button variant="primary" size="lg" className="w-full sm:w-auto font-bold shadow-md">
+              Sign In to Merchant Portal →
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="text-center space-y-6 py-4">
-      {/* Animated checkmark */}
-      <div className="mx-auto h-20 w-20 rounded-full bg-green-50 border-4 border-green-200 flex items-center justify-center">
-        <svg className="h-10 w-10 text-[#16A34A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
+    <div className="space-y-6 py-2">
+      {/* Status banner */}
+      <div className="flex flex-col items-center text-center space-y-3">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+          </span>
+          Registration Under Review
+        </div>
 
-      <div className="space-y-2">
-        <h2 className="text-2xl font-bold text-[#064E3B]">Application Submitted!</h2>
-        <p className="text-sm text-[#64748B] max-w-sm mx-auto">
-          Thank you for registering with NexDrop. We&apos;ve received your merchant application and will review it shortly.
+        <h2 className="text-2xl font-bold text-[#064E3B] tracking-tight">
+          Application Submitted & Awaiting Approval
+        </h2>
+        <p className="text-sm text-[#64748B] max-w-md">
+          Thank you for applying. Your registration has been received. Our compliance and operations team is currently reviewing your business credentials before unlocking your portal access.
         </p>
       </div>
 
-      {/* Reference card */}
-      <div className="inline-block mx-auto rounded-xl border-2 border-dashed border-[#16A34A]/40 bg-green-50 px-6 py-4 space-y-1">
-        <p className="text-xs text-[#64748B] uppercase tracking-wide font-medium">Application Reference</p>
-        <p className="text-2xl font-bold font-mono text-[#064E3B]">
-          MER-{String(result?.merchant_id ?? 0).padStart(6, "0")}
-        </p>
-        <p className="text-xs text-[#64748B]">Keep this number for your records</p>
+      {/* Reference ID card */}
+      <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAF8] p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase font-semibold tracking-wider text-[#64748B]">
+            Application Reference
+          </span>
+          <button
+            type="button"
+            onClick={copyReference}
+            className="text-xs text-[#064E3B] hover:text-[#16A34A] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            {copied ? (
+              <span className="text-[#16A34A] font-semibold">✓ Copied</span>
+            ) : (
+              <span>Copy Reference ID</span>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-baseline justify-between">
+          <span className="font-mono text-2xl font-bold text-[#064E3B] tracking-wide">
+            {refCode}
+          </span>
+          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+            Pending Admin Review
+          </span>
+        </div>
+
+        <div className="pt-2 border-t border-[#E5E7EB] text-xs text-[#64748B] flex flex-col sm:flex-row justify-between gap-1">
+          <span><strong>Business:</strong> {businessData.business_name || "Registered Merchant"}</span>
+          <span><strong>Applicant:</strong> {accountData.email}</span>
+        </div>
       </div>
 
-      <div className="space-y-2 text-sm text-[#64748B] max-w-sm mx-auto">
-        <p>
-          An email confirmation has been sent to{" "}
-          <strong className="text-[#1F2937]">{accountData.email}</strong>.
+      {/* Review Progress Tracker */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#064E3B]">
+          Verification Milestones
         </p>
-        <p>
-          Our team will notify you within <strong className="text-[#1F2937]">1–2 business days</strong>.
-        </p>
+        <div className="space-y-2.5 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/60">
+            <span className="h-5 w-5 rounded-full bg-[#16A34A] text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              ✓
+            </span>
+            <div>
+              <p className="font-semibold text-[#064E3B]">1. Registration Submitted</p>
+              <p className="text-[#4B5563]">Account details, business registration number, and addresses received.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/80 border border-amber-200">
+            <span className="h-5 w-5 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              ⏳
+            </span>
+            <div>
+              <p className="font-semibold text-amber-900">2. Admin Verification (Current Stage)</p>
+              <p className="text-amber-800/90">Our administrative compliance team is validating your credentials. Standard reviews conclude within 1–2 business days.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-[#F8FAF8] border border-[#E5E7EB] opacity-75">
+            <span className="h-5 w-5 rounded-full bg-[#E2E8F0] text-[#64748B] flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              3
+            </span>
+            <div>
+              <p className="font-semibold text-[#64748B]">3. Portal Access & API Keys Provisioned</p>
+              <p className="text-[#64748B]">Once an administrator approves your account, your login will be unlocked and live API keys issued.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-        <Link href="/merchant/application-status">
-          <Button variant="secondary" size="md">
-            Check Application Status
-          </Button>
-        </Link>
-        <Link href="/">
-          <Button variant="outline" size="md">
-            Back to Home
-          </Button>
-        </Link>
+      {/* Live status check feedback alert */}
+      {statusFeedback && (
+        <Alert variant={liveStatus === "rejected" ? "error" : "info"} hideIcon>
+          <p className="text-xs">{statusFeedback}</p>
+        </Alert>
+      )}
+
+      {/* Action buttons */}
+      <div className="space-y-3 pt-2">
+        <Button
+          variant="primary"
+          size="md"
+          className="w-full flex items-center justify-center gap-2"
+          onClick={checkLiveStatus}
+          disabled={checking}
+          type="button"
+        >
+          {checking ? "Checking Approval Status…" : "Refresh Approval Status"}
+        </Button>
+
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <Link href={`/merchant/application-status?id=${merchantId}`} className="flex-1">
+            <Button variant="secondary" size="md" className="w-full">
+              View Status Page →
+            </Button>
+          </Link>
+          <Link href="/" className="flex-1">
+            <Button variant="outline" size="md" className="w-full">
+              Back to Home
+            </Button>
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -417,7 +563,7 @@ export default function MerchantRegisterPage() {
             {step === 0 && <StepAccount />}
             {step === 1 && <StepBusiness />}
             {step === 2 && <StepReview />}
-            {step === 3 && <SuccessScreen />}
+            {step === 3 && <PendingApprovalScreen />}
 
             {/* Server error */}
             {serverError && step < 3 && (
