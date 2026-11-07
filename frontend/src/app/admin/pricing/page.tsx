@@ -11,7 +11,10 @@ import {
   AlertCircle
 } from "lucide-react";
 import { getPricingRules, updatePricingRules } from "@/features/admin/api/pricing.api";
-import type { AdminPricingRulesDTO } from "@/features/admin/api/pricing.dto";
+import {
+  PricingConfirmModal,
+  type PricingChangeItem
+} from "@/features/admin/components/PricingConfirmModal";
 
 export default function AdminPricingPage() {
   const [baseFare, setBaseFare] = useState("350.00");
@@ -20,10 +23,20 @@ export default function AdminPricingPage() {
   const [peakSurgeMax, setPeakSurgeMax] = useState("1.50");
   const [rainSurge, setRainSurge] = useState("1.30");
 
+  // Keep track of the baseline rules loaded from the backend
+  const [initialRules, setInitialRules] = useState({
+    baseFare: "350.00",
+    perKmRate: "120.00",
+    expressSurcharge: "250.00",
+    peakSurgeMax: "1.50",
+    rainSurge: "1.30",
+  });
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Fetch initial rules from backend
   useEffect(() => {
@@ -34,11 +47,19 @@ export default function AdminPricingPage() {
         setError(null);
         const data = await getPricingRules();
         if (isMounted && data) {
-          setBaseFare(Number(data.base_fare).toFixed(2));
-          setPerKmRate(Number(data.per_km_rate).toFixed(2));
-          setExpressSurcharge(Number(data.express_surcharge).toFixed(2));
-          setPeakSurgeMax(Number(data.peak_surge_max).toFixed(2));
-          setRainSurge(Number(data.rain_surge).toFixed(2));
+          const loaded = {
+            baseFare: Number(data.base_fare).toFixed(2),
+            perKmRate: Number(data.per_km_rate).toFixed(2),
+            expressSurcharge: Number(data.express_surcharge).toFixed(2),
+            peakSurgeMax: Number(data.peak_surge_max).toFixed(2),
+            rainSurge: Number(data.rain_surge).toFixed(2),
+          };
+          setBaseFare(loaded.baseFare);
+          setPerKmRate(loaded.perKmRate);
+          setExpressSurcharge(loaded.expressSurcharge);
+          setPeakSurgeMax(loaded.peakSurgeMax);
+          setRainSurge(loaded.rainSurge);
+          setInitialRules(loaded);
         }
       } catch (err) {
         if (isMounted) {
@@ -56,8 +77,57 @@ export default function AdminPricingPage() {
     };
   }, []);
 
-  const handleSave = async (e: React.FormEvent) => {
+  // Compute changes between form inputs and initial saved rules
+  const detectedChanges: PricingChangeItem[] = [];
+
+  if (parseFloat(baseFare || "0") !== parseFloat(initialRules.baseFare)) {
+    detectedChanges.push({
+      label: "Base Delivery Fee",
+      oldValue: `Rs. ${initialRules.baseFare}`,
+      newValue: `Rs. ${parseFloat(baseFare || "0").toFixed(2)}`,
+    });
+  }
+
+  if (parseFloat(perKmRate || "0") !== parseFloat(initialRules.perKmRate)) {
+    detectedChanges.push({
+      label: "Per-Kilometer Distance Rate",
+      oldValue: `Rs. ${initialRules.perKmRate} / km`,
+      newValue: `Rs. ${parseFloat(perKmRate || "0").toFixed(2)} / km`,
+    });
+  }
+
+  if (parseFloat(expressSurcharge || "0") !== parseFloat(initialRules.expressSurcharge)) {
+    detectedChanges.push({
+      label: "Express Priority Surcharge",
+      oldValue: `Rs. ${initialRules.expressSurcharge}`,
+      newValue: `Rs. ${parseFloat(expressSurcharge || "0").toFixed(2)}`,
+    });
+  }
+
+  if (parseFloat(peakSurgeMax || "1") !== parseFloat(initialRules.peakSurgeMax)) {
+    detectedChanges.push({
+      label: "Peak Demand Max Multiplier",
+      oldValue: `${initialRules.peakSurgeMax}x`,
+      newValue: `${parseFloat(peakSurgeMax || "1").toFixed(2)}x`,
+    });
+  }
+
+  if (parseFloat(rainSurge || "1") !== parseFloat(initialRules.rainSurge)) {
+    detectedChanges.push({
+      label: "Inclement Weather / Rain Multiplier",
+      oldValue: `${initialRules.rainSurge}x`,
+      newValue: `${parseFloat(rainSurge || "1").toFixed(2)}x`,
+    });
+  }
+
+  // Opens the confirmation modal
+  const handleOpenConfirm = (e: React.FormEvent) => {
     e.preventDefault();
+    setShowConfirmModal(true);
+  };
+
+  // Called when user clicks "Yes, Save Changes" inside the modal
+  const handleConfirmedSave = async () => {
     try {
       setSaving(true);
       setError(null);
@@ -71,13 +141,22 @@ export default function AdminPricingPage() {
 
       const updated = await updatePricingRules(payload);
       if (updated) {
-        setBaseFare(Number(updated.base_fare).toFixed(2));
-        setPerKmRate(Number(updated.per_km_rate).toFixed(2));
-        setExpressSurcharge(Number(updated.express_surcharge).toFixed(2));
-        setPeakSurgeMax(Number(updated.peak_surge_max).toFixed(2));
-        setRainSurge(Number(updated.rain_surge).toFixed(2));
+        const savedValues = {
+          baseFare: Number(updated.base_fare).toFixed(2),
+          perKmRate: Number(updated.per_km_rate).toFixed(2),
+          expressSurcharge: Number(updated.express_surcharge).toFixed(2),
+          peakSurgeMax: Number(updated.peak_surge_max).toFixed(2),
+          rainSurge: Number(updated.rain_surge).toFixed(2),
+        };
+        setBaseFare(savedValues.baseFare);
+        setPerKmRate(savedValues.perKmRate);
+        setExpressSurcharge(savedValues.expressSurcharge);
+        setPeakSurgeMax(savedValues.peakSurgeMax);
+        setRainSurge(savedValues.rainSurge);
+        setInitialRules(savedValues);
       }
 
+      setShowConfirmModal(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -89,10 +168,26 @@ export default function AdminPricingPage() {
 
   return (
     <div className="space-y-6">
+      {/* Confirmation Modal */}
+      <PricingConfirmModal
+        isOpen={showConfirmModal}
+        onClose={() => setShowConfirmModal(false)}
+        onConfirm={handleConfirmedSave}
+        isSaving={saving}
+        changes={detectedChanges}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pricing Management</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pricing Management</h1>
+            {detectedChanges.length > 0 && !loading && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                {detectedChanges.length} Unsaved {detectedChanges.length === 1 ? "Change" : "Changes"}
+              </span>
+            )}
+          </div>
           {/* <p className="text-sm text-slate-500 mt-0.5">
             Configure system delivery fees, distance-based tariffs, surcharges, and dynamic surge multipliers.
           </p> */}
@@ -107,7 +202,7 @@ export default function AdminPricingPage() {
           <Button
             variant="primary"
             size="sm"
-            onClick={handleSave}
+            onClick={handleOpenConfirm}
             disabled={saving || loading}
             className="gap-1.5 bg-[#0b3d2a] hover:bg-[#124d35] text-white"
           >
@@ -230,7 +325,7 @@ export default function AdminPricingPage() {
         {/* Right Column: Surge & Dynamic Multipliers */}
         <SectionCard
           title="Dynamic Surge & Weather Triggers"
-
+        // subtitle="Automatic multipliers based on demand imbalance and weather"
         >
           <div className="space-y-4 pt-1">
             <div>
@@ -276,8 +371,8 @@ export default function AdminPricingPage() {
                     Surge prices adjust gradually at maximum 0.1x increments per 10-minute interval to prevent sudden checkout price jumps.
                   </p>
                 </div>
-              </div>
-            </div> */}
+              </div> */}
+            {/* </div> */}
           </div>
         </SectionCard>
       </div>
