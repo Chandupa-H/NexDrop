@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/dashboard";
-import { 
-  Check, 
-  Save, 
+import {
+  Check,
+  Save,
   Zap,
   RotateCcw,
   AlertCircle
@@ -93,9 +93,9 @@ export default function AdminPricingPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pricing Management</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          {/* <p className="text-sm text-slate-500 mt-0.5">
             Configure system delivery fees, distance-based tariffs, surcharges, and dynamic surge multipliers.
-          </p>
+          </p> */}
         </div>
         <div className="flex items-center gap-2">
           {error && (
@@ -165,7 +165,7 @@ export default function AdminPricingPage() {
         {/* Left Column: Base & Distance Rates */}
         <SectionCard
           title="Base Tariffs & Distance Tiers"
-          subtitle="Configure default courier base rate matrix"
+        // subtitle="Configure default courier base rate matrix"
         >
           <div className="space-y-4 pt-1">
             <div>
@@ -230,7 +230,7 @@ export default function AdminPricingPage() {
         {/* Right Column: Surge & Dynamic Multipliers */}
         <SectionCard
           title="Dynamic Surge & Weather Triggers"
-          subtitle="Automatic multipliers based on demand imbalance and weather"
+
         >
           <div className="space-y-4 pt-1">
             <div>
@@ -267,7 +267,7 @@ export default function AdminPricingPage() {
               <p className="text-[11px] text-slate-400 mt-1">Compensates couriers during heavy rain or monsoon conditions.</p>
             </div>
 
-            <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60">
+            {/* <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60">
               <div className="flex items-start gap-2.5 text-xs text-emerald-950">
                 <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
@@ -277,7 +277,7 @@ export default function AdminPricingPage() {
                   </p>
                 </div>
               </div>
-            </div>
+            </div> */}
           </div>
         </SectionCard>
       </div>
