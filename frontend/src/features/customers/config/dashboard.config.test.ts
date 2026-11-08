@@ -23,7 +23,7 @@ describe("Customer Dashboard Config", () => {
 
   it("has at most 5 primary nav items for mobile tab bar", () => {
     const flatItems = customerDashboardConfig.nav.flatMap((sec) => sec.items);
-    expect(flatItems.length).toBeGreaterThanOrEqual(5);
+    expect(flatItems.length).toBeLessThanOrEqual(5);
   });
 
   it("is registered in the dashboard registry", () => {

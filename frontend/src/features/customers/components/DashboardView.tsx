@@ -103,7 +103,6 @@ export function CustomerDashboardView({
               value={kpi.value}
               icon={kpiIcons[kpi.key] || "package"}
               tone={kpi.tone}
-              deltaPct={kpi.deltaPct}
               selectable
               selected={activeFilter === filter}
               onSelect={() => setActiveFilter(filter)}

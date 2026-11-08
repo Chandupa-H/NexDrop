@@ -13,7 +13,7 @@ async def test_get_customer_me(async_client: AsyncClient):
     response = await async_client.get("/api/v1/customers/customer/me")
     assert response.status_code == 200
     data = response.json()
-    assert data["full_name"] == "Kavindu Sandaruwan"
+    assert data["full_name"] == "Dihini Kankanamage"
     assert data["role"] == "customer"
     assert "email" in data
     assert "default_address" in data

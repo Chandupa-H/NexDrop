@@ -46,13 +46,6 @@ export const customerDashboardConfig: DashboardRoleConfig = {
           icon: "history",
           availability: "planned",
         },
-        {
-          id: "addresses",
-          label: "Saved Addresses",
-          href: "/customer/addresses",
-          icon: "map-pin",
-          availability: "planned",
-        },
       ],
     },
   ],
