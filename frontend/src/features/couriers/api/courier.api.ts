@@ -4,19 +4,61 @@
  */
 
 import { cache } from "react";
-import apiClient from "@/lib/api-client";
+import apiClient, { ApiError } from "@/lib/api-client";
 import type {
   CourierMeDTO,
   DashboardSummaryDTO,
   ParcelListDTO,
   ParcelDetailDTO,
   ParcelStatusUpdateRequestDTO,
+  DeliveryListItemDTO,
+  DeliveryStatusUpdateDTO,
+  DeliveryTrackingDTO,
+  CourierLocationDTO,
+  DeliveryDetailDTO,
+  DeliveryHistoryParams,
+  DeliveryHistoryResponseDTO,
+  CourierLocationUpdateDTO,
+  CourierLocationUpdateResponseDTO,
   DeliveryProofUploadDTO,
   SuccessfulDeliveryRequestDTO,
   FailedDeliveryRequestDTO,
 } from "./courier.dto";
+import type { DeliveryStatus } from "../types";
 
-// TODO(platform): attach the auth token in apiClient
+let usingDevelopmentMockApi = false;
+
+export function isDevelopmentCourierMockEnabled(): boolean {
+  return (
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES !== "false"
+  );
+}
+
+async function courierRequest<T>(
+  request: () => Promise<T>,
+  mockRequest: () => T | Promise<T>
+): Promise<T> {
+  if (usingDevelopmentMockApi && isDevelopmentCourierMockEnabled()) {
+    return mockRequest();
+  }
+  try {
+    return await request();
+  } catch (error) {
+    if (
+      isDevelopmentCourierMockEnabled() &&
+      error instanceof ApiError &&
+      error.status === 401
+    ) {
+      usingDevelopmentMockApi = true;
+      console.warn(
+        "Courier API returned 401; using development mock data. Configure a valid Supabase session to use the API."
+      );
+      return mockRequest();
+    }
+    throw error;
+  }
+}
 
 /**
  * Get the authenticated courier's profile.
@@ -50,6 +92,108 @@ export async function getAssignedParcels(params?: GetParcelsParams): Promise<Par
 
   const query = searchParams.toString();
   return apiClient.get<ParcelListDTO>(`/couriers/courier/parcels${query ? `?${query}` : ""}`);
+}
+
+/**
+ * List today's deliveries assigned to the authenticated courier.
+ * Repeated status parameters allow grouped filters such as in-progress.
+ */
+export async function getCourierDeliveries(
+  status?: DeliveryStatus | DeliveryStatus[]
+): Promise<DeliveryListItemDTO[]> {
+  const searchParams = new URLSearchParams();
+  const statuses = Array.isArray(status) ? status : status ? [status] : [];
+  statuses.forEach((value) => searchParams.append("status", value));
+
+  const query = searchParams.toString();
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryListItemDTO[]>(
+        `/courier/deliveries/today${query ? `?${query}` : ""}`
+      ),
+    async () => (await import("./courier.mock")).listMockDeliveries(statuses)
+  );
+}
+
+export async function getCourierDelivery(
+  deliveryId: number
+): Promise<DeliveryDetailDTO> {
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryDetailDTO>(`/courier/deliveries/${deliveryId}`),
+    async () => (await import("./courier.mock")).getMockDeliveryDetail(deliveryId)
+  );
+}
+
+export async function getDeliveryHistory(
+  params: DeliveryHistoryParams = {}
+): Promise<DeliveryHistoryResponseDTO> {
+  const searchParams = new URLSearchParams();
+  if (params.status) searchParams.set("status", params.status);
+  if (params.from) searchParams.set("from", params.from);
+  if (params.to) searchParams.set("to", params.to);
+  if (params.q) searchParams.set("q", params.q);
+  searchParams.set("page", String(params.page ?? 1));
+  searchParams.set("page_size", String(params.page_size ?? 20));
+  const query = searchParams.toString();
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryHistoryResponseDTO>(
+        `/courier/deliveries/history?${query}`
+      ),
+    async () =>
+      (await import("./courier.mock")).listMockDeliveryHistory(params)
+  );
+}
+
+export async function updateCourierDeliveryStatus(
+  deliveryId: number,
+  payload: DeliveryStatusUpdateDTO
+): Promise<DeliveryListItemDTO> {
+  return courierRequest(
+    () =>
+      apiClient.patch<DeliveryListItemDTO>(
+        `/courier/deliveries/${deliveryId}/status`,
+        payload
+      ),
+    async () =>
+      (await import("./courier.mock")).updateMockDeliveryStatus(
+        deliveryId,
+        payload.status
+      )
+  );
+}
+
+export async function getCourierTracking(
+  deliveryId: number
+): Promise<DeliveryTrackingDTO> {
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryTrackingDTO>(
+        `/deliveries/${deliveryId}/tracking`
+      ),
+    async () => (await import("./courier.mock")).getMockTracking(deliveryId)
+  );
+}
+
+export async function postCourierLocation(
+  payload: CourierLocationUpdateDTO
+): Promise<CourierLocationUpdateResponseDTO> {
+  return courierRequest(
+    () =>
+      apiClient.post<CourierLocationUpdateResponseDTO>(
+        "/courier/location",
+        payload
+      ),
+    async () => (await import("./courier.mock")).postMockLocation(payload)
+  );
+}
+
+export async function getMyCourierLocation(): Promise<CourierLocationDTO | null> {
+  return courierRequest(
+    () => apiClient.get<CourierLocationDTO | null>("/courier/location/me"),
+    async () => (await import("./courier.mock")).getLatestMockLocation()
+  );
 }
 
 /**

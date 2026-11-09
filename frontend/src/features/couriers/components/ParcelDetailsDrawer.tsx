@@ -19,7 +19,7 @@ interface ParcelDetailsDrawerProps {
   trackingId: string;
   action?: ActionType;
   onClose: () => void;
-  onStatusUpdated: () => void;
+  onStatusUpdated: (options?: { closeDrawer?: boolean }) => void;
 }
 
 /**
@@ -141,7 +141,7 @@ export function ParcelDetailsDrawer({
       setFailureConfirmed(false);
       setExpandedPanel(null);
       setResultMessage("Failed delivery recorded successfully.");
-      onStatusUpdated();
+      onStatusUpdated({ closeDrawer: false });
     } catch (err) {
       setResultError(err instanceof Error ? err.message : "Unable to record the failed delivery.");
     } finally {
@@ -218,7 +218,7 @@ export function ParcelDetailsDrawer({
       setParcel(mapParcelDetail(dto));
       setSuccessConfirmed(false);
       setResultMessage("Delivery confirmed successfully.");
-      onStatusUpdated();
+      onStatusUpdated({ closeDrawer: false });
     } catch (err) {
       setUploadProgress(null);
       setResultError(err instanceof Error ? err.message : "Unable to complete the delivery result.");

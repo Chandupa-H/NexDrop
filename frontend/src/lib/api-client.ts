@@ -3,6 +3,12 @@
  * Connects frontend to the FastAPI modular monolith backend.
  */
 
+import type {
+  MerchantRegisterRequest,
+  MerchantRegistrationResponse,
+  MerchantStatusResponse,
+} from "@/features/merchants";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000/api/v1";
 
@@ -58,6 +64,25 @@ async function request<T>(
   const headers = new Headers(options.headers || {});
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
+  }
+
+  const endpointPath = endpoint.split("?")[0];
+  const requiresCourierAuth =
+    endpointPath.startsWith("/courier/") ||
+    /^\/deliveries\/[^/]+\/tracking$/.test(endpointPath);
+  if (
+    requiresCourierAuth &&
+    typeof window !== "undefined" &&
+    !headers.has("Authorization")
+  ) {
+    const { supabase } = await import("@/lib/supabase/client");
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      throw new ApiError(401, error.message);
+    }
+    if (data.session?.access_token) {
+      headers.set("Authorization", `Bearer ${data.session.access_token}`);
+    }
   }
 
   // Add 8-second timeout
@@ -175,6 +200,18 @@ export const apiClient = {
   // Instant pricing estimate helper
   getPricingEstimate: (data: PriceEstimateRequest) =>
     apiClient.post<PriceEstimateResponse>("/pricing/estimate", data),
+
+  // ---------------------------------------------------------------------------
+  // Merchant — Registration & Approval
+  // ---------------------------------------------------------------------------
+
+  /** Submit a new merchant registration application. */
+  registerMerchant: (data: MerchantRegisterRequest) =>
+    apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
+
+  /** Check an applicant's approval status by their merchant ID. */
+  getMerchantStatus: (merchantId: number) =>
+    apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
 };
 
 export default apiClient;

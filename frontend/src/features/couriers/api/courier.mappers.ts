@@ -20,7 +20,7 @@ import type {
   ParcelListItem,
   ParcelDetail,
   TimelineEvent,
-  ParcelStatus,
+  CourierParcelStatus,
 } from "../types";
 
 export function mapCourierProfile(dto: CourierMeDTO): CourierMe {
@@ -86,7 +86,7 @@ export function mapParcelListItem(dto: ParcelListItemDTO): ParcelListItem {
     trackingId: dto.tracking_id,
     customerName: dto.customer_name,
     destination: dto.destination,
-    status: dto.status as ParcelStatus,
+    status: dto.status as CourierParcelStatus,
     assignedAt: dto.assigned_at,
     assignedAtDisplay: formatTime(dto.assigned_at),
     eta: dto.eta,
@@ -110,7 +110,7 @@ export function mapParcelDetail(dto: ParcelDetailDTO): ParcelDetail {
     customerPhoneMasked: dto.customer_phone_masked,
     destination: dto.destination,
     addressLine: dto.address_line,
-    status: dto.status as ParcelStatus,
+    status: dto.status as CourierParcelStatus,
     assignedAt: dto.assigned_at,
     assignedAtDisplay: formatTime(dto.assigned_at),
     eta: dto.eta,

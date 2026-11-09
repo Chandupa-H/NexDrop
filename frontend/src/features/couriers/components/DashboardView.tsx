@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type {
   ParcelListItem,
   DashboardSummary,
@@ -47,7 +47,11 @@ export function DashboardView({
   parcelsTotal,
   donutSegments,
 }: DashboardViewProps) {
+  const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTrackingId = searchParams.get("tracking_id");
+
   // State: active filter (driven by KPI cards)
   const [activeFilter, setActiveFilter] = useState<TableFilter>("all");
   const filteredParcels = useParcels(activeFilter, parcels, parcelsTotal);
@@ -96,11 +100,23 @@ export function DashboardView({
     setDrawerOpen(false);
     setSelectedTrackingId(null);
     setDrawerAction(undefined);
+    if (requestedTrackingId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("tracking_id");
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ""}`, {
+        scroll: false,
+      });
+    }
   };
+  const activeTrackingId = requestedTrackingId ?? selectedTrackingId;
 
-  const handleStatusUpdated = () => {
+  const handleStatusUpdated = (options?: { closeDrawer?: boolean }) => {
     filteredParcels.refetch();
     router.refresh();
+    if (options?.closeDrawer !== false) {
+      handleCloseDrawer();
+    }
   };
 
   return (
@@ -195,10 +211,10 @@ export function DashboardView({
       </div>
 
       {/* Drawer */}
-      {drawerOpen && selectedTrackingId && (
+      {(drawerOpen || requestedTrackingId !== null) && activeTrackingId && (
         <ParcelDetailsDrawer
-          trackingId={selectedTrackingId}
-          action={drawerAction}
+          trackingId={activeTrackingId}
+          action={requestedTrackingId ? undefined : drawerAction}
           onClose={handleCloseDrawer}
           onStatusUpdated={handleStatusUpdated}
         />
