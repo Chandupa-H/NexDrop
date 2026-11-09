@@ -15,7 +15,11 @@ export type ParcelStatus =
   | "in_transit"
   | "out_for_delivery"
   | "delivered"
+  | "cancelled"
   | "failed";
+
+/** Status values accepted by the authenticated courier deliveries endpoint. */
+export type DeliveryStatus = Exclude<ParcelStatus, "failed">;
 
 /** Filter applied to the parcels table (and driven by KPI cards). */
 export type TableFilter =

@@ -18,7 +18,7 @@ from app.db.base import Base
 from app.modules.users.models import User  # noqa: F401
 from app.modules.customers.models import Customer  # noqa: F401
 from app.modules.merchants.models import Merchant  # noqa: F401
-from app.modules.couriers.models import Courier  # noqa: F401
+from app.modules.couriers.models import Courier, CourierLocation  # noqa: F401
 from app.modules.parcels.models import Parcel  # noqa: F401
 from app.modules.dispatch.models import DispatchAssignment  # noqa: F401
 from app.modules.pricing.models import PricingTier  # noqa: F401
