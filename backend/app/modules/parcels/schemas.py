@@ -1,7 +1,11 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
-from app.modules.parcels.models import ParcelStatus
+from app.modules.parcels.models import (
+    ParcelStatus,
+    DeliveryMethod,
+    CurrentLocationType,
+)
 
 
 class ParcelBase(BaseModel):
@@ -12,6 +16,9 @@ class ParcelBase(BaseModel):
     weight_kg: float = 1.0
     dimensions: Optional[str] = None
     special_instructions: Optional[str] = None
+    delivery_method: DeliveryMethod = DeliveryMethod.DIRECT
+    current_location_type: CurrentLocationType = CurrentLocationType.SENDER
+    current_warehouse_id: Optional[int] = None
 
 
 class ParcelCreate(ParcelBase):
@@ -20,6 +27,8 @@ class ParcelCreate(ParcelBase):
 
 class ParcelStatusUpdate(BaseModel):
     status: ParcelStatus
+    current_location_type: Optional[CurrentLocationType] = None
+    current_warehouse_id: Optional[int] = None
 
 
 class ParcelResponse(ParcelBase):
