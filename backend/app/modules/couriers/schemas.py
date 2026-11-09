@@ -132,6 +132,45 @@ class DeliveryListItem(BaseModel):
     delivery_instructions: Optional[str] = None
 
 
+class StatusHistoryEntry(BaseModel):
+    status: ParcelStatus
+    timestamp: datetime
+    note: Optional[str] = None
+    proof_reference: Optional[str] = None
+    actor: Optional[str] = None
+
+
+class DeliveryDetail(DeliveryListItem):
+    completed_at: Optional[datetime] = None
+    failure_reason: Optional[str] = None
+    status_history: List[StatusHistoryEntry] = Field(default_factory=list)
+
+
+class DeliveryHistoryItem(BaseModel):
+    parcel_id: int
+    tracking_number: str
+    status: ParcelStatus
+    pickup_address: str
+    dropoff_address: str
+    recipient_name: str
+    completed_at: datetime
+    failure_reason: Optional[str] = None
+
+
+class DeliveryHistorySummary(BaseModel):
+    delivered: int
+    cancelled: int
+    total: int
+
+
+class DeliveryHistoryResponse(BaseModel):
+    items: List[DeliveryHistoryItem]
+    total: int
+    page: int
+    page_size: int
+    history_summary: DeliveryHistorySummary
+
+
 class CourierLocationUpdateRequest(BaseModel):
     lat: float = Field(strict=True, ge=-90, le=90, allow_inf_nan=False)
     lng: float = Field(strict=True, ge=-180, le=180, allow_inf_nan=False)
@@ -181,3 +220,6 @@ class DeliveryTrackingResponse(BaseModel):
 
 class DeliveryStatusUpdateRequest(BaseModel):
     status: ParcelStatus
+    note: Optional[str] = Field(default=None, max_length=2000)
+    proof_reference: Optional[str] = Field(default=None, max_length=512)
+    failure_reason: Optional[str] = Field(default=None, max_length=2000)

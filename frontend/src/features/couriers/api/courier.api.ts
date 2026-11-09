@@ -15,6 +15,9 @@ import type {
   DeliveryStatusUpdateDTO,
   DeliveryTrackingDTO,
   CourierLocationDTO,
+  DeliveryDetailDTO,
+  DeliveryHistoryParams,
+  DeliveryHistoryResponseDTO,
   CourierLocationUpdateDTO,
   CourierLocationUpdateResponseDTO,
 } from "./courier.dto";
@@ -111,11 +114,32 @@ export async function getCourierDeliveries(
 
 export async function getCourierDelivery(
   deliveryId: number
-): Promise<DeliveryListItemDTO> {
+): Promise<DeliveryDetailDTO> {
   return courierRequest(
     () =>
-      apiClient.get<DeliveryListItemDTO>(`/courier/deliveries/${deliveryId}`),
-    async () => (await import("./courier.mock")).getMockDelivery(deliveryId)
+      apiClient.get<DeliveryDetailDTO>(`/courier/deliveries/${deliveryId}`),
+    async () => (await import("./courier.mock")).getMockDeliveryDetail(deliveryId)
+  );
+}
+
+export async function getDeliveryHistory(
+  params: DeliveryHistoryParams = {}
+): Promise<DeliveryHistoryResponseDTO> {
+  const searchParams = new URLSearchParams();
+  if (params.status) searchParams.set("status", params.status);
+  if (params.from) searchParams.set("from", params.from);
+  if (params.to) searchParams.set("to", params.to);
+  if (params.q) searchParams.set("q", params.q);
+  searchParams.set("page", String(params.page ?? 1));
+  searchParams.set("page_size", String(params.page_size ?? 20));
+  const query = searchParams.toString();
+  return courierRequest(
+    () =>
+      apiClient.get<DeliveryHistoryResponseDTO>(
+        `/courier/deliveries/history?${query}`
+      ),
+    async () =>
+      (await import("./courier.mock")).listMockDeliveryHistory(params)
   );
 }
 

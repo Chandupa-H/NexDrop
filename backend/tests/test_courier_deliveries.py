@@ -11,9 +11,11 @@ from httpx import AsyncClient
 from fastapi import HTTPException
 
 from app.core.config import settings
+from app.db.session import get_db
 from app.main import app
 from app.modules.auth.dependencies import (
     get_authenticated_courier,
+    get_verified_token_claims,
     verify_supabase_access_token,
 )
 from app.modules.couriers.delivery_routes import get_courier_service
@@ -21,6 +23,8 @@ from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.schemas import (
     CourierLocationResponse,
     CourierLocationUpdateRequest,
+    DeliveryHistoryResponse,
+    DeliveryHistorySummary,
     DeliveryListItem,
     DeliveryStatusUpdateRequest,
 )
@@ -73,7 +77,42 @@ class StubCourierService:
     async def get_assigned_delivery(self, courier_id, delivery_id):
         return self.delivery() if courier_id == 42 and delivery_id == 9 else None
 
-    async def update_assigned_delivery_status(self, courier_id, delivery_id, next_status):
+    async def get_assigned_delivery_detail(self, courier_id, delivery_id):
+        if courier_id == 42 and delivery_id == 9:
+            return self.delivery()
+        if courier_id == 42 and delivery_id == 11:
+            raise HTTPException(status_code=403, detail="Access denied.")
+        return None
+
+    async def get_courier_delivery_history(
+        self, courier_id, status, from_date, to_date, query, page, page_size
+    ):
+        self.history_request = (
+            courier_id,
+            status,
+            from_date,
+            to_date,
+            query,
+            page,
+            page_size,
+        )
+        return DeliveryHistoryResponse(
+            items=[],
+            total=0,
+            page=page,
+            page_size=page_size,
+            history_summary=DeliveryHistorySummary(delivered=0, cancelled=0, total=0),
+        )
+
+    async def update_assigned_delivery_status(
+        self,
+        courier_id,
+        delivery_id,
+        next_status,
+        note=None,
+        proof_reference=None,
+        failure_reason=None,
+    ):
         self.status_request = (courier_id, delivery_id, next_status)
         return self.delivery(next_status)
 
@@ -142,6 +181,8 @@ async def test_delivery_route_rejects_unknown_status(async_client: AsyncClient):
 async def test_delivery_route_requires_bearer_token(async_client: AsyncClient):
     response = await async_client.get("/api/v1/courier/deliveries")
     assert response.status_code == 401
+    history = await async_client.get("/api/v1/courier/deliveries/history")
+    assert history.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -169,6 +210,8 @@ async def test_delivery_details_and_tracking_are_scoped_to_assigned_courier(
     try:
         detail = await async_client.get("/api/v1/courier/deliveries/9")
         unassigned = await async_client.get("/api/v1/courier/deliveries/10")
+        forbidden = await async_client.get("/api/v1/courier/deliveries/11")
+        unknown = await async_client.get("/api/v1/courier/deliveries/12")
         tracking = await async_client.get("/api/v1/deliveries/9/tracking")
     finally:
         app.dependency_overrides.pop(get_authenticated_courier, None)
@@ -177,7 +220,171 @@ async def test_delivery_details_and_tracking_are_scoped_to_assigned_courier(
     assert detail.status_code == 200
     assert detail.json()["parcel_id"] == 9
     assert unassigned.status_code == 404
+    assert forbidden.status_code == 403
+    assert forbidden.json() == {"detail": "Access denied."}
+    assert unknown.status_code == 404
     assert tracking.status_code == 404
+
+
+class HistoryQueryResult:
+    def __init__(self, *, rows=False):
+        self.rows = rows
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return []
+
+    def one(self):
+        return {"total": 0, "delivered": 0, "cancelled": 0}
+
+
+class HistoryQuerySession:
+    def __init__(self):
+        self.statements = []
+
+    async def execute(self, statement):
+        self.statements.append(statement)
+        return HistoryQueryResult(rows=len(self.statements) == 1)
+
+
+@pytest.mark.asyncio
+async def test_history_repository_uses_bounded_queries_parameterized_search_and_stable_order():
+    session = HistoryQuerySession()
+    repository = CourierRepository(session)
+
+    await repository.list_delivery_history(
+        42,
+        [ParcelStatus.DELIVERED, ParcelStatus.CANCELLED],
+        datetime(2026, 11, 4, tzinfo=timezone.utc),
+        datetime(2026, 11, 6, tzinfo=timezone.utc),
+        "H%_\\001",
+        2,
+        20,
+    )
+
+    assert len(session.statements) == 2
+    page_sql = str(session.statements[0])
+    assert "ORDER BY completed_at DESC, parcels.id DESC" in page_sql
+    compiled = session.statements[0].compile()
+    assert "H%_\\001" not in page_sql
+    assert any("H\\%\\_\\\\001" in str(value) for value in compiled.params.values())
+    assert "dispatch_assignments.courier_id" in page_sql
+    assert "parcels.status IN" in page_sql
+
+
+@pytest.mark.asyncio
+async def test_delivery_detail_service_distinguishes_wrong_owner_from_unknown_parcel():
+    class OwnershipRepository:
+        def __init__(self, exists):
+            self.exists = exists
+
+        async def get_assigned_delivery(self, courier_id, delivery_id):
+            return None
+
+        async def parcel_exists(self, delivery_id):
+            return self.exists
+
+    wrong_owner = CourierService(OwnershipRepository(exists=True))
+    with pytest.raises(HTTPException) as denied:
+        await wrong_owner.get_assigned_delivery_detail(42, 99)
+    assert denied.value.status_code == 403
+
+    unknown = CourierService(OwnershipRepository(exists=False))
+    assert await unknown.get_assigned_delivery_detail(42, 999) is None
+
+
+@pytest.mark.asyncio
+async def test_history_route_uses_token_courier_and_passes_filters(async_client: AsyncClient):
+    service = StubCourierService()
+    app.dependency_overrides[get_authenticated_courier] = lambda: SimpleNamespace(id=42)
+    app.dependency_overrides[get_courier_service] = lambda: service
+    try:
+        response = await async_client.get(
+            "/api/v1/courier/deliveries/history",
+            params={
+                "status": "cancelled",
+                "from": "2026-10-01",
+                "to": "2026-11-06",
+                "q": "ND-%",
+                "page": 2,
+                "page_size": 30,
+                "courier_id": 999,
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_authenticated_courier, None)
+        app.dependency_overrides.pop(get_courier_service, None)
+
+    assert response.status_code == 200
+    assert response.json()["page"] == 2
+    assert response.json()["history_summary"]["cancelled"] == 0
+    assert service.history_request == (
+        42,
+        ParcelStatus.CANCELLED,
+        datetime(2026, 10, 1).date(),
+        datetime(2026, 11, 6).date(),
+        "ND-%",
+        2,
+        30,
+    )
+
+
+@pytest.mark.asyncio
+async def test_history_route_rejects_authenticated_non_courier(async_client: AsyncClient):
+    class AuthResult:
+        def scalars(self):
+            return self
+
+        def first(self):
+            return SimpleNamespace(
+                id=7,
+                email="customer@example.test",
+                role="customer",
+                is_active=True,
+            )
+
+    class AuthSession:
+        async def execute(self, statement):
+            return AuthResult()
+
+    app.dependency_overrides[get_verified_token_claims] = lambda: {
+        "email": "customer@example.test"
+    }
+    app.dependency_overrides[get_db] = lambda: AuthSession()
+    try:
+        response = await async_client.get("/api/v1/courier/deliveries/history")
+    finally:
+        app.dependency_overrides.pop(get_verified_token_claims, None)
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query",
+    [
+        "status=pending",
+        "status=failed",
+        "from=2026-11-06&to=2026-11-05",
+        "page_size=101",
+        "q=" + ("x" * 101),
+    ],
+)
+async def test_history_route_rejects_invalid_filters(async_client: AsyncClient, query: str):
+    app.dependency_overrides[get_authenticated_courier] = lambda: SimpleNamespace(id=42)
+    app.dependency_overrides[get_courier_service] = lambda: StubCourierService()
+    try:
+        response = await async_client.get(
+            f"/api/v1/courier/deliveries/history?{query}"
+        )
+    finally:
+        app.dependency_overrides.pop(get_authenticated_courier, None)
+        app.dependency_overrides.pop(get_courier_service, None)
+
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio
@@ -244,9 +451,13 @@ async def test_status_route_passes_token_scoped_courier_to_service(
 
 class StatusRepositoryStub:
     def __init__(self, courier_id=42, delivery_id=9, status=ParcelStatus.PENDING):
-        self.parcel = SimpleNamespace(id=delivery_id, status=status)
+        self.parcel = SimpleNamespace(
+            id=delivery_id, status=status, failure_reason=None
+        )
         self.courier_id = courier_id
         self.session = SimpleNamespace(flush=self.flush)
+        self.status_history = []
+        self.completed_assignments = []
 
     async def flush(self):
         return None
@@ -278,7 +489,15 @@ class StatusRepositoryStub:
             "dropoff_lat": None,
             "dropoff_lng": None,
             "delivery_instructions": None,
+            "completed_at": None,
+            "failure_reason": self.parcel.failure_reason,
         }
+
+    async def save_status_history(self, parcel_id, status, actor, note=None, proof_reference=None):
+        self.status_history.append((parcel_id, status, actor, note, proof_reference))
+
+    async def complete_assignment(self, courier_id, delivery_id, completed_at):
+        self.completed_assignments.append((courier_id, delivery_id, completed_at))
 
 
 @pytest.mark.asyncio
@@ -303,6 +522,13 @@ async def test_service_enforces_status_transitions_and_delivery_ownership():
         updated = await service.update_assigned_delivery_status(42, 9, next_status)
         assert updated.status == next_status
     assert repository.parcel.status == ParcelStatus.DELIVERED
+    assert [entry[1] for entry in repository.status_history] == [
+        ParcelStatus.PICKED_UP,
+        ParcelStatus.IN_TRANSIT,
+        ParcelStatus.OUT_FOR_DELIVERY,
+        ParcelStatus.DELIVERED,
+    ]
+    assert repository.completed_assignments[0][:2] == (42, 9)
     assert await service.update_assigned_delivery_status(
         77, 9, ParcelStatus.IN_TRANSIT
     ) is None

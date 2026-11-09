@@ -9,17 +9,15 @@ export const statusMeta: Record<ParcelStatus, { label: string; tone: StatusTone 
   out_for_delivery: { label: "Out for Delivery", tone: "info" },
   delivered: { label: "Delivered", tone: "success" },
   cancelled: { label: "Cancelled", tone: "danger" },
-  failed: { label: "Failed", tone: "danger" },
 };
 
 export const validNextStatuses: Record<ParcelStatus, ParcelStatus[]> = {
   pending: ["picked_up"],
-  picked_up: ["in_transit", "failed"],
-  in_transit: ["out_for_delivery", "failed"],
-  out_for_delivery: ["delivered", "failed"],
+  picked_up: ["in_transit"],
+  in_transit: ["out_for_delivery"],
+  out_for_delivery: ["delivered"],
   delivered: [],
   cancelled: [],
-  failed: [],
 };
 
 export function getStatusLabel(status: ParcelStatus): string {
@@ -46,6 +44,6 @@ export function getUpNext<T extends { status: string }>(parcels: T[]): T | null 
   );
   if (inTransit) return inTransit;
   
-  const nonTerminal = parcels.find((p) => !["delivered", "failed"].includes(p.status));
+  const nonTerminal = parcels.find((p) => !["delivered", "cancelled"].includes(p.status));
   return nonTerminal || null;
 }
