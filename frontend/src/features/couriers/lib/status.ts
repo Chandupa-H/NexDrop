@@ -13,9 +13,9 @@ export const statusMeta: Record<ParcelStatus, { label: string; tone: StatusTone 
 
 export const validNextStatuses: Record<ParcelStatus, ParcelStatus[]> = {
   pending: ["picked_up"],
-  picked_up: ["in_transit", "failed"],
-  in_transit: ["out_for_delivery", "failed"],
-  out_for_delivery: ["delivered", "failed"],
+  picked_up: ["in_transit"],
+  in_transit: ["out_for_delivery"],
+  out_for_delivery: [],
   delivered: [],
   failed: [],
 };

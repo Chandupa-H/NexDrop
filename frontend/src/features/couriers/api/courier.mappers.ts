@@ -116,6 +116,19 @@ export function mapParcelDetail(dto: ParcelDetailDTO): ParcelDetail {
     eta: dto.eta,
     notes: dto.notes,
     timeline: dto.timeline.map(mapTimelineEvent),
+    deliveryProof: dto.delivery_proof
+      ? { secureUrl: dto.delivery_proof.secure_url, publicId: dto.delivery_proof.public_id }
+      : null,
+    deliveryResult: dto.delivery_result
+      ? {
+          outcome: dto.delivery_result.outcome,
+          recordedAt: dto.delivery_result.recorded_at,
+          recipientName: dto.delivery_result.recipient_name,
+          failureReason: dto.delivery_result.failure_reason,
+          note: dto.delivery_result.note,
+        }
+      : null,
+    proofCleanupPending: dto.proof_cleanup_pending,
   };
 }
 

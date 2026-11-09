@@ -154,33 +154,29 @@ async def test_update_status_invalid_transition(async_client: AsyncClient):
     )
     assert response.status_code == 409
     data = response.json()
-    assert "invalid transition" in data["detail"].lower()
+    assert "delivery result" in data["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_update_status_failed_without_reason(async_client: AsyncClient):
-    """PATCH with status=failed but no failure_reason returns 422."""
+async def test_update_status_failed_requires_delivery_result_endpoint(async_client: AsyncClient):
+    """Generic status updates cannot bypass the failed result form."""
     response = await async_client.patch(
         "/api/v1/couriers/courier/parcels/NXD001226/status",
         json={"status": "failed"}
     )
-    assert response.status_code == 422
+    assert response.status_code == 409
     data = response.json()
-    assert "failure_reason" in data["detail"].lower()
+    assert "delivery result" in data["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_update_status_failed_with_reason(async_client: AsyncClient):
-    """PATCH with status=failed and failure_reason succeeds."""
+async def test_update_status_failed_with_reason_requires_delivery_result_endpoint(async_client: AsyncClient):
+    """Generic status updates cannot bypass structured failed result storage."""
     response = await async_client.patch(
         "/api/v1/couriers/courier/parcels/NXD001226/status",
         json={"status": "failed", "failure_reason": "customer_unavailable", "note": "No answer at door"}
     )
-    assert response.status_code == 200
-    data = response.json()
-    
-    assert data["status"] == "failed"
-    assert any("customer unavailable" in n.lower() for n in data["notes"])
+    assert response.status_code == 409
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import type {
   ParcelListItem,
   DashboardSummary,
@@ -46,6 +47,7 @@ export function DashboardView({
   parcelsTotal,
   donutSegments,
 }: DashboardViewProps) {
+  const router = useRouter();
   // State: active filter (driven by KPI cards)
   const [activeFilter, setActiveFilter] = useState<TableFilter>("all");
   const filteredParcels = useParcels(activeFilter, parcels, parcelsTotal);
@@ -97,9 +99,8 @@ export function DashboardView({
   };
 
   const handleStatusUpdated = () => {
-    // In real app, refetch parcels or use optimistic update
-    // For now, just close drawer
-    handleCloseDrawer();
+    filteredParcels.refetch();
+    router.refresh();
   };
 
   return (

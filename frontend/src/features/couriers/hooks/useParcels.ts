@@ -30,19 +30,12 @@ export function useParcels(
   }, []);
 
   useEffect(() => {
-    if (filter === "all") {
-      setState({
-        parcels: initialParcels,
-        total: initialTotal,
-        loading: false,
-        error: null,
-      });
+    if (filter === "all" && requestVersion === 0) {
       return;
     }
 
     const controller = new AbortController();
 
-    setState((current) => ({ ...current, loading: true, error: null }));
     fetchParcelsAction(filter)
       .then((response) => {
         if (controller.signal.aborted) return;

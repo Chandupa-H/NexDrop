@@ -104,4 +104,13 @@ export interface ParcelDetail {
   eta: string | null;
   notes: string[];
   timeline: TimelineEvent[];
+  deliveryProof: { secureUrl: string; publicId: string } | null;
+  deliveryResult: {
+    outcome: "delivered" | "failed";
+    recordedAt: string;
+    recipientName?: string | null;
+    failureReason?: string | null;
+    note?: string | null;
+  } | null;
+  proofCleanupPending: boolean;
 }

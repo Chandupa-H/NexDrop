@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.modules.couriers.schemas import (
@@ -16,9 +16,17 @@ from app.modules.couriers.schemas import (
     ParcelDetailResponse,
     ParcelStatusUpdateRequest,
     TimelineEvent,
+    SuccessfulDeliveryRequest,
+    FailedDeliveryRequest,
+    DeliveryProofResponse,
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.service import CourierService
+from app.modules.couriers.cloudinary_service import (
+    CloudinaryServiceError,
+    delete_image as delete_cloudinary_image,
+    upload_image as upload_cloudinary_image,
+)
 
 router = APIRouter(prefix="/couriers", tags=["Couriers"])
 
@@ -111,6 +119,74 @@ _MOCK_PARCELS = [
     # Failed (1)
     {"tracking_id": "NXD001243", "customer_name": "Tharindu Bandara", "phone": "+94772345634", "destination": "Galle", "address": "23 Hikkaduwa Road, Galle", "status": "failed", "assigned_at": "2026-10-31T07:20:00+05:30", "eta": None, "notes": ["Customer unavailable", "Attempted delivery at 09:30 AM"], "timeline": [{"status": "pending", "label": "Order Created", "occurred_at": "2026-10-31T07:00:00+05:30"}, {"status": "picked_up", "label": "Picked Up", "occurred_at": "2026-10-31T07:20:00+05:30"}, {"status": "out_for_delivery", "label": "Out for Delivery", "occurred_at": "2026-10-31T08:30:00+05:30"}, {"status": "failed", "label": "Delivery Failed", "occurred_at": "2026-10-31T09:30:00+05:30", "location": "Galle"}]},
 ]
+
+MAX_PROOF_IMAGE_BYTES = 5 * 1024 * 1024
+_IMAGE_SIGNATURES = {
+    "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+    "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/webp": lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
+}
+
+
+def _find_mock_parcel(tracking_id: str) -> dict:
+    parcel = next((p for p in _MOCK_PARCELS if p["tracking_id"] == tracking_id), None)
+    if not parcel:
+        raise HTTPException(status_code=404, detail=f"Parcel with tracking ID {tracking_id} not found")
+    return parcel
+
+
+def _require_delivery_stage(parcel: dict) -> None:
+    if parcel["status"] != "out_for_delivery":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A delivery result can only be submitted for a parcel that is out for delivery",
+        )
+
+
+def _require_failure_stage(parcel: dict) -> None:
+    if parcel["status"] not in {"picked_up", "in_transit", "out_for_delivery"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A failed result can only be submitted after pickup and before delivery",
+        )
+
+
+def _append_result_timeline(parcel: dict, result_status: str) -> None:
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).isoformat()
+    label = "Delivered" if result_status == "delivered" else "Delivery Failed"
+    parcel["status"] = result_status
+    parcel.setdefault("timeline", []).append({
+        "status": result_status,
+        "label": label,
+        "occurred_at": now,
+        "location": parcel["destination"],
+    })
+
+
+async def _remove_pending_proofs(parcel: dict) -> None:
+    pending = parcel.setdefault("proof_cleanup_pending", [])
+    for public_id in list(pending):
+        try:
+            await _delete_proof_asset(public_id)
+        except CloudinaryServiceError:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Proof cleanup failed. The asset is retained for a safe retry.",
+            ) from None
+        pending.remove(public_id)
+
+
+async def _delete_proof_asset(public_id: str) -> None:
+    # Keep the synchronous SDK call off the event loop.
+    from starlette.concurrency import run_in_threadpool
+
+    await run_in_threadpool(delete_cloudinary_image, public_id)
+
+
+async def _upload_proof_asset(content: bytes, filename: str) -> dict[str, str]:
+    from starlette.concurrency import run_in_threadpool
+
+    return await run_in_threadpool(upload_cloudinary_image, content, filename)
 
 
 # TODO(platform): require the courier role via the shared auth dependency
@@ -256,7 +332,136 @@ async def get_parcel_detail(tracking_id: str) -> ParcelDetailResponse:
             )
             for e in parcel["timeline"]
         ],
+        delivery_proof=parcel.get("delivery_proof"),
+        delivery_result=parcel.get("delivery_result"),
+        proof_cleanup_pending=bool(parcel.get("proof_cleanup_pending")),
     )
+
+
+@router.post(
+    "/courier/parcels/{tracking_id}/delivery-result/proof",
+    response_model=DeliveryProofResponse,
+    tags=["Courier Delivery Result"],
+)
+async def upload_delivery_proof(
+    tracking_id: str,
+    proof_file: UploadFile = File(...),
+) -> DeliveryProofResponse:
+    parcel = _find_mock_parcel(tracking_id)
+    _require_delivery_stage(parcel)
+
+    mime_type = (proof_file.content_type or "").split(";", 1)[0].strip().lower()
+    signature_check = _IMAGE_SIGNATURES.get(mime_type)
+    if not signature_check:
+        raise HTTPException(status_code=415, detail="Upload a JPEG, PNG, or WebP proof photo")
+
+    content = await proof_file.read(MAX_PROOF_IMAGE_BYTES + 1)
+    if len(content) > MAX_PROOF_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Proof photo must be 5 MB or smaller")
+    if not signature_check(content):
+        raise HTTPException(status_code=415, detail="The uploaded file does not match its image type")
+
+    try:
+        uploaded = await _upload_proof_asset(content, proof_file.filename or "delivery-proof")
+    except CloudinaryServiceError as exc:
+        code = 503 if "not configured" in str(exc) or "not installed" in str(exc) else 502
+        raise HTTPException(status_code=code, detail=str(exc)) from None
+
+    old_proof = parcel.get("delivery_proof")
+    parcel["delivery_proof"] = uploaded
+    pending = parcel.setdefault("proof_cleanup_pending", [])
+    if old_proof and old_proof["public_id"] != uploaded["public_id"]:
+        old_public_id = old_proof["public_id"]
+        if old_public_id not in pending:
+            pending.append(old_public_id)
+        try:
+            await _remove_pending_proofs(parcel)
+        except HTTPException:
+            # New proof is already live and stored. Keep the old asset id for retry.
+            pass
+
+    return DeliveryProofResponse(
+        secure_url=uploaded["secure_url"],
+        public_id=uploaded["public_id"],
+        parcel=await get_parcel_detail(tracking_id),
+    )
+
+
+@router.delete(
+    "/courier/parcels/{tracking_id}/delivery-result/proof",
+    response_model=ParcelDetailResponse,
+    tags=["Courier Delivery Result"],
+)
+async def delete_delivery_proof(tracking_id: str) -> ParcelDetailResponse:
+    parcel = _find_mock_parcel(tracking_id)
+    if parcel["status"] == "delivered":
+        raise HTTPException(status_code=409, detail="A delivered parcel must retain its proof photo")
+
+    await _remove_pending_proofs(parcel)
+    proof = parcel.get("delivery_proof")
+    if proof:
+        try:
+            await _delete_proof_asset(proof["public_id"])
+        except CloudinaryServiceError:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Proof deletion failed. The proof remains available for a safe retry.",
+            ) from None
+        parcel["delivery_proof"] = None
+
+    return await get_parcel_detail(tracking_id)
+
+
+@router.post(
+    "/courier/parcels/{tracking_id}/delivery-result/success",
+    response_model=ParcelDetailResponse,
+    tags=["Courier Delivery Result"],
+)
+async def submit_successful_delivery(
+    tracking_id: str,
+    payload: SuccessfulDeliveryRequest,
+) -> ParcelDetailResponse:
+    parcel = _find_mock_parcel(tracking_id)
+    _require_delivery_stage(parcel)
+    if not payload.confirmed:
+        raise HTTPException(status_code=422, detail="Delivered confirmation is required")
+    if not parcel.get("delivery_proof"):
+        raise HTTPException(status_code=422, detail="Upload a delivery proof photo before confirming delivery")
+    await _remove_pending_proofs(parcel)
+
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).isoformat()
+    parcel["delivery_result"] = {
+        "outcome": "delivered",
+        "recipient_name": payload.recipient_name,
+        "recorded_at": now,
+    }
+    _append_result_timeline(parcel, "delivered")
+    return await get_parcel_detail(tracking_id)
+
+
+@router.post(
+    "/courier/parcels/{tracking_id}/delivery-result/failure",
+    response_model=ParcelDetailResponse,
+    tags=["Courier Delivery Result"],
+)
+async def submit_failed_delivery(
+    tracking_id: str,
+    payload: FailedDeliveryRequest,
+) -> ParcelDetailResponse:
+    parcel = _find_mock_parcel(tracking_id)
+    _require_failure_stage(parcel)
+    if not payload.confirmed:
+        raise HTTPException(status_code=422, detail="Failed delivery confirmation is required")
+
+    now = datetime.now(timezone(timedelta(hours=5, minutes=30))).isoformat()
+    parcel["delivery_result"] = {
+        "outcome": "failed",
+        "failure_reason": payload.failure_reason,
+        "note": payload.note.strip() if payload.note and payload.note.strip() else None,
+        "recorded_at": now,
+    }
+    _append_result_timeline(parcel, "failed")
+    return await get_parcel_detail(tracking_id)
 
 
 @router.patch("/courier/parcels/{tracking_id}/status", response_model=ParcelDetailResponse, tags=["Courier Dashboard"])
@@ -284,25 +489,24 @@ async def update_parcel_status(tracking_id: str, payload: ParcelStatusUpdateRequ
             detail=f"Cannot update parcel in terminal status '{current_status}'",
         )
 
+    if new_status in {"delivered", "failed"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Submit delivered or failed outcomes through the delivery result endpoint",
+        )
+
     # Valid transitions
     valid_transitions = {
         "pending": ["picked_up"],
-        "picked_up": ["in_transit", "failed"],
-        "in_transit": ["out_for_delivery", "failed"],
-        "out_for_delivery": ["delivered", "failed"],
+        "picked_up": ["in_transit"],
+        "in_transit": ["out_for_delivery"],
+        "out_for_delivery": [],
     }
 
     if new_status not in valid_transitions.get(current_status, []):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Invalid transition from '{current_status}' to '{new_status}'",
-        )
-
-    # Validate failure_reason for failed status
-    if new_status == "failed" and not payload.failure_reason:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="failure_reason is required when status is 'failed'",
         )
 
     # Update parcel
@@ -328,9 +532,5 @@ async def update_parcel_status(tracking_id: str, payload: ParcelStatusUpdateRequ
     # Append note if provided
     if payload.note:
         parcel.setdefault("notes", []).append(payload.note)
-    if new_status == "failed" and payload.failure_reason:
-        reason_text = payload.failure_reason.replace("_", " ").title()
-        parcel.setdefault("notes", []).append(f"Failure reason: {reason_text}")
-
     # Return updated detail
     return await get_parcel_detail(tracking_id)

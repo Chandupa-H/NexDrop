@@ -12,6 +12,9 @@ const filterStatuses: Partial<Record<TableFilter, string>> = {
 };
 
 export async function fetchParcelsAction(filter: TableFilter): Promise<ParcelListDTO> {
+  if (filter === "all") {
+    return getAssignedParcels({ limit: 50, offset: 0 });
+  }
   const status = filterStatuses[filter];
   if (!status) {
     throw new Error(`Unsupported server-side parcel filter: ${filter}`);
