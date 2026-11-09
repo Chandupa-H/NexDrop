@@ -30,7 +30,7 @@ export function useParcels(
   }, []);
 
   useEffect(() => {
-    if (filter === "all") {
+    if (filter === "all" && requestVersion === 0) {
       queueMicrotask(() => {
         setState({
           parcels: initialParcels,

@@ -111,10 +111,12 @@ export function DashboardView({
   };
   const activeTrackingId = requestedTrackingId ?? selectedTrackingId;
 
-  const handleStatusUpdated = () => {
-    // In real app, refetch parcels or use optimistic update
-    // For now, just close drawer
-    handleCloseDrawer();
+  const handleStatusUpdated = (options?: { closeDrawer?: boolean }) => {
+    filteredParcels.refetch();
+    router.refresh();
+    if (options?.closeDrawer !== false) {
+      handleCloseDrawer();
+    }
   };
 
   return (

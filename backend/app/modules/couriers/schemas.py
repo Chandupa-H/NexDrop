@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.modules.parcels.models import ParcelStatus
 
 
@@ -93,6 +95,19 @@ class TimelineEvent(BaseModel):
     location: Optional[str] = None
 
 
+class DeliveryProof(BaseModel):
+    secure_url: str
+    public_id: str
+
+
+class DeliveryResult(BaseModel):
+    outcome: Literal["delivered", "failed"]
+    recorded_at: str
+    recipient_name: Optional[str] = None
+    failure_reason: Optional[str] = None
+    note: Optional[str] = None
+
+
 class ParcelDetailResponse(BaseModel):
     """GET /courier/parcels/{tracking_id} - Full parcel details."""
     tracking_id: str
@@ -105,6 +120,36 @@ class ParcelDetailResponse(BaseModel):
     eta: Optional[str] = None
     notes: List[str] = Field(default_factory=list)
     timeline: List[TimelineEvent]
+    delivery_proof: Optional[DeliveryProof] = None
+    delivery_result: Optional[DeliveryResult] = None
+    proof_cleanup_pending: bool = False
+
+
+class SuccessfulDeliveryRequest(BaseModel):
+    recipient_name: str = Field(min_length=1, max_length=255)
+    confirmed: bool
+
+    @field_validator("recipient_name")
+    @classmethod
+    def recipient_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("recipient_name is required")
+        return value
+
+
+class FailedDeliveryRequest(BaseModel):
+    failure_reason: str = Field(min_length=1, max_length=100)
+    note: Optional[str] = Field(default=None, max_length=2000)
+    confirmed: bool
+
+    @field_validator("failure_reason")
+    @classmethod
+    def failure_reason_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("failure_reason is required")
+        return value
 
 
 class ParcelStatusUpdateRequest(BaseModel):
@@ -112,6 +157,12 @@ class ParcelStatusUpdateRequest(BaseModel):
     status: str
     note: Optional[str] = None
     failure_reason: Optional[str] = None  # Required when status is "failed"
+
+
+class DeliveryProofResponse(BaseModel):
+    secure_url: str
+    public_id: str
+    parcel: ParcelDetailResponse
 
 
 class DeliveryListItem(BaseModel):

@@ -66,6 +66,39 @@ export interface ParcelDetailDTO {
   eta: string | null;
   notes: string[];
   timeline: TimelineEventDTO[];
+  delivery_proof: DeliveryProofDTO | null;
+  delivery_result: DeliveryResultDTO | null;
+  proof_cleanup_pending: boolean;
+}
+
+export interface DeliveryProofDTO {
+  secure_url: string;
+  public_id: string;
+}
+
+export interface DeliveryResultDTO {
+  outcome: "delivered" | "failed";
+  recorded_at: string;
+  recipient_name?: string | null;
+  failure_reason?: string | null;
+  note?: string | null;
+}
+
+export interface DeliveryProofUploadDTO {
+  secure_url: string;
+  public_id: string;
+  parcel: ParcelDetailDTO;
+}
+
+export interface SuccessfulDeliveryRequestDTO {
+  recipient_name: string;
+  confirmed: boolean;
+}
+
+export interface FailedDeliveryRequestDTO {
+  failure_reason: string;
+  note?: string;
+  confirmed: boolean;
 }
 
 export interface ParcelStatusUpdateRequestDTO {

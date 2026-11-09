@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
+import Image from "next/image";
 import type { ParcelDetail, ParcelStatus, ActionType } from "../types";
-import { getParcelDetail, updateParcelStatus } from "../api/courier.api";
+import {
+  deleteDeliveryProof,
+  getParcelDetail,
+  submitFailedDelivery,
+  submitSuccessfulDelivery,
+  updateParcelStatus,
+  uploadDeliveryProof,
+} from "../api/courier.api";
 import { mapParcelDetail } from "../api/courier.mappers";
 import { getNextStatuses, getStatusLabel, getStatusTone } from "../lib/status";
 import { StatusBadge } from "@/components/dashboard";
@@ -11,7 +19,7 @@ interface ParcelDetailsDrawerProps {
   trackingId: string;
   action?: ActionType;
   onClose: () => void;
-  onStatusUpdated: () => void;
+  onStatusUpdated: (options?: { closeDrawer?: boolean }) => void;
 }
 
 /**
@@ -41,6 +49,22 @@ export function ParcelDetailsDrawer({
   // Report failed form
   const [failureReason, setFailureReason] = useState<string>("");
   const [failureNote, setFailureNote] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [proofDeleting, setProofDeleting] = useState(false);
+  const [resultSubmitting, setResultSubmitting] = useState(false);
+  const [successConfirmed, setSuccessConfirmed] = useState(false);
+  const [failureConfirmed, setFailureConfirmed] = useState(false);
+  const [resultError, setResultError] = useState<string | null>(null);
+  const [resultMessage, setResultMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (proofPreview) URL.revokeObjectURL(proofPreview);
+    };
+  }, [proofPreview]);
 
   useEffect(() => {
     const fetchParcel = async () => {
@@ -48,7 +72,7 @@ export function ParcelDetailsDrawer({
         setLoading(true);
         const dto = await getParcelDetail(trackingId);
         setParcel(mapParcelDetail(dto));
-      } catch (err) {
+      } catch {
         setError("Failed to load parcel details");
       } finally {
         setLoading(false);
@@ -86,7 +110,7 @@ export function ParcelDetailsDrawer({
       setSelectedStatus("");
       setStatusNote("");
       onStatusUpdated();
-    } catch (err) {
+    } catch {
       alert("Failed to update status");
     } finally {
       setStatusSubmitting(false);
@@ -95,21 +119,111 @@ export function ParcelDetailsDrawer({
 
   const handleReportFailed = async () => {
     if (!parcel) return;
+    if (!failureReason) {
+      setResultError("Select a failure reason before submitting.");
+      return;
+    }
+    if (!failureConfirmed) {
+      setResultError("Confirm that you want to record this failed delivery.");
+      return;
+    }
     try {
-      setStatusSubmitting(true);
-      const dto = await updateParcelStatus(trackingId, {
-        status: "failed",
-        note: failureNote || undefined,
-        failure_reason: failureReason || undefined,
+      setResultSubmitting(true);
+      setResultError(null);
+      const dto = await submitFailedDelivery(trackingId, {
+        failure_reason: failureReason,
+        note: failureNote.trim(),
+        confirmed: true,
       });
       setParcel(mapParcelDetail(dto));
       setFailureReason("");
       setFailureNote("");
-      onStatusUpdated();
+      setFailureConfirmed(false);
+      setExpandedPanel(null);
+      setResultMessage("Failed delivery recorded successfully.");
+      onStatusUpdated({ closeDrawer: false });
     } catch (err) {
-      alert("Failed to report failure");
+      setResultError(err instanceof Error ? err.message : "Unable to record the failed delivery.");
     } finally {
-      setStatusSubmitting(false);
+      setResultSubmitting(false);
+    }
+  };
+
+  const handleProofSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    setResultError(null);
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setResultError("Choose a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setResultError("Proof photo must be 5 MB or smaller.");
+      return;
+    }
+    setProofFile(file);
+    setProofPreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveProof = async () => {
+    setResultError(null);
+    if (proofFile) {
+      setProofFile(null);
+      setProofPreview(null);
+      return;
+    }
+    if (!parcel?.deliveryProof) return;
+    try {
+      setProofDeleting(true);
+      const dto = await deleteDeliveryProof(trackingId);
+      setParcel(mapParcelDetail(dto));
+    } catch (err) {
+      setResultError(err instanceof Error ? err.message : "Unable to delete the proof photo.");
+    } finally {
+      setProofDeleting(false);
+    }
+  };
+
+  const handleSuccessfulDelivery = async () => {
+    if (!parcel) return;
+    if (!recipientName.trim()) {
+      setResultError("Enter the recipient's name before submitting.");
+      return;
+    }
+    if (!proofFile && !parcel.deliveryProof) {
+      setResultError("Upload a delivery proof photo before submitting.");
+      return;
+    }
+    if (!successConfirmed) {
+      setResultError("Confirm that the parcel was delivered to the recipient.");
+      return;
+    }
+
+    try {
+      setResultSubmitting(true);
+      setResultError(null);
+      if (proofFile) {
+        setUploadProgress(0);
+        const uploaded = await uploadDeliveryProof(trackingId, proofFile, setUploadProgress);
+        setParcel(mapParcelDetail(uploaded.parcel));
+        setProofFile(null);
+        setProofPreview(null);
+        setUploadProgress(null);
+      }
+      const dto = await submitSuccessfulDelivery(trackingId, {
+        recipient_name: recipientName.trim(),
+        confirmed: true,
+      });
+      setParcel(mapParcelDetail(dto));
+      setSuccessConfirmed(false);
+      setResultMessage("Delivery confirmed successfully.");
+      onStatusUpdated({ closeDrawer: false });
+    } catch (err) {
+      setUploadProgress(null);
+      setResultError(err instanceof Error ? err.message : "Unable to complete the delivery result.");
+    } finally {
+      setResultSubmitting(false);
     }
   };
 
@@ -156,7 +270,7 @@ export function ParcelDetailsDrawer({
   return (
     <dialog
       id="parcel-drawer"
-      className="fixed inset-0 z-50 h-screen w-full max-w-2xl overflow-y-auto rounded-none bg-white p-6 shadow-xl backdrop:bg-black/50"
+      className="fixed inset-0 z-50 h-dvh max-h-dvh w-full max-w-2xl overflow-y-auto overscroll-contain rounded-none bg-white p-6 shadow-xl backdrop:bg-black/50"
     >
       <div className="flex flex-col gap-6">
         {/* Header */}
@@ -224,6 +338,16 @@ export function ParcelDetailsDrawer({
         {/* Action Panels */}
         <div className="space-y-4 border-t pt-4">
           <h3 className="font-medium text-neutral-900">Actions</h3>
+          {resultMessage && (
+            <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">
+              {resultMessage}
+            </p>
+          )}
+          {resultError && (
+            <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">
+              {resultError}
+            </p>
+          )}
 
           {/* Panel 1: Update Status */}
           {nextStatuses.length > 0 && (
@@ -309,8 +433,7 @@ export function ParcelDetailsDrawer({
             </div>
           </details>
 
-          {/* Panel 3: Upload Proof (disabled drop-zone) */}
-          <details
+          {parcel.status === "out_for_delivery" && <details
             open={expandedPanel === "upload-proof"}
             onToggle={(e) =>
               setExpandedPanel(e.currentTarget.open ? "upload-proof" : null)
@@ -321,14 +444,41 @@ export function ParcelDetailsDrawer({
               Upload Proof of Delivery
             </summary>
             <div className="space-y-3 border-t p-4">
-              <div className="flex h-32 items-center justify-center rounded border-2 border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500">
-                Drop-zone (disabled, UI only)
-              </div>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-neutral-700">Recipient Name <span aria-hidden="true">*</span></span>
+                <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} maxLength={255} required className="w-full rounded border px-3 py-2 text-sm" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-neutral-700">Delivery Proof Photo <span aria-hidden="true">*</span></span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleProofSelection} disabled={resultSubmitting || proofDeleting} className="w-full rounded border px-3 py-2 text-sm" />
+              </label>
+              {(proofPreview || parcel.deliveryProof?.secureUrl) && (
+                <div className="space-y-2">
+                  <Image src={proofPreview || parcel.deliveryProof?.secureUrl || ""} alt="Delivery proof preview" width={448} height={224} unoptimized className="max-h-56 rounded border object-contain" />
+                  <button type="button" onClick={handleRemoveProof} disabled={resultSubmitting || proofDeleting} className="rounded border px-3 py-2 text-sm disabled:opacity-50">
+                    {proofDeleting ? "Removing…" : proofFile ? "Remove selected photo" : "Remove uploaded proof"}
+                  </button>
+                </div>
+              )}
+              {uploadProgress !== null && (
+                <div aria-live="polite" className="space-y-1 text-sm text-neutral-700">
+                  <div>Uploading proof… {uploadProgress}%</div>
+                  <progress value={uploadProgress} max={100} className="w-full" />
+                </div>
+              )}
+              {parcel.proofCleanupPending && <p className="text-sm text-amber-700">The new proof is saved. Cleanup of the previous Cloudinary image will be retried when you confirm delivery.</p>}
+              <label className="flex items-start gap-2 text-sm text-neutral-700">
+                <input type="checkbox" checked={successConfirmed} onChange={(event) => setSuccessConfirmed(event.target.checked)} />
+                <span>I confirm this parcel was delivered to the named recipient.</span>
+              </label>
+              <button type="button" onClick={handleSuccessfulDelivery} disabled={resultSubmitting || proofDeleting} className="w-full rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50">
+                {uploadProgress !== null ? `Uploading ${uploadProgress}%…` : resultSubmitting ? "Submitting…" : "Confirm Successful Delivery"}
+              </button>
             </div>
-          </details>
+          </details>}
 
           {/* Panel 4: Report Failed */}
-          <details
+          {["picked_up", "in_transit", "out_for_delivery"].includes(parcel.status) && <details
             open={expandedPanel === "report-failed"}
             onToggle={(e) =>
               setExpandedPanel(e.currentTarget.open ? "report-failed" : null)
@@ -370,15 +520,20 @@ export function ParcelDetailsDrawer({
                   placeholder="Describe the issue..."
                 />
               </label>
+              <label className="flex items-start gap-2 text-sm text-neutral-700">
+                <input type="checkbox" checked={failureConfirmed} onChange={(event) => setFailureConfirmed(event.target.checked)} />
+                <span>I confirm this delivery attempt failed for the selected reason.</span>
+              </label>
               <button
+                type="button"
                 onClick={handleReportFailed}
-                disabled={statusSubmitting}
-                className="w-full rounded bg-danger px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                disabled={!failureReason || !failureConfirmed || resultSubmitting}
+                className="w-full rounded bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-50"
               >
-                {statusSubmitting ? "Reporting..." : "Report as Failed"}
+                {resultSubmitting ? "Submitting..." : "Reject Delivery"}
               </button>
             </div>
-          </details>
+          </details>}
         </div>
       </div>
     </dialog>

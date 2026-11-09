@@ -17,6 +17,9 @@ export type ParcelStatus =
   | "delivered"
   | "cancelled";
 
+/** Legacy in-memory dashboard parcels can also end in the delivery-result status. */
+export type CourierParcelStatus = ParcelStatus | "failed";
+
 /** Status values from the authenticated courier deliveries endpoint. */
 export type DeliveryStatus = ParcelStatus;
 
@@ -81,7 +84,7 @@ export interface ParcelListItem {
   trackingId: string;
   customerName: string;
   destination: string;
-  status: ParcelStatus;
+  status: CourierParcelStatus;
   assignedAt: string; // ISO 8601
   assignedAtDisplay: string; // Pre-formatted time
   eta: string | null;
@@ -101,10 +104,19 @@ export interface ParcelDetail {
   customerPhoneMasked: string;
   destination: string;
   addressLine: string;
-  status: ParcelStatus;
+  status: CourierParcelStatus;
   assignedAt: string;
   assignedAtDisplay: string;
   eta: string | null;
   notes: string[];
   timeline: TimelineEvent[];
+  deliveryProof: { secureUrl: string; publicId: string } | null;
+  deliveryResult: {
+    outcome: "delivered" | "failed";
+    recordedAt: string;
+    recipientName?: string | null;
+    failureReason?: string | null;
+    note?: string | null;
+  } | null;
+  proofCleanupPending: boolean;
 }

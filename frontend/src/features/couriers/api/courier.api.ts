@@ -20,6 +20,9 @@ import type {
   DeliveryHistoryResponseDTO,
   CourierLocationUpdateDTO,
   CourierLocationUpdateResponseDTO,
+  DeliveryProofUploadDTO,
+  SuccessfulDeliveryRequestDTO,
+  FailedDeliveryRequestDTO,
 } from "./courier.dto";
 import type { DeliveryStatus } from "../types";
 
@@ -208,4 +211,44 @@ export async function updateParcelStatus(
   payload: ParcelStatusUpdateRequestDTO
 ): Promise<ParcelDetailDTO> {
   return apiClient.patch<ParcelDetailDTO>(`/couriers/courier/parcels/${trackingId}/status`, payload);
+}
+
+export async function uploadDeliveryProof(
+  trackingId: string,
+  file: File,
+  onProgress: (percent: number) => void
+): Promise<DeliveryProofUploadDTO> {
+  const body = new FormData();
+  body.append("proof_file", file);
+  return apiClient.postForm<DeliveryProofUploadDTO>(
+    `/couriers/courier/parcels/${encodeURIComponent(trackingId)}/delivery-result/proof`,
+    body,
+    onProgress
+  );
+}
+
+export async function deleteDeliveryProof(trackingId: string): Promise<ParcelDetailDTO> {
+  return apiClient.delete<ParcelDetailDTO>(
+    `/couriers/courier/parcels/${encodeURIComponent(trackingId)}/delivery-result/proof`
+  );
+}
+
+export async function submitSuccessfulDelivery(
+  trackingId: string,
+  payload: SuccessfulDeliveryRequestDTO
+): Promise<ParcelDetailDTO> {
+  return apiClient.post<ParcelDetailDTO>(
+    `/couriers/courier/parcels/${encodeURIComponent(trackingId)}/delivery-result/success`,
+    payload
+  );
+}
+
+export async function submitFailedDelivery(
+  trackingId: string,
+  payload: FailedDeliveryRequestDTO
+): Promise<ParcelDetailDTO> {
+  return apiClient.post<ParcelDetailDTO>(
+    `/couriers/courier/parcels/${encodeURIComponent(trackingId)}/delivery-result/failure`,
+    payload
+  );
 }
