@@ -31,10 +31,11 @@ export type TableFilter =
   | "delivered"
   | "failed";
 
+export const COURIER_PARCEL_PAGE_SIZE = 6;
+
 /** Action panels that can be pre-expanded when the drawer opens. */
 export type ActionType =
   | "update-status"
-  | "add-note"
   | "upload-proof"
   | "report-failed";
 

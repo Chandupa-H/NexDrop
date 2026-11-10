@@ -40,12 +40,30 @@ export function filterToStatusString(filter: TableFilter): string | undefined {
   return filter;
 }
 
+export function sortCourierParcelsByStatus<T extends { status: string }>(parcels: T[]): T[] {
+  const order: Record<string, number> = {
+    pending: 0,
+    picked_up: 1,
+    in_transit: 2,
+    out_for_delivery: 3,
+    delivered: 4,
+    failed: 5,
+    cancelled: 6,
+  };
+
+  return [...parcels].sort((a, b) => {
+    const aOrder = order[a.status] ?? Number.MAX_SAFE_INTEGER;
+    const bOrder = order[b.status] ?? Number.MAX_SAFE_INTEGER;
+    return aOrder - bOrder;
+  });
+}
+
 export function getUpNext<T extends { status: string }>(parcels: T[]): T | null {
   const inTransit = parcels.find((p) =>
     ["picked_up", "in_transit", "out_for_delivery"].includes(p.status)
   );
   if (inTransit) return inTransit;
-  
+
   const nonTerminal = parcels.find(
     (p) => !["delivered", "cancelled", "failed"].includes(p.status)
   );

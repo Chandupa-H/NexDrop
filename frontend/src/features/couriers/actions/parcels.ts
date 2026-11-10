@@ -11,14 +11,19 @@ const filterStatuses: Partial<Record<TableFilter, string>> = {
   failed: "failed",
 };
 
-export async function fetchParcelsAction(filter: TableFilter): Promise<ParcelListDTO> {
-  if (filter === "all") {
-    return getAssignedParcels({ limit: 50, offset: 0 });
-  }
-  const status = filterStatuses[filter];
-  if (!status) {
+export async function fetchParcelsAction(
+  filter: TableFilter,
+  page: number,
+  pageSize: number
+): Promise<ParcelListDTO> {
+  const status = filter === "all" ? undefined : filterStatuses[filter];
+  if (filter !== "all" && !status) {
     throw new Error(`Unsupported server-side parcel filter: ${filter}`);
   }
 
-  return getAssignedParcels({ status, limit: 6, offset: 0 });
+  return getAssignedParcels({
+    status,
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+  });
 }

@@ -7,6 +7,9 @@ import { cache } from "react";
 import apiClient, { ApiError } from "@/lib/api-client";
 import type {
   CourierMeDTO,
+  CourierProfileDTO,
+  CourierProfileUpdateDTO,
+  CourierPasswordChangeDTO,
   DashboardSummaryDTO,
   ParcelListDTO,
   ParcelDetailDTO,
@@ -71,6 +74,25 @@ async function courierRequest<T>(
 export const getCourierProfile = cache(async (): Promise<CourierMeDTO> => {
   return apiClient.get<CourierMeDTO>("/couriers/courier/me");
 });
+
+export function getCourierAccountProfile(): Promise<CourierProfileDTO> {
+  return apiClient.get<CourierProfileDTO>("/couriers/courier/profile");
+}
+
+export function updateCourierAccountProfile(
+  profile: CourierProfileUpdateDTO
+): Promise<CourierProfileDTO> {
+  return apiClient.patch<CourierProfileDTO>("/couriers/courier/profile", profile);
+}
+
+export function changeCourierPassword(
+  password: CourierPasswordChangeDTO
+): Promise<void> {
+  return apiClient.post<void>(
+    "/couriers/courier/profile/change-password",
+    password
+  );
+}
 
 /**
  * Get dashboard summary with totals, KPIs, and weekly deliveries.

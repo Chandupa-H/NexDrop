@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { get, ApiError } = vi.hoisted(() => {
+const { get, patch, post, ApiError } = vi.hoisted(() => {
   class MockApiError extends Error {
     status: number;
     code?: string;
@@ -18,21 +18,35 @@ const { get, ApiError } = vi.hoisted(() => {
     }
   }
 
-  return { get: vi.fn(), ApiError: MockApiError };
+  return {
+    get: vi.fn(),
+    patch: vi.fn(),
+    post: vi.fn(),
+    ApiError: MockApiError,
+  };
 });
 
 vi.mock("@/lib/api-client", () => ({
-  default: { get },
+  default: { get, patch, post },
   ApiError,
 }));
 
 let getCourierDeliveries: typeof import("./courier.api").getCourierDeliveries;
 let getDeliveryHistory: typeof import("./courier.api").getDeliveryHistory;
+let getCourierAccountProfile: typeof import("./courier.api").getCourierAccountProfile;
+let updateCourierAccountProfile: typeof import("./courier.api").updateCourierAccountProfile;
+let changeCourierPassword: typeof import("./courier.api").changeCourierPassword;
 
 describe("getCourierDeliveries", () => {
   beforeEach(async () => {
     vi.resetModules();
-    ({ getCourierDeliveries, getDeliveryHistory } = await import("./courier.api"));
+    ({
+      getCourierDeliveries,
+      getDeliveryHistory,
+      getCourierAccountProfile,
+      updateCourierAccountProfile,
+      changeCourierPassword,
+    } = await import("./courier.api"));
     vi.stubEnv("NODE_ENV", "development");
     vi.stubEnv("NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES", "true");
     vi.clearAllMocks();
@@ -117,6 +131,59 @@ describe("getCourierDeliveries", () => {
     get.mockRejectedValue(error);
 
     await expect(getCourierDeliveries()).rejects.toBe(error);
+  });
+
+  it("loads the authenticated courier profile from its Courier API", async () => {
+    const profile = {
+      id: 1,
+      full_name: "Kasun Perera",
+      email: "kasun@example.com",
+      contact_phone: "+94 77 123 4567",
+      status: "ACTIVE" as const,
+      joined_date: "2026-01-15",
+    };
+    get.mockResolvedValue(profile);
+
+    await expect(getCourierAccountProfile()).resolves.toEqual(profile);
+    expect(get).toHaveBeenCalledWith("/couriers/courier/profile");
+  });
+
+  it("saves only the courier's editable profile fields", async () => {
+    const profile = {
+      id: 1,
+      full_name: "Kasun Fernando",
+      email: "kasun@example.com",
+      contact_phone: "+94 71 555 1234",
+      status: "ACTIVE" as const,
+      joined_date: "2026-01-15",
+    };
+    patch.mockResolvedValue(profile);
+
+    await expect(
+      updateCourierAccountProfile({
+        full_name: "Kasun Fernando",
+        contact_phone: "+94 71 555 1234",
+      })
+    ).resolves.toEqual(profile);
+    expect(patch).toHaveBeenCalledWith("/couriers/courier/profile", {
+      full_name: "Kasun Fernando",
+      contact_phone: "+94 71 555 1234",
+    });
+  });
+
+  it("sends courier password changes to the Courier API", async () => {
+    post.mockResolvedValue(undefined);
+    const request = {
+      current_password: "current-password",
+      new_password: "new-password-is-long",
+      confirm_password: "new-password-is-long",
+    };
+
+    await expect(changeCourierPassword(request)).resolves.toBeUndefined();
+    expect(post).toHaveBeenCalledWith(
+      "/couriers/courier/profile/change-password",
+      request
+    );
   });
 
   it("requests paginated history with URL-safe filter parameters", async () => {

@@ -9,6 +9,26 @@ export interface CourierMeDTO {
   role: string;
 }
 
+export interface CourierProfileDTO {
+  id: number;
+  full_name: string;
+  email: string;
+  contact_phone: string;
+  status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  joined_date: string;
+}
+
+export interface CourierProfileUpdateDTO {
+  full_name: string;
+  contact_phone: string;
+}
+
+export interface CourierPasswordChangeDTO {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 export interface DashboardTotalsDTO {
   assigned: number;
   delivered: number;
