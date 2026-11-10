@@ -12,6 +12,7 @@ describe("getTopbarTitle", () => {
   it("uses the active navigation label on another page", () => {
     const config = {
       ...courierDashboardConfig,
+      topbarTitle: undefined,
       nav: [
         {
           id: "operations",
@@ -29,6 +30,19 @@ describe("getTopbarTitle", () => {
     };
 
     expect(getTopbarTitle(config, "/courier/history/123")).toBe("Delivery History");
+  });
+
+  it("keeps the Courier Dashboard title for every Courier feature route", () => {
+    for (const pathname of [
+      "/courier/dashboard",
+      "/courier/deliveries",
+      "/courier/history",
+      "/courier/profile",
+    ]) {
+      expect(getTopbarTitle(courierDashboardConfig, pathname)).toBe(
+        "Courier Dashboard"
+      );
+    }
   });
 
   it("falls back to the role-based title for an unknown path", () => {

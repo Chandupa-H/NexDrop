@@ -42,6 +42,66 @@ class CourierMeResponse(BaseModel):
     role: str = "courier"
 
 
+class CourierProfileResponse(BaseModel):
+    """Authenticated courier profile details."""
+
+    id: int
+    full_name: str
+    email: str
+    contact_phone: str
+    status: Literal["ACTIVE", "INACTIVE", "SUSPENDED"]
+    joined_date: str
+
+
+class CourierProfileUpdateRequest(BaseModel):
+    """Editable courier profile fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(min_length=2, max_length=255)
+    contact_phone: str = Field(min_length=7, max_length=24)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Full name must contain at least 2 characters.")
+        return value
+
+    @field_validator("contact_phone")
+    @classmethod
+    def validate_contact_phone(cls, value: str) -> str:
+        import re
+
+        value = value.strip()
+        if not re.fullmatch(r"\+?[0-9][0-9\s()-]*", value):
+            raise ValueError("Enter a valid contact phone number.")
+        digit_count = sum(character.isdigit() for character in value)
+        if not 7 <= digit_count <= 15:
+            raise ValueError("Phone number must contain 7 to 15 digits.")
+        return value
+
+
+class CourierPasswordChangeRequest(BaseModel):
+    """Validate a courier password-change request before auth is implemented."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+    confirm_password: str = Field(min_length=12, max_length=1024)
+
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_password_confirmation(
+        cls, value: str, info
+    ) -> str:
+        if "new_password" in info.data and value != info.data["new_password"]:
+            raise ValueError("Password confirmation does not match.")
+        return value
+
+
 class DashboardTotals(BaseModel):
     """Parcel count breakdown for today."""
     assigned: int
