@@ -29,6 +29,20 @@ describe("SidebarContent", () => {
 
     expect(screen.getByText("NexDrop")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByText("Overview")).toBeInTheDocument();
+    expect(
+      screen.getByText("Deliveries", { selector: ".dashboard-nav-section-label" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Activity")).toBeInTheDocument();
+    expect(screen.getByText("Administration")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "href",
+      "/courier/dashboard"
+    );
+    expect(screen.getByRole("link", { name: "My Profile" })).toHaveAttribute(
+      "href",
+      "/courier/profile"
+    );
     expect(screen.queryByText(/deliver smarter together/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Learn more")).not.toBeInTheDocument();
   });
@@ -56,5 +70,15 @@ describe("SidebarContent", () => {
 
     expect(screen.getByRole("link", { name: "Failed Deliveries" })).toHaveAttribute("href", "/courier/failed");
     expect(screen.getByRole("link", { name: "Failed Deliveries" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("activates My Profile on the courier profile route", () => {
+    route.pathname = "/courier/profile";
+    render(<SidebarContent config={courierDashboardConfig} />);
+
+    expect(screen.getByRole("link", { name: "My Profile" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
   });
 });
