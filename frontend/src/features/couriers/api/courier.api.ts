@@ -23,6 +23,10 @@ import type {
   DeliveryProofUploadDTO,
   SuccessfulDeliveryRequestDTO,
   FailedDeliveryRequestDTO,
+  CourierProofListDTO,
+  CourierProofParamsDTO,
+  FailedDeliveryListDTO,
+  FailedDeliveryParamsDTO,
 } from "./courier.dto";
 import type { DeliveryStatus } from "../types";
 
@@ -92,6 +96,33 @@ export async function getAssignedParcels(params?: GetParcelsParams): Promise<Par
 
   const query = searchParams.toString();
   return apiClient.get<ParcelListDTO>(`/couriers/courier/parcels${query ? `?${query}` : ""}`);
+}
+
+export async function getCourierProofs(
+  params: CourierProofParamsDTO = {}
+): Promise<CourierProofListDTO> {
+  const searchParams = new URLSearchParams();
+  if (params.q) searchParams.set("q", params.q);
+  if (params.date) searchParams.set("date", params.date);
+  if (params.status) searchParams.set("status", params.status);
+  const query = searchParams.toString();
+  return apiClient.get<CourierProofListDTO>(
+    `/couriers/courier/proofs${query ? `?${query}` : ""}`
+  );
+}
+
+export async function getCourierFailedDeliveries(
+  params: FailedDeliveryParamsDTO = {}
+): Promise<FailedDeliveryListDTO> {
+  const searchParams = new URLSearchParams();
+  if (params.q) searchParams.set("q", params.q);
+  if (params.reason) searchParams.set("reason", params.reason);
+  if (params.date) searchParams.set("date", params.date);
+  if (params.redelivery_status) searchParams.set("redelivery_status", params.redelivery_status);
+  const query = searchParams.toString();
+  return apiClient.get<FailedDeliveryListDTO>(
+    `/couriers/courier/failed-deliveries${query ? `?${query}` : ""}`
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type {
   ParcelListItem,
@@ -11,7 +11,6 @@ import type {
 import type { NavIconName } from "@/lib/dashboard/types";
 import type { DonutSegment } from "@/lib/dashboard/types";
 import { useParcels } from "../hooks/useParcels";
-import { getUpNext } from "../lib/status";
 
 import {
   WelcomeHeader,
@@ -23,7 +22,6 @@ import {
 } from "@/components/dashboard";
 
 import { ParcelsTable } from "./ParcelsTable";
-import { LiveRouteCard } from "./LiveRouteCard";
 import { ParcelDetailsDrawer } from "./ParcelDetailsDrawer";
 
 export interface DashboardViewProps {
@@ -85,9 +83,6 @@ export function DashboardView({
     pending: "clock",
     failed: "alert-triangle",
   };
-
-  // Derived: up-next parcel
-  const upNextParcel = useMemo(() => getUpNext(parcels), [parcels]);
 
   // Handlers
   const handleOpenDrawer = (trackingId: string, action?: ActionType) => {
@@ -182,32 +177,18 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* Row 4: table + sidebar (desktop: 2-col, mobile: stack) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        {/* Parcels table (3/5) */}
-        <div className="lg:col-span-3">
-          <ParcelsTable
-            parcels={filteredParcels.parcels}
-            total={filteredParcels.total}
-            filter={activeFilter}
-            onFilterChange={setActiveFilter}
-            onOpen={handleOpenDrawer}
-            loading={filteredParcels.loading}
-            error={filteredParcels.error ?? undefined}
-            onRetry={filteredParcels.refetch}
-          />
-        </div>
-
-        {/* Live Route (2/5) */}
-        <div className="h-full lg:col-span-2 [&>.dashboard-section-card]:h-full">
-          <LiveRouteCard
-            upNext={upNextParcel}
-            onUpdateStatus={() =>
-              upNextParcel &&
-              handleOpenDrawer(upNextParcel.trackingId, "update-status")
-            }
-          />
-        </div>
+      {/* Today's parcels use the full dashboard content width. */}
+      <div className="min-w-0 w-full">
+        <ParcelsTable
+          parcels={filteredParcels.parcels}
+          total={filteredParcels.total}
+          filter={activeFilter}
+          onFilterChange={setActiveFilter}
+          onOpen={handleOpenDrawer}
+          loading={filteredParcels.loading}
+          error={filteredParcels.error ?? undefined}
+          onRetry={filteredParcels.refetch}
+        />
       </div>
 
       {/* Drawer */}

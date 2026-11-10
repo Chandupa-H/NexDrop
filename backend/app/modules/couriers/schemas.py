@@ -165,6 +165,63 @@ class DeliveryProofResponse(BaseModel):
     parcel: ParcelDetailResponse
 
 
+class CourierProofRecord(BaseModel):
+    tracking_number: str
+    recipient_name: str
+    delivered_at: str
+    delivery_address: str
+    status: str
+    secure_url: str
+    public_id: str
+
+
+class CourierProofSummary(BaseModel):
+    total_proofs: int
+    successful_deliveries: int
+    parcels_with_proof: int
+
+
+class CourierProofListResponse(BaseModel):
+    items: List[CourierProofRecord]
+    total: int
+    summary: CourierProofSummary
+
+
+class FailedDeliveryAttempt(BaseModel):
+    attempt_number: int
+    failed_at: str
+    failure_reason: str
+    failure_reason_label: str
+    note: Optional[str] = None
+
+
+class FailedDeliveryRecord(FailedDeliveryAttempt):
+    tracking_number: str
+    customer_name: str
+    customer_phone_masked: str
+    destination: str
+    delivery_address: str
+    assigned_at: str
+    eta: Optional[str] = None
+    courier_name: Optional[str] = None
+    parcel_status: str
+    redelivery_status: Literal["pending", "scheduled", "completed", "superseded"]
+    previous_attempts: List[FailedDeliveryAttempt] = Field(default_factory=list)
+
+
+class FailedDeliverySummary(BaseModel):
+    total_failed_deliveries: int
+    today_failed_deliveries: int
+    pending_redelivery: int
+    most_common_failure_reason: Optional[str] = None
+
+
+class FailedDeliveryListResponse(BaseModel):
+    items: List[FailedDeliveryRecord]
+    total: int
+    summary: FailedDeliverySummary
+
+
 class DeliveryListItem(BaseModel):
     parcel_id: int
     tracking_number: str
