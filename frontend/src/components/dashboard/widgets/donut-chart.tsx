@@ -13,10 +13,12 @@ export function DonutChart({
   segments,
   total,
   centerLabel,
+  className,
 }: {
   segments: DonutSegment[];
   total?: number;
   centerLabel: string;
+  className?: string;
 }) {
   const percentages = calculatePercentages(segments.map((s) => s.value));
   const displayTotal = total ?? segments.reduce((sum, segment) => sum + segment.value, 0);
@@ -41,9 +43,9 @@ export function DonutChart({
     .join(", ");
 
   return (
-    <div className="flex flex-col lg:flex-row items-center gap-6">
+    <div className={`flex flex-col lg:flex-row items-center justify-center gap-6 h-full min-h-[260px] my-auto ${className ?? ""}`.trim()}>
       <div
-        className="relative w-48 h-48"
+        className="relative w-48 h-48 shrink-0"
         role="img"
         aria-label={`Total ${displayTotal}. ${summary || "No status data"}`}
       >

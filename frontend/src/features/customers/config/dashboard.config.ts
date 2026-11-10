@@ -30,14 +30,21 @@ export const customerDashboardConfig: DashboardRoleConfig = {
           label: "Book Delivery",
           href: "/customer/book",
           icon: "package",
-          availability: "planned",
+          availability: "live",
         },
         {
           id: "track",
           label: "Track Parcel",
           href: "/customer/track",
           icon: "navigation",
-          availability: "planned",
+          availability: "live",
+        },
+        {
+          id: "addresses",
+          label: "Saved Addresses",
+          href: "/customer/addresses",
+          icon: "map-pin",
+          availability: "live",
         },
         {
           id: "history",
@@ -45,6 +52,19 @@ export const customerDashboardConfig: DashboardRoleConfig = {
           href: "/customer/history",
           icon: "history",
           availability: "planned",
+        },
+      ],
+    },
+    {
+      id: "account",
+      label: "Account",
+      items: [
+        {
+          id: "profile",
+          label: "Customer Profile",
+          href: "/customer/profile",
+          icon: "user",
+          availability: "live",
         },
       ],
     },

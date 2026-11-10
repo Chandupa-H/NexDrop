@@ -31,6 +31,10 @@ describe("getTopbarTitle", () => {
     expect(getTopbarTitle(config, "/courier/history/123")).toBe("Delivery History");
   });
 
+  it("uses Profile for the profile route", () => {
+    expect(getTopbarTitle(courierDashboardConfig, "/courier/profile")).toBe("Profile");
+  });
+
   it("falls back to the role-based title for an unknown path", () => {
     expect(getTopbarTitle(courierDashboardConfig, "/courier/unknown")).toBe(
       "Courier Dashboard"

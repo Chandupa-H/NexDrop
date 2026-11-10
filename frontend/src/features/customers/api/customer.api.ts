@@ -12,6 +12,10 @@ import type {
   CustomerParcelListDTO,
   CustomerParcelDetailDTO,
   CustomerCancelParcelRequestDTO,
+  CustomerCreateParcelRequestDTO,
+  CustomerAddressDTO,
+  CustomerAddressCreateDTO,
+  CustomerAddressUpdateDTO,
 } from "./customer.dto";
 import {
   MOCK_CUSTOMER_ME,
@@ -19,6 +23,7 @@ import {
   filterMockParcels,
   getMockCustomerParcelDetail,
   cancelMockCustomerParcel,
+  createMockCustomerParcel,
 } from "./customer.mock";
 
 /**
@@ -33,6 +38,45 @@ export const getCustomerProfile = cache(async (): Promise<CustomerMeDTO> => {
     return MOCK_CUSTOMER_ME;
   }
 });
+
+/**
+ * Update authenticated customer profile.
+ */
+export async function updateCustomerProfile(
+  payload: Partial<{
+    full_name: string;
+    phone: string;
+    default_address: string;
+    city: string;
+    postal_code: string;
+  }>
+): Promise<CustomerMeDTO> {
+  try {
+    const updated = await apiClient.put<CustomerMeDTO>("/customers/customer/me", payload);
+    // keep mock in sync
+    Object.assign(MOCK_CUSTOMER_ME, updated);
+    return updated;
+  } catch (err) {
+    console.warn("[CustomerAPI] Backend unreachable, updating in-memory profile:", err);
+    if (payload.full_name) MOCK_CUSTOMER_ME.full_name = payload.full_name;
+    if (payload.phone) MOCK_CUSTOMER_ME.phone = payload.phone;
+    if (payload.default_address) MOCK_CUSTOMER_ME.default_address = payload.default_address;
+    if (payload.city) MOCK_CUSTOMER_ME.city = payload.city;
+    if (payload.postal_code) MOCK_CUSTOMER_ME.postal_code = payload.postal_code;
+    return { ...MOCK_CUSTOMER_ME };
+  }
+}
+
+/**
+ * Delete customer profile and session data.
+ */
+export async function deleteCustomerProfile(): Promise<void> {
+  try {
+    await apiClient.delete("/customers/customer/me");
+  } catch (err) {
+    console.warn("[CustomerAPI] Backend unreachable during profile deletion:", err);
+  }
+}
 
 /**
  * Get customer dashboard summary with totals, KPIs, and weekly deliveries/orders.
@@ -115,4 +159,83 @@ export async function cancelCustomerParcel(
     return cancelMockCustomerParcel(trackingId, payload.reason);
   }
 }
+
+/**
+ * Book a new customer delivery shipment.
+ */
+export async function createCustomerParcel(
+  payload: CustomerCreateParcelRequestDTO
+): Promise<CustomerParcelDetailDTO> {
+  try {
+    return await apiClient.post<CustomerParcelDetailDTO>(
+      "/customers/customer/parcels",
+      payload
+    );
+  } catch (err) {
+    console.warn("[CustomerAPI] Backend unreachable, booking via local fallback:", err);
+    return createMockCustomerParcel(payload);
+  }
+}
+
+/**
+ * List saved customer addresses (pickup / dropoff).
+ */
+export async function getCustomerAddresses(
+  type?: "pickup" | "dropoff"
+): Promise<CustomerAddressDTO[]> {
+  try {
+    const query = type ? `?type=${type}` : "";
+    return await apiClient.get<CustomerAddressDTO[]>(
+      `/customers/customer/addresses${query}`
+    );
+  } catch (err) {
+    console.warn("[CustomerAPI] Backend unreachable for addresses:", err);
+    return [];
+  }
+}
+
+/**
+ * Save a new customer address to database.
+ */
+export async function createCustomerAddress(
+  payload: CustomerAddressCreateDTO
+): Promise<CustomerAddressDTO> {
+  return await apiClient.post<CustomerAddressDTO>(
+    "/customers/customer/addresses",
+    payload
+  );
+}
+
+/**
+ * Update an existing customer address.
+ */
+export async function updateCustomerAddress(
+  addressId: number,
+  payload: CustomerAddressUpdateDTO
+): Promise<CustomerAddressDTO> {
+  return await apiClient.put<CustomerAddressDTO>(
+    `/customers/customer/addresses/${addressId}`,
+    payload
+  );
+}
+
+/**
+ * Delete a customer address.
+ */
+export async function deleteCustomerAddress(addressId: number): Promise<void> {
+  await apiClient.delete(`/customers/customer/addresses/${addressId}`);
+}
+
+/**
+ * Set a customer address as default.
+ */
+export async function setDefaultCustomerAddress(
+  addressId: number
+): Promise<CustomerAddressDTO> {
+  return await apiClient.patch<CustomerAddressDTO>(
+    `/customers/customer/addresses/${addressId}/default`
+  );
+}
+
+
 

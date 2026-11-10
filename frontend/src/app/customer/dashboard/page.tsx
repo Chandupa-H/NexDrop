@@ -3,7 +3,7 @@ import { CustomerDashboardData } from "@/features/customers/components/Dashboard
 import CustomerDashboardSkeleton from "./loading";
 
 export const metadata = {
-  title: "Customer Dashboard — NexDrop",
+  title: "Customer Dashboard - NexDrop",
   description:
     "Customer delivery portal: track parcels, view delivery history, estimate shipping fees, and manage orders.",
 };

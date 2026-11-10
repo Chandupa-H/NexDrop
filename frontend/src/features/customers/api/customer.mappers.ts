@@ -76,6 +76,7 @@ export function mapCustomerDashboardSummary(
   });
 
   return {
+    greeting: dto.greeting,
     totals: {
       totalOrders: dto.totals.total_orders,
       activeDeliveries: dto.totals.active_deliveries,

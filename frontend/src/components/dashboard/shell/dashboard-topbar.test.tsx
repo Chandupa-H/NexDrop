@@ -5,6 +5,10 @@ import { DashboardTopbar } from "./dashboard-topbar";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/courier/dashboard",
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+  }),
 }));
 
 describe("DashboardTopbar", () => {

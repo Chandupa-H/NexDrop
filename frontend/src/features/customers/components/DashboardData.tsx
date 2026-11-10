@@ -7,9 +7,7 @@ import {
   mapCustomerProfile,
   mapCustomerDashboardSummary,
   mapCustomerParcelListItem,
-  computeCustomerDonutSegments,
 } from "../api/customer.mappers";
-import { getGreeting, getTodayDateInTimeZone } from "@/lib/dashboard/format";
 import { CustomerDashboardView } from "./DashboardView";
 
 /**
@@ -24,20 +22,17 @@ export async function CustomerDashboardData() {
   ]);
 
   const profile = mapCustomerProfile(profileDto);
-  const todayDate = getTodayDateInTimeZone();
-  const summary = mapCustomerDashboardSummary(summaryDto, todayDate);
+  const summary = mapCustomerDashboardSummary(summaryDto, "");
   const parcels = parcelsDto.items.map(mapCustomerParcelListItem);
-  const donutSegments = computeCustomerDonutSegments(summary.totals);
-  const greeting = getGreeting();
 
   return (
     <CustomerDashboardView
-      greeting={greeting}
+      greeting="Welcome,"
       userName={profile.fullName}
       summary={summary}
       parcels={parcels}
       parcelsTotal={parcelsDto.total}
-      donutSegments={donutSegments}
+      userProfile={profile}
     />
   );
 }
