@@ -56,7 +56,7 @@ async def test_dashboard_summary_invariant(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_list_parcels_no_filter(async_client: AsyncClient):
-    """GET /courier/parcels without filter returns all parcels sorted newest first."""
+    """Active parcels are ordered before completed parcels."""
     response = await async_client.get("/api/v1/couriers/courier/parcels")
     assert response.status_code == 200
     data = response.json()
@@ -64,9 +64,20 @@ async def test_list_parcels_no_filter(async_client: AsyncClient):
     assert data["total"] == 25
     assert len(data["items"]) == 25
     
-    # Newest first: NXD001248
-    assert data["items"][0]["tracking_id"] == "NXD001248"
-    assert data["items"][0]["status"] == "delivered"
+    statuses = [item["status"] for item in data["items"]]
+    status_order = {
+        "pending": 0,
+        "picked_up": 1,
+        "in_transit": 2,
+        "out_for_delivery": 3,
+        "delivered": 5,
+        "failed": 6,
+        "cancelled": 7,
+    }
+    ranks = [status_order.get(parcel_status, 4) for parcel_status in statuses]
+    assert ranks == sorted(ranks)
+    assert statuses[0] == "pending"
+    assert statuses[-1] == "failed"
 
 
 @pytest.mark.asyncio
@@ -100,6 +111,17 @@ async def test_list_parcels_pagination(async_client: AsyncClient):
     
     assert data["total"] == 25
     assert len(data["items"]) == 5
+
+    next_page = await async_client.get(
+        "/api/v1/couriers/courier/parcels?limit=5&offset=5"
+    )
+    assert next_page.status_code == 200
+    next_page_data = next_page.json()
+    assert next_page_data["total"] == 25
+    assert len(next_page_data["items"]) == 5
+    assert {
+        item["tracking_id"] for item in data["items"]
+    }.isdisjoint({item["tracking_id"] for item in next_page_data["items"]})
 
 
 @pytest.mark.asyncio

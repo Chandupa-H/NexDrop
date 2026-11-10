@@ -7,6 +7,9 @@ from app.modules.couriers.schemas import (
     CourierResponse,
     CourierLocationUpdate,
     CourierMeResponse,
+    CourierProfileResponse,
+    CourierProfileUpdateRequest,
+    CourierPasswordChangeRequest,
     DashboardSummaryResponse,
     DashboardTotals,
     DashboardKPI,
@@ -26,6 +29,10 @@ from app.modules.couriers.schemas import (
     FailedDeliveryListResponse,
     FailedDeliveryRecord,
     FailedDeliverySummary,
+)
+from app.modules.couriers.profile_mock import (
+    get_mock_courier_profile,
+    update_mock_courier_profile,
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.service import CourierService
@@ -391,10 +398,57 @@ async def _upload_proof_asset(content: bytes, filename: str) -> dict[str, str]:
 @router.get("/courier/me", response_model=CourierMeResponse, tags=["Courier Dashboard"])
 async def get_courier_me() -> CourierMeResponse:
     """
-    Get the authenticated courier's profile.
+    Get the Courier mock profile while authentication is unfinished.
     TODO(platform): resolve from session token.
     """
-    return CourierMeResponse(id=1, full_name="Poorna Danushka", role="courier")
+    profile = get_mock_courier_profile()
+    return CourierMeResponse(
+        id=int(profile["id"]),
+        full_name=str(profile["full_name"]),
+        role=str(profile["role"]),
+    )
+
+
+@router.get(
+    "/courier/profile",
+    response_model=CourierProfileResponse,
+    tags=["Courier Dashboard"],
+)
+async def get_courier_profile() -> CourierProfileResponse:
+    profile = get_mock_courier_profile()
+    return CourierProfileResponse.model_validate(profile)
+
+
+@router.patch(
+    "/courier/profile",
+    response_model=CourierProfileResponse,
+    tags=["Courier Dashboard"],
+)
+async def update_courier_profile(
+    payload: CourierProfileUpdateRequest,
+) -> CourierProfileResponse:
+    profile = update_mock_courier_profile(
+        full_name=payload.full_name,
+        contact_phone=payload.contact_phone,
+    )
+    return CourierProfileResponse.model_validate(profile)
+
+
+@router.post(
+    "/courier/profile/change-password",
+    tags=["Courier Dashboard"],
+)
+async def change_courier_password(
+    payload: CourierPasswordChangeRequest,
+) -> None:
+    del payload
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail=(
+            "Courier password changes are unavailable until the authentication "
+            "service is implemented."
+        ),
+    )
 
 
 @router.get("/courier/dashboard/summary", response_model=DashboardSummaryResponse, tags=["Courier Dashboard"])
@@ -449,8 +503,8 @@ async def get_courier_parcels(
     offset: int = Query(0, ge=0),
 ) -> ParcelListResponse:
     """
-    List assigned parcels with optional status filter and pagination.
-    Sorted newest first (by assigned_at descending).
+    List assigned parcels with optional status filter and status-prioritized pagination.
+    Parcels are ordered active-first, then by assigned time within each status.
     """
     # Parse status filter
     status_filters = None
@@ -462,8 +516,18 @@ async def get_courier_parcels(
     if status_filters:
         filtered = [p for p in filtered if p["status"] in status_filters]
 
-    # Sort newest first
-    filtered = sorted(filtered, key=lambda p: p["assigned_at"], reverse=True)
+    # Keep active deliveries together ahead of completed work across page boundaries.
+    status_order = {
+        "pending": 0,
+        "picked_up": 1,
+        "in_transit": 2,
+        "out_for_delivery": 3,
+        "delivered": 5,
+        "failed": 6,
+        "cancelled": 7,
+    }
+    filtered.sort(key=lambda p: p["assigned_at"], reverse=True)
+    filtered.sort(key=lambda p: status_order.get(p["status"], 4))
 
     # Paginate
     total = len(filtered)
