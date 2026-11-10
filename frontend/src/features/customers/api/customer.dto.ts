@@ -33,6 +33,7 @@ export interface CustomerWeeklyOrderDTO {
 }
 
 export interface CustomerDashboardSummaryDTO {
+  greeting?: string;
   totals: CustomerDashboardTotalsDTO;
   kpis: CustomerDashboardKPIDTO[];
   weekly_orders: CustomerWeeklyOrderDTO[];
@@ -84,3 +85,57 @@ export interface CustomerParcelDetailDTO {
 export interface CustomerCancelParcelRequestDTO {
   reason?: string;
 }
+
+export interface CustomerCreateParcelRequestDTO {
+  recipient_name: string;
+  recipient_phone: string;
+  delivery_address: string;
+  delivery_city: string;
+  pickup_address?: string;
+  pickup_city?: string;
+  weight_kg: number;
+  dimensions?: string;
+  special_instructions?: string;
+  fee?: number;
+}
+
+export interface CustomerAddressDTO {
+  id: number;
+  customer_id: number;
+  address_type: "pickup" | "dropoff";
+  label: string;
+  custom_name?: string | null;
+  address: string;
+  city: string;
+  postal_code: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerAddressCreateDTO {
+  address_type: "pickup" | "dropoff";
+  label: string;
+  custom_name?: string | null;
+  address: string;
+  city: string;
+  postal_code: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  is_default?: boolean;
+}
+
+export interface CustomerAddressUpdateDTO {
+  address_type?: "pickup" | "dropoff";
+  label?: string;
+  custom_name?: string | null;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  contact_name?: string | null;
+  phone?: string | null;
+  is_default?: boolean;
+}
+

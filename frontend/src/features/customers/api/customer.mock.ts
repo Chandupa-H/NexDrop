@@ -19,287 +19,115 @@ export const MOCK_CUSTOMER_ME: CustomerMeDTO = {
 export const MOCK_CUSTOMER_PARCELS: CustomerParcelDetailDTO[] = [
   {
     tracking_id: "NXD-CUS-101",
-    recipient_name: "Nethmi Silva",
-    recipient_phone_masked: "+94 771 *** 4522",
+    recipient_name: "Kasun Perera",
+    recipient_phone_masked: "+94 77 ••• ••89",
     sender_name: "Dihini Kankanamage",
-    delivery_address: "56 Temple Street, Kandy",
+    delivery_address: "12 Peradeniya Road",
     delivery_city: "Kandy",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
-    status: "out_for_delivery",
-    created_at: "2026-10-31T08:00:00+05:30",
-    eta: "2026-10-31T14:30:00+05:30",
-    fee: 650.0,
+    pickup_address: "45/2 Temple Road",
+    pickup_city: "Colombo 07",
+    status: "delivered",
+    created_at: "2026-11-06T09:30:00Z",
+    eta: "2026-11-08T16:00:00Z",
+    fee: 650,
     weight_kg: 1.5,
-    dimensions: "25 x 15 x 10 cm",
-    special_instructions: "Please call before arriving.",
-    notes: ["Assigned to courier Samantha Perera"],
+    dimensions: "25x20x10 cm",
+    special_instructions: "Handle with care - fragile electronics",
+    notes: [],
     timeline: [
       {
         status: "pending",
         label: "Order Created",
-        occurred_at: "2026-10-31T08:00:00+05:30",
-        location: "Online Portal",
+        occurred_at: "2026-11-06T09:30:00Z",
+        location: "Colombo Portal",
       },
       {
         status: "picked_up",
-        label: "Picked Up",
-        occurred_at: "2026-10-31T09:15:00+05:30",
-        location: "Colombo 07 Hub",
+        label: "Picked Up by Courier",
+        occurred_at: "2026-11-06T14:15:00Z",
+        location: "Colombo 07",
       },
       {
         status: "in_transit",
-        label: "In Transit to Kandy Hub",
-        occurred_at: "2026-10-31T11:00:00+05:30",
-        location: "Central Expressway",
+        label: "Sorted at Central Hub",
+        occurred_at: "2026-11-07T03:40:00Z",
+        location: "Peliyagoda Hub",
       },
       {
         status: "out_for_delivery",
         label: "Out for Delivery",
-        occurred_at: "2026-10-31T13:30:00+05:30",
-        location: "Kandy City",
+        occurred_at: "2026-11-08T08:20:00Z",
+        location: "Kandy Dispatch Station",
+      },
+      {
+        status: "delivered",
+        label: "Delivered & Signed",
+        occurred_at: "2026-11-08T15:45:00Z",
+        location: "Kandy Recipient Address",
       },
     ],
   },
   {
     tracking_id: "NXD-CUS-102",
-    recipient_name: "Amaya Jayasuriya",
-    recipient_phone_masked: "+94 772 *** 5633",
+    recipient_name: "Nimali Silva",
+    recipient_phone_masked: "+94 71 ••• ••42",
     sender_name: "Dihini Kankanamage",
-    delivery_address: "78 Hill Street, Kandy",
-    delivery_city: "Kandy",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
+    delivery_address: "88 Galle Road",
+    delivery_city: "Galle",
+    pickup_address: "45/2 Temple Road",
+    pickup_city: "Colombo 07",
     status: "in_transit",
-    created_at: "2026-10-31T07:30:00+05:30",
-    eta: "2026-10-31T16:00:00+05:30",
-    fee: 520.0,
+    created_at: "2026-11-08T11:00:00Z",
+    eta: "2026-11-10T14:00:00Z",
+    fee: 550,
     weight_kg: 0.8,
-    dimensions: "20 x 10 x 5 cm",
-    special_instructions: "Fragile items inside.",
-    notes: ["Dispatched from Colombo Sorting Facility"],
+    dimensions: "20x15x5 cm",
+    special_instructions: "Deliver between 9 AM and 5 PM",
+    notes: [],
     timeline: [
       {
         status: "pending",
         label: "Order Created",
-        occurred_at: "2026-10-31T07:30:00+05:30",
-        location: "Online Portal",
+        occurred_at: "2026-11-08T11:00:00Z",
+        location: "Colombo Portal",
       },
       {
         status: "picked_up",
-        label: "Picked Up",
-        occurred_at: "2026-10-31T08:45:00+05:30",
+        label: "Collected from Sender",
+        occurred_at: "2026-11-08T16:30:00Z",
         location: "Colombo 07",
       },
       {
         status: "in_transit",
-        label: "In Transit",
-        occurred_at: "2026-10-31T10:15:00+05:30",
-        location: "Kadawatha Interchange",
+        label: "Arrived at Southern Hub",
+        occurred_at: "2026-11-09T05:10:00Z",
+        location: "Galle Hub",
       },
     ],
   },
   {
     tracking_id: "NXD-CUS-103",
-    recipient_name: "Sachini Ratnayake",
-    recipient_phone_masked: "+94 773 *** 6744",
+    recipient_name: "Sunil Jayawardena",
+    recipient_phone_masked: "+94 76 ••• ••11",
     sender_name: "Dihini Kankanamage",
-    delivery_address: "34 Bambalapitiya, Colombo 04",
-    delivery_city: "Colombo",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
-    status: "picked_up",
-    created_at: "2026-10-31T09:00:00+05:30",
-    eta: "2026-10-31T15:00:00+05:30",
-    fee: 380.0,
-    weight_kg: 0.5,
-    dimensions: "15 x 10 x 5 cm",
-    special_instructions: "Leave at front desk with security.",
-    notes: ["Courier assigned"],
-    timeline: [
-      {
-        status: "pending",
-        label: "Order Created",
-        occurred_at: "2026-10-31T09:00:00+05:30",
-        location: "Online Portal",
-      },
-      {
-        status: "picked_up",
-        label: "Picked Up from Sender",
-        occurred_at: "2026-10-31T10:00:00+05:30",
-        location: "Colombo 07",
-      },
-    ],
-  },
-  {
-    tracking_id: "NXD-CUS-104",
-    recipient_name: "Thilina Kumara",
-    recipient_phone_masked: "+94 774 *** 7855",
-    sender_name: "Dihini Kankanamage",
-    delivery_address: "12 Main Road, Galle",
-    delivery_city: "Galle",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
+    delivery_address: "24 Main Street",
+    delivery_city: "Negombo",
+    pickup_address: "45/2 Temple Road",
+    pickup_city: "Colombo 07",
     status: "pending",
-    created_at: "2026-10-31T09:45:00+05:30",
-    eta: "2026-11-01T12:00:00+05:30",
-    fee: 750.0,
+    created_at: "2026-11-09T08:15:00Z",
+    eta: "2026-11-11T12:00:00Z",
+    fee: 420,
     weight_kg: 2.2,
-    dimensions: "30 x 20 x 15 cm",
-    special_instructions: "Hand over to recipient only.",
-    notes: ["Waiting for dispatch allocation"],
-    timeline: [
-      {
-        status: "pending",
-        label: "Delivery Request Received",
-        occurred_at: "2026-10-31T09:45:00+05:30",
-        location: "Online Portal",
-      },
-    ],
-  },
-  {
-    tracking_id: "NXD-CUS-105",
-    recipient_name: "Dilshan Fernando",
-    recipient_phone_masked: "+94 773 *** 6743",
-    sender_name: "Dihini Kankanamage",
-    delivery_address: "67 Fort Road, Galle",
-    delivery_city: "Galle",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
-    status: "delivered",
-    created_at: "2026-10-30T09:15:00+05:30",
-    eta: null,
-    fee: 820.0,
-    weight_kg: 2.5,
-    dimensions: "35 x 25 x 15 cm",
-    special_instructions: null,
-    notes: ["Delivered and signed by recipient"],
-    timeline: [
-      {
-        status: "pending",
-        label: "Order Created",
-        occurred_at: "2026-10-30T09:15:00+05:30",
-        location: "Online Portal",
-      },
-      {
-        status: "picked_up",
-        label: "Picked Up",
-        occurred_at: "2026-10-30T10:30:00+05:30",
-        location: "Colombo 07 Hub",
-      },
-      {
-        status: "in_transit",
-        label: "In Transit",
-        occurred_at: "2026-10-30T13:00:00+05:30",
-        location: "Southern Expressway",
-      },
-      {
-        status: "out_for_delivery",
-        label: "Out for Delivery",
-        occurred_at: "2026-10-30T15:30:00+05:30",
-        location: "Galle Fort",
-      },
-      {
-        status: "delivered",
-        label: "Delivered Successfully",
-        occurred_at: "2026-10-30T16:45:00+05:30",
-        location: "67 Fort Road, Galle",
-      },
-    ],
-  },
-  {
-    tracking_id: "NXD-CUS-106",
-    recipient_name: "Harini Jayawardena",
-    recipient_phone_masked: "+94 774 *** 7854",
-    sender_name: "Dihini Kankanamage",
-    delivery_address: "89 Peradeniya Road, Kandy",
-    delivery_city: "Kandy",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
-    status: "delivered",
-    created_at: "2026-10-29T11:00:00+05:30",
-    eta: null,
-    fee: 450.0,
-    weight_kg: 1.0,
-    dimensions: "20 x 15 x 8 cm",
+    dimensions: "30x20x15 cm",
     special_instructions: null,
     notes: [],
     timeline: [
       {
         status: "pending",
         label: "Order Created",
-        occurred_at: "2026-10-29T11:00:00+05:30",
-        location: "Online Portal",
-      },
-      {
-        status: "delivered",
-        label: "Delivered",
-        occurred_at: "2026-10-29T18:00:00+05:30",
-        location: "Kandy",
-      },
-    ],
-  },
-  {
-    tracking_id: "NXD-CUS-107",
-    recipient_name: "Anusha Perera",
-    recipient_phone_masked: "+94 775 *** 8965",
-    sender_name: "Dihini Kankanamage",
-    delivery_address: "12 Duplication Road, Colombo 04",
-    delivery_city: "Colombo",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
-    status: "delivered",
-    created_at: "2026-10-28T14:20:00+05:30",
-    eta: null,
-    fee: 350.0,
-    weight_kg: 0.4,
-    dimensions: "15 x 10 x 5 cm",
-    special_instructions: null,
-    notes: [],
-    timeline: [
-      {
-        status: "pending",
-        label: "Order Created",
-        occurred_at: "2026-10-28T14:20:00+05:30",
-        location: "Online Portal",
-      },
-      {
-        status: "delivered",
-        label: "Delivered",
-        occurred_at: "2026-10-28T16:30:00+05:30",
-        location: "Colombo 04",
-      },
-    ],
-  },
-  {
-    tracking_id: "NXD-CUS-108",
-    recipient_name: "Roshan Silva",
-    recipient_phone_masked: "+94 776 *** 9076",
-    sender_name: "Dihini Kankanamage",
-    delivery_address: "34 Dalada Veediya, Kandy",
-    delivery_city: "Kandy",
-    pickup_address: "45/2 Temple Road, Colombo 07",
-    pickup_city: "Colombo",
-    status: "cancelled",
-    created_at: "2026-10-27T10:00:00+05:30",
-    eta: null,
-    fee: 490.0,
-    weight_kg: 1.1,
-    dimensions: "20 x 15 x 10 cm",
-    special_instructions: null,
-    notes: ["Cancelled by customer: item no longer required."],
-    timeline: [
-      {
-        status: "pending",
-        label: "Order Created",
-        occurred_at: "2026-10-27T10:00:00+05:30",
-        location: "Online Portal",
-      },
-      {
-        status: "cancelled",
-        label: "Cancelled by Customer",
-        occurred_at: "2026-10-27T10:35:00+05:30",
-        location: "Online Portal",
+        occurred_at: "2026-11-09T08:15:00Z",
+        location: "Colombo Portal",
       },
     ],
   },
@@ -321,6 +149,18 @@ export function getMockDashboardSummary(): CustomerDashboardSummaryDTO {
   ).length;
   const totalOrders = MOCK_CUSTOMER_PARCELS.length;
 
+  const now = new Date();
+  const weeklyOrders = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split("T")[0];
+    const orders = MOCK_CUSTOMER_PARCELS.filter((p) =>
+      p.created_at.startsWith(dateStr)
+    ).length;
+    weeklyOrders.push({ date: dateStr, orders });
+  }
+
   return {
     totals: {
       total_orders: totalOrders,
@@ -330,20 +170,12 @@ export function getMockDashboardSummary(): CustomerDashboardSummaryDTO {
       cancelled,
     },
     kpis: [
-      { key: "active_deliveries", value: activeDeliveries, delta_pct: 25 },
-      { key: "delivered", value: delivered, delta_pct: 15 },
-      { key: "pending", value: pending, delta_pct: -50 },
-      { key: "total_orders", value: totalOrders, delta_pct: 14 },
+      { key: "active_deliveries", value: activeDeliveries, delta_pct: 0 },
+      { key: "delivered", value: delivered, delta_pct: 0 },
+      { key: "pending", value: pending, delta_pct: 0 },
+      { key: "total_orders", value: totalOrders, delta_pct: 0 },
     ],
-    weekly_orders: [
-      { date: "2026-10-25", orders: 1 },
-      { date: "2026-10-26", orders: 2 },
-      { date: "2026-10-27", orders: 1 },
-      { date: "2026-10-28", orders: 1 },
-      { date: "2026-10-29", orders: 1 },
-      { date: "2026-10-30", orders: 1 },
-      { date: "2026-10-31", orders: 4 },
-    ],
+    weekly_orders: weeklyOrders,
   };
 }
 
@@ -410,3 +242,53 @@ export function cancelMockCustomerParcel(
   }
   return parcel;
 }
+
+export function createMockCustomerParcel(
+  payload: {
+    recipient_name: string;
+    recipient_phone: string;
+    delivery_address: string;
+    delivery_city: string;
+    pickup_address?: string;
+    pickup_city?: string;
+    weight_kg: number;
+    dimensions?: string;
+    special_instructions?: string;
+    fee?: number;
+  }
+): CustomerParcelDetailDTO {
+  const trackingId = `NXD-CUS-${100 + MOCK_CUSTOMER_PARCELS.length + 1}`;
+  const now = new Date().toISOString();
+  const parcel: CustomerParcelDetailDTO = {
+    tracking_id: trackingId,
+    recipient_name: payload.recipient_name,
+    recipient_phone_masked:
+      payload.recipient_phone.length > 7
+        ? payload.recipient_phone.slice(0, 7) + " *** " + payload.recipient_phone.slice(-4)
+        : payload.recipient_phone,
+    sender_name: MOCK_CUSTOMER_ME.full_name,
+    delivery_address: payload.delivery_address,
+    delivery_city: payload.delivery_city,
+    pickup_address: payload.pickup_address || MOCK_CUSTOMER_ME.default_address,
+    pickup_city: payload.pickup_city || MOCK_CUSTOMER_ME.city,
+    status: "pending",
+    created_at: now,
+    eta: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    fee: payload.fee || 350.0,
+    weight_kg: payload.weight_kg,
+    dimensions: payload.dimensions || "20 x 15 x 10 cm",
+    special_instructions: payload.special_instructions || null,
+    notes: [],
+    timeline: [
+      {
+        status: "pending",
+        label: "Order Created",
+        occurred_at: now,
+        location: "Online Portal",
+      },
+    ],
+  };
+  MOCK_CUSTOMER_PARCELS.unshift(parcel);
+  return parcel;
+}
+

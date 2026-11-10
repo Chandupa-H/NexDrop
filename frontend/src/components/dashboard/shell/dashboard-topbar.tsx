@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, Menu, Search, ArrowLeft } from "lucide-react";
 import { getTopbarTitle } from "@/lib/dashboard/topbar";
 import type { DashboardRoleConfig, DashboardUser } from "@/lib/dashboard/types";
 
@@ -24,6 +24,7 @@ export function DashboardTopbar({
   const searchRef = useRef<HTMLInputElement>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     if (mobileSearchOpen) searchRef.current?.focus();
@@ -57,7 +58,17 @@ export function DashboardTopbar({
           </button>
 
           <div className="dashboard-page-title" aria-live="polite">
-            {getTopbarTitle(config, pathname)}
+            {pathname !== config.homeHref ? (
+              <Link
+                href={config.homeHref}
+                className="inline-flex items-center gap-1.5 text-sm sm:text-base font-semibold text-[var(--dashboard-deep-green)] hover:text-[var(--dashboard-primary)] transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Dashboard
+              </Link>
+            ) : (
+              getTopbarTitle(config, pathname)
+            )}
           </div>
         </div>
 
@@ -76,6 +87,13 @@ export function DashboardTopbar({
               if (event.key === "Escape") {
                 event.currentTarget.blur();
                 setMobileSearchOpen(false);
+              } else if (event.key === "Enter") {
+                const term = event.currentTarget.value.trim();
+                if (term) {
+                  if (config.role === "customer") {
+                    router.push(`/customer/track?id=${encodeURIComponent(term)}`);
+                  }
+                }
               }
             }}
           />

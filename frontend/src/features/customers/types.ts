@@ -55,6 +55,7 @@ export interface CustomerWeeklyOrder {
 }
 
 export interface CustomerDashboardSummary {
+  greeting?: string;
   totals: CustomerDashboardTotals;
   kpis: CustomerDashboardKPI[];
   weeklyOrders: CustomerWeeklyOrder[];

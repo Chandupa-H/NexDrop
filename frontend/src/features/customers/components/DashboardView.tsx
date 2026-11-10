@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type {
   CustomerParcelListItem,
   CustomerDashboardSummary,
   CustomerTableFilter,
+  CustomerProfile,
 } from "../types";
 import type { NavIconName, DonutSegment } from "@/lib/dashboard/types";
 import { useCustomerParcels } from "../hooks/useCustomerParcels";
@@ -12,13 +13,13 @@ import {
   WelcomeHeader,
   PromoBanner,
   StatCard,
-  BarChart,
-  DonutChart,
   SectionCard,
 } from "@/components/dashboard";
 import { CustomerParcelsTable } from "./CustomerParcelsTable";
 import { CustomerParcelDrawer } from "./CustomerParcelDrawer";
 import { QuickEstimatorCard } from "./QuickEstimatorCard";
+import { SavedAddressesCard } from "./SavedAddressesCard";
+import { QuickTrackCard } from "./QuickTrackCard";
 
 export interface CustomerDashboardViewProps {
   greeting: string;
@@ -26,7 +27,8 @@ export interface CustomerDashboardViewProps {
   summary: CustomerDashboardSummary;
   parcels: CustomerParcelListItem[];
   parcelsTotal: number;
-  donutSegments: DonutSegment[];
+  donutSegments?: DonutSegment[];
+  userProfile?: CustomerProfile;
 }
 
 export function CustomerDashboardView({
@@ -36,7 +38,22 @@ export function CustomerDashboardView({
   parcels,
   parcelsTotal,
   donutSegments,
+  userProfile,
 }: CustomerDashboardViewProps) {
+  // Dynamic greeting synced with user's system time
+  const [currentGreeting, setCurrentGreeting] = useState<string>(greeting);
+
+  useEffect(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) {
+      setCurrentGreeting("Good morning,");
+    } else if (hour >= 12 && hour < 17) {
+      setCurrentGreeting("Good afternoon,");
+    } else {
+      setCurrentGreeting("Good evening,");
+    }
+  }, []);
+
   // State: active table filter (driven by KPI cards or table pills)
   const [activeFilter, setActiveFilter] = useState<CustomerTableFilter>("all");
   const filteredParcels = useCustomerParcels(
@@ -82,13 +99,14 @@ export function CustomerDashboardView({
       {/* Row 1: Greeting + Promo */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <WelcomeHeader
-          greeting={greeting}
+          greeting={currentGreeting}
           name={userName}
           subtitle="Here is the live status of your deliveries and shipments"
         />
         <PromoBanner
           title="Island-wide Express"
           subtitle="Next-day delivery available across all provinces!"
+          href="/customer/book"
         />
       </div>
 
@@ -111,52 +129,40 @@ export function CustomerDashboardView({
         })}
       </div>
 
-      {/* Row 3: Charts */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <SectionCard title="Weekly Orders & Activity">
-            <BarChart
-              items={summary.weeklyOrders.map((w) => ({
-                key: w.date,
-                label: w.dayLabel,
-                value: w.orders,
-                highlight: w.isToday,
-                ariaLabel: `${w.dayFull}: ${w.orders} deliveries`,
-              }))}
-              yMax={Math.max(...summary.weeklyOrders.map((w) => w.orders), 5)}
-            />
-          </SectionCard>
-        </div>
-
-        <div className="lg:col-span-2">
-          <SectionCard title="Shipment Status Breakdown">
-            <DonutChart
-              segments={donutSegments}
-              total={summary.totals.totalOrders}
-              centerLabel="Orders"
-            />
-          </SectionCard>
-        </div>
+      {/* Row 3: Saved Addresses (Top 3 most frequently used) */}
+      <div className="w-full">
+        <SavedAddressesCard
+          initialAddress={userProfile?.defaultAddress}
+          city={userProfile?.city}
+          postalCode={userProfile?.postalCode}
+          userName={userName}
+          limit={3}
+          isDashboardView={true}
+        />
       </div>
 
-      {/* Row 4: Parcels Table + Quick Estimator */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <CustomerParcelsTable
-            parcels={filteredParcels.parcels}
-            total={filteredParcels.total}
-            filter={activeFilter}
-            onFilterChange={setActiveFilter}
-            onSelectParcel={handleSelectParcel}
-            loading={filteredParcels.loading}
-            error={filteredParcels.error ?? undefined}
-            onRetry={filteredParcels.refetch}
-          />
-        </div>
+      {/* Row 4: Live Parcel Tracking (Full length of space) */}
+      <div className="w-full">
+        <QuickTrackCard recentParcels={parcels} />
+      </div>
 
-        <div className="lg:col-span-2">
-          <QuickEstimatorCard />
-        </div>
+      {/* Row 5: Instant Rate Estimator */}
+      <div className="w-full">
+        <QuickEstimatorCard />
+      </div>
+
+      {/* Row 5: My Deliveries & Orders Table (Full length of space) */}
+      <div className="w-full">
+        <CustomerParcelsTable
+          parcels={filteredParcels.parcels}
+          total={filteredParcels.total}
+          filter={activeFilter}
+          onFilterChange={setActiveFilter}
+          onSelectParcel={handleSelectParcel}
+          loading={filteredParcels.loading}
+          error={filteredParcels.error ?? undefined}
+          onRetry={filteredParcels.refetch}
+        />
       </div>
 
       {/* Drawer */}

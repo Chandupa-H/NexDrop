@@ -47,6 +47,15 @@ class CustomerMeResponse(BaseModel):
     postal_code: str
 
 
+class CustomerProfileUpdateRequest(BaseModel):
+    """PUT /customer/me - Update profile fields."""
+    full_name: Optional[str] = Field(None, min_length=2, max_length=150)
+    phone: Optional[str] = Field(None, min_length=7, max_length=30)
+    default_address: Optional[str] = Field(None, min_length=3, max_length=255)
+    city: Optional[str] = Field(None, min_length=2, max_length=100)
+    postal_code: Optional[str] = Field(None, min_length=3, max_length=20)
+
+
 class CustomerDashboardTotals(BaseModel):
     """Order and delivery counts summary."""
     total_orders: int
@@ -71,6 +80,7 @@ class CustomerWeeklyOrder(BaseModel):
 
 class CustomerDashboardSummaryResponse(BaseModel):
     """GET /customer/dashboard/summary - Dashboard metrics."""
+    greeting: Optional[str] = None
     totals: CustomerDashboardTotals
     kpis: List[CustomerDashboardKPI]
     weekly_orders: List[CustomerWeeklyOrder]
@@ -126,3 +136,62 @@ class CustomerParcelDetailResponse(BaseModel):
 class CustomerCancelParcelRequest(BaseModel):
     """POST /customer/parcels/{tracking_id}/cancel - Cancel pending delivery."""
     reason: Optional[str] = None
+
+
+class CustomerCreateParcelRequest(BaseModel):
+    """POST /customer/parcels - Create a new customer shipment."""
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    pickup_address: Optional[str] = None
+    pickup_city: Optional[str] = None
+    weight_kg: float = 1.0
+    dimensions: Optional[str] = None
+    special_instructions: Optional[str] = None
+    fee: Optional[float] = None
+
+
+# ── Customer Address Schemas ───────────────────────────────────────
+
+
+class CustomerAddressBase(BaseModel):
+    """Base schema for customer saved addresses."""
+    address_type: str = "pickup"  # "pickup" | "dropoff"
+    label: str
+    custom_name: Optional[str] = None
+    address: str
+    city: str
+    postal_code: str
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    is_default: bool = False
+
+
+class CustomerAddressCreate(CustomerAddressBase):
+    """Payload to create a new saved address."""
+    pass
+
+
+class CustomerAddressUpdate(BaseModel):
+    """Payload to update an existing saved address."""
+    address_type: Optional[str] = None
+    label: Optional[str] = None
+    custom_name: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    postal_code: Optional[str] = None
+    contact_name: Optional[str] = None
+    phone: Optional[str] = None
+    is_default: Optional[bool] = None
+
+
+class CustomerAddressResponse(CustomerAddressBase):
+    """Full saved address response."""
+    id: int
+    customer_id: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+

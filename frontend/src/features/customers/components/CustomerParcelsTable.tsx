@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useMemo } from "react";
 import { SectionCard, StatusBadge, EmptyState } from "@/components/dashboard";
 import {
@@ -82,11 +83,11 @@ export function CustomerParcelsTable({
             ))}
           </div>
 
-          <div className="relative min-w-[200px] sm:w-64">
+          <div className="relative min-w-[240px] sm:w-80 md:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--dashboard-muted)]" />
             <input
               type="text"
-              placeholder="Filter by tracking # or recipient..."
+              placeholder="Filter by tracking number or recipient..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] placeholder:text-[var(--dashboard-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--dashboard-primary)]"
@@ -138,26 +139,26 @@ export function CustomerParcelsTable({
             }
           />
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-[var(--dashboard-hairline)]">
+          <div className="overflow-x-auto no-scrollbar rounded-xl border border-[var(--dashboard-hairline)]">
             <Table>
               <TableHeader>
                 <TableRow className="bg-[var(--dashboard-page-bg)]/50 hover:bg-[var(--dashboard-page-bg)]/50">
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
+                  <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
                     Tracking ID
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
+                  <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
                     Recipient & City
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
+                  <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
                     Created Date
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
+                  <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
                     Est. Fee
                   </TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
+                  <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
                     Status
                   </TableHead>
-                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
+                  <TableHead className="text-center text-xs font-semibold uppercase tracking-wider text-[var(--dashboard-muted)]">
                     Action
                   </TableHead>
                 </TableRow>
@@ -169,30 +170,39 @@ export function CustomerParcelsTable({
                     className="cursor-pointer transition-colors hover:bg-[var(--dashboard-neutral-bg)]/40"
                     onClick={() => onSelectParcel(parcel.trackingId)}
                   >
-                    <TableCell className="font-semibold text-sm text-[var(--dashboard-deep-green)]">
-                      {parcel.trackingId}
+                    <TableCell className="text-center font-semibold text-sm text-[var(--dashboard-deep-green)]">
+                      <Link
+                        href={`/customer/track?id=${encodeURIComponent(parcel.trackingId)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="hover:underline hover:text-[var(--dashboard-primary)] transition-colors inline-block"
+                        title="Track this parcel"
+                      >
+                        {parcel.trackingId}
+                      </Link>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       <div className="font-medium text-sm text-[var(--dashboard-text)]">
                         {parcel.recipientName}
                       </div>
-                      <div className="text-xs text-[var(--dashboard-muted)]">
+                      <div className="text-sm text-[var(--dashboard-muted)]">
                         {parcel.destination}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-[var(--dashboard-muted)] whitespace-nowrap">
+                    <TableCell className="text-center text-sm text-[var(--dashboard-muted)] whitespace-nowrap">
                       {parcel.createdAtDisplay}
                     </TableCell>
-                    <TableCell className="text-sm font-semibold text-[var(--dashboard-text)]">
+                    <TableCell className="text-center text-sm font-semibold text-[var(--dashboard-text)]">
                       Rs. {parcel.estimatedFee.toFixed(2)}
                     </TableCell>
-                    <TableCell>
-                      <StatusBadge
+                    <TableCell className="text-center">
+                      <div className="flex justify-center">
+                        <StatusBadge
                         label={getCustomerStatusLabel(parcel.status)}
                         tone={getCustomerStatusTone(parcel.status)}
                       />
+                      </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -200,7 +210,7 @@ export function CustomerParcelsTable({
                           e.stopPropagation();
                           onSelectParcel(parcel.trackingId);
                         }}
-                        className="h-8 gap-1 text-xs font-medium text-[var(--dashboard-primary)] hover:text-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-control-bg)]"
+                        className="h-8 gap-1 text-xs font-medium text-[var(--dashboard-primary)] hover:text-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-control-bg)] mx-auto"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Details

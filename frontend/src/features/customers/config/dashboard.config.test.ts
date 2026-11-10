@@ -22,8 +22,16 @@ describe("Customer Dashboard Config", () => {
   });
 
   it("has at most 5 primary nav items for mobile tab bar", () => {
+    const primaryItems = customerDashboardConfig.nav[0].items;
+    expect(primaryItems.length).toBeLessThanOrEqual(5);
+  });
+
+  it("has customer profile navigation configured", () => {
     const flatItems = customerDashboardConfig.nav.flatMap((sec) => sec.items);
-    expect(flatItems.length).toBeLessThanOrEqual(5);
+    const profileItem = flatItems.find((item) => item.id === "profile");
+    expect(profileItem).toBeDefined();
+    expect(profileItem?.href).toBe("/customer/profile");
+    expect(profileItem?.availability).toBe("live");
   });
 
   it("is registered in the dashboard registry", () => {

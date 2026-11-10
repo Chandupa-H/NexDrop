@@ -1,8 +1,21 @@
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-export function PromoBanner({ title, subtitle }: { title: string; subtitle: string }) {
+export function PromoBanner({
+  title,
+  subtitle,
+  href,
+  onClick,
+}: {
+  title: string;
+  subtitle: string;
+  href?: string;
+  onClick?: () => void;
+}) {
+  const buttonContent = <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />;
+
   return (
-    <div className="dashboard-promo-banner">
+    <div className="dashboard-promo-banner group">
       <svg className="dashboard-promo-art" viewBox="0 0 200 120" fill="none" aria-hidden="true">
         <path d="M140 40 L180 60 L140 80 L100 60 Z" fill="url(#box1)" />
         <path d="M140 40 L180 20 L180 60 L140 80 Z" fill="url(#box2)" />
@@ -30,12 +43,24 @@ export function PromoBanner({ title, subtitle }: { title: string; subtitle: stri
             {subtitle}
           </p>
         </div>
-        <button
-          className="dashboard-promo-button"
-          aria-label="Learn more"
-        >
-          <ArrowRight className="w-5 h-5" />
-        </button>
+        {href ? (
+          <Link
+            href={href}
+            className="dashboard-promo-button transition-transform hover:scale-105 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--dashboard-lime-to)]"
+            aria-label={`${title} - ${subtitle}`}
+          >
+            {buttonContent}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={onClick}
+            className="dashboard-promo-button"
+            aria-label="Learn more"
+          >
+            {buttonContent}
+          </button>
+        )}
       </div>
     </div>
   );
