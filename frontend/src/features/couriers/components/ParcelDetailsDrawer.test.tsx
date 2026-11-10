@@ -6,6 +6,7 @@ import {
   getParcelDetail,
   submitFailedDelivery,
   submitSuccessfulDelivery,
+  updateParcelStatus,
   uploadDeliveryProof,
 } from "../api/courier.api";
 
@@ -66,14 +67,17 @@ describe("ParcelDetailsDrawer delivery result", () => {
     } as never);
   });
 
-  const renderDrawer = (action: "upload-proof" | "report-failed" = "upload-proof") => render(
+  const renderDrawer = (action?: "upload-proof" | "report-failed") => render(
     <ParcelDetailsDrawer trackingId="NXD-UI-TEST" action={action} onClose={vi.fn()} onStatusUpdated={vi.fn()} />
   );
 
   it("validates recipient and proof before success submission", async () => {
     renderDrawer();
-    await screen.findByText("Actions");
-    fireEvent.click(screen.getByRole("button", { name: "Confirm Successful Delivery" }));
+    await screen.findByRole("button", { name: "Mark as delivered" });
+    expect(screen.queryByLabelText(/Recipient name/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Proof photo/)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Mark as delivered" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delivered" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("recipient's name");
     expect(submitSuccessfulDelivery).not.toHaveBeenCalled();
   });
@@ -93,14 +97,14 @@ describe("ParcelDetailsDrawer delivery result", () => {
         },
       } as never;
     });
-    render(<ParcelDetailsDrawer trackingId="NXD-UI-TEST" action="upload-proof" onClose={vi.fn()} onStatusUpdated={onStatusUpdated} />);
-    await screen.findByText("Actions");
-    fireEvent.change(screen.getByLabelText(/Recipient Name/), { target: { value: "Recipient" } });
+    render(<ParcelDetailsDrawer trackingId="NXD-UI-TEST" onClose={vi.fn()} onStatusUpdated={onStatusUpdated} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark as delivered" }));
+    fireEvent.change(screen.getByLabelText(/Recipient name/), { target: { value: "Recipient" } });
     const file = new File(["mock png"], "proof.png", { type: "image/png" });
-    fireEvent.change(screen.getByLabelText(/Delivery Proof Photo/), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText(/Proof photo/), { target: { files: [file] } });
     expect(await screen.findByAltText("Delivery proof preview")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/I confirm this parcel/));
-    fireEvent.click(screen.getByRole("button", { name: /Confirm Successful Delivery/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delivered" }));
     expect(await screen.findByText("Uploading proof… 67%")).toBeInTheDocument();
     finishUpload?.();
     await waitFor(() => expect(submitSuccessfulDelivery).toHaveBeenCalledWith("NXD-UI-TEST", {
@@ -114,18 +118,18 @@ describe("ParcelDetailsDrawer delivery result", () => {
 
   it("shows photo validation errors before uploading", async () => {
     renderDrawer();
-    await screen.findByText("Actions");
+    fireEvent.click(await screen.findByRole("button", { name: "Mark as delivered" }));
     const invalid = new File(["not an image"], "proof.svg", { type: "image/svg+xml" });
-    fireEvent.change(screen.getByLabelText(/Delivery Proof Photo/), { target: { files: [invalid] } });
+    fireEvent.change(screen.getByLabelText(/Proof photo/), { target: { files: [invalid] } });
     expect(await screen.findByRole("alert")).toHaveTextContent("JPEG, PNG, or WebP");
     expect(uploadDeliveryProof).not.toHaveBeenCalled();
   });
 
   it("rejects a photo larger than the client size limit", async () => {
     renderDrawer();
-    await screen.findByText("Actions");
+    fireEvent.click(await screen.findByRole("button", { name: "Mark as delivered" }));
     const oversized = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "large.png", { type: "image/png" });
-    fireEvent.change(screen.getByLabelText(/Delivery Proof Photo/), { target: { files: [oversized] } });
+    fireEvent.change(screen.getByLabelText(/Proof photo/), { target: { files: [oversized] } });
     expect(await screen.findByRole("alert")).toHaveTextContent("5 MB or smaller");
     expect(uploadDeliveryProof).not.toHaveBeenCalled();
   });
@@ -137,19 +141,20 @@ describe("ParcelDetailsDrawer delivery result", () => {
     } as never);
     vi.mocked(deleteDeliveryProof).mockResolvedValue(parcelDto() as never);
     renderDrawer();
+    fireEvent.click(await screen.findByRole("button", { name: "Mark as delivered" }));
     await screen.findByAltText("Delivery proof preview");
     fireEvent.click(screen.getByRole("button", { name: "Remove uploaded proof" }));
     await waitFor(() => expect(deleteDeliveryProof).toHaveBeenCalledWith("NXD-UI-TEST"));
   });
 
   it("requires failure reason and explicit confirmation before submitting", async () => {
-    renderDrawer("report-failed");
-    await screen.findByText("Actions");
-    const submitButton = screen.getByRole("button", { name: "Reject Delivery" });
+    renderDrawer();
+    fireEvent.click(await screen.findByRole("button", { name: "Report failed" }));
+    const submitButton = screen.getByRole("button", { name: "Confirm failed delivery" });
     expect(submitButton).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Failure Reason"), { target: { value: "customer_unavailable" } });
+    fireEvent.change(screen.getByLabelText("Reason for failed delivery"), { target: { value: "customer_unavailable" } });
     expect(submitButton).toBeDisabled();
-    fireEvent.change(screen.getByPlaceholderText("Describe the issue..."), { target: { value: "No one answered the door" } });
+    fireEvent.change(screen.getByPlaceholderText("Add details that help explain the delivery attempt."), { target: { value: "No one answered the door" } });
     fireEvent.click(screen.getByLabelText(/I confirm this delivery attempt failed/));
     expect(submitButton).toBeEnabled();
     fireEvent.click(submitButton);
@@ -159,17 +164,51 @@ describe("ParcelDetailsDrawer delivery result", () => {
       confirmed: true,
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("Failed delivery recorded successfully");
-    expect(screen.queryByLabelText("Failure Reason")).not.toBeInTheDocument();
-    expect(screen.queryByText("Report Failed Delivery")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Reason for failed delivery")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Parcel actions" })).not.toBeInTheDocument();
   });
 
   it("surfaces API errors to the courier", async () => {
     vi.mocked(submitFailedDelivery).mockRejectedValueOnce(new Error("Service unavailable"));
-    renderDrawer("report-failed");
-    await screen.findByText("Actions");
-    fireEvent.change(screen.getByLabelText("Failure Reason"), { target: { value: "customer_unavailable" } });
+    renderDrawer();
+    fireEvent.click(await screen.findByRole("button", { name: "Report failed" }));
+    fireEvent.change(screen.getByLabelText("Reason for failed delivery"), { target: { value: "customer_unavailable" } });
     fireEvent.click(screen.getByLabelText(/I confirm this delivery attempt failed/));
-    fireEvent.click(screen.getByRole("button", { name: "Reject Delivery" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm failed delivery" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Service unavailable");
+  });
+
+  it("shows no action controls for delivered or failed parcels", async () => {
+    for (const status of ["delivered", "failed"]) {
+      vi.mocked(getParcelDetail).mockResolvedValue({
+        ...parcelDto(status),
+        delivery_result: {
+          outcome: status,
+          recorded_at: "2026-11-01T10:00:00+05:30",
+          failure_reason: status === "failed" ? "customer_unavailable" : null,
+        },
+      } as never);
+      const { unmount } = renderDrawer();
+      await screen.findByRole("region", { name: "Status history" });
+      expect(screen.queryByRole("region", { name: "Parcel actions" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Mark as delivered" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Report failed" })).not.toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Delivery result" })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("offers only the backend's next status transition for pending parcels", async () => {
+    vi.mocked(getParcelDetail).mockResolvedValue(parcelDto("pending") as never);
+    vi.mocked(updateParcelStatus).mockResolvedValue(parcelDto("picked_up") as never);
+    renderDrawer();
+    expect(await screen.findByRole("button", { name: "Picked Up" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Report failed" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Picked Up" }));
+    await waitFor(() => {
+      expect(updateParcelStatus).toHaveBeenCalledWith("NXD-UI-TEST", { status: "picked_up" });
+    });
+    expect(screen.queryByRole("button", { name: "Mark as delivered" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Report failed" })).toBeInTheDocument();
   });
 });

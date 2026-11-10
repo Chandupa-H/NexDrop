@@ -14,7 +14,10 @@ export async function TopbarUser({ profileHref }: { profileHref: string }) {
   const user: DashboardUser = {
     id: profile.id,
     name: profile.fullName,
-    roleLabel: "Courier", // TODO(phase3): from backend
+    roleLabel: profile.role
+      .split(/[_\s]+/)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .join(" "),
   };
 
   return <TopbarProfileLink user={user} profileHref={profileHref} />;

@@ -52,7 +52,13 @@ export function DashboardView({
 
   // State: active filter (driven by KPI cards)
   const [activeFilter, setActiveFilter] = useState<TableFilter>("all");
-  const filteredParcels = useParcels(activeFilter, parcels, parcelsTotal);
+  const [parcelPage, setParcelPage] = useState(1);
+  const filteredParcels = useParcels(activeFilter, parcelPage, parcels, parcelsTotal);
+
+  const handleFilterChange = (filter: TableFilter) => {
+    setActiveFilter(filter);
+    setParcelPage(1);
+  };
 
   // State: drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -140,7 +146,7 @@ export function DashboardView({
               deltaPct={kpi.deltaPct}
               selectable
               selected={activeFilter === filter}
-              onSelect={() => setActiveFilter(filter)}
+              onSelect={() => handleFilterChange(filter)}
             />
           );
         })}
@@ -182,8 +188,11 @@ export function DashboardView({
         <ParcelsTable
           parcels={filteredParcels.parcels}
           total={filteredParcels.total}
+          page={parcelPage}
+          pageSize={filteredParcels.pageSize}
           filter={activeFilter}
-          onFilterChange={setActiveFilter}
+          onPageChange={setParcelPage}
+          onFilterChange={handleFilterChange}
           onOpen={handleOpenDrawer}
           loading={filteredParcels.loading}
           error={filteredParcels.error ?? undefined}
