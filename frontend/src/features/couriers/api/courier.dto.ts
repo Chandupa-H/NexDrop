@@ -90,6 +90,78 @@ export interface DeliveryProofUploadDTO {
   parcel: ParcelDetailDTO;
 }
 
+export interface CourierProofRecordDTO {
+  tracking_number: string;
+  recipient_name: string;
+  delivered_at: string;
+  delivery_address: string;
+  status: string;
+  secure_url: string;
+  public_id: string;
+}
+
+export interface CourierProofSummaryDTO {
+  total_proofs: number;
+  successful_deliveries: number;
+  parcels_with_proof: number;
+}
+
+export interface CourierProofListDTO {
+  items: CourierProofRecordDTO[];
+  total: number;
+  summary: CourierProofSummaryDTO;
+}
+
+export interface CourierProofParamsDTO {
+  q?: string;
+  date?: string;
+  status?: "delivered" | "failed";
+}
+
+export type FailedRedeliveryStatusDTO = "pending" | "scheduled" | "completed" | "superseded";
+
+export interface FailedDeliveryAttemptDTO {
+  attempt_number: number;
+  failed_at: string;
+  failure_reason: string;
+  failure_reason_label: string;
+  note: string | null;
+}
+
+export interface FailedDeliveryRecordDTO extends FailedDeliveryAttemptDTO {
+  tracking_number: string;
+  customer_name: string;
+  customer_phone_masked: string;
+  destination: string;
+  delivery_address: string;
+  assigned_at: string;
+  eta: string | null;
+  courier_name: string | null;
+  parcel_status: string;
+  redelivery_status: FailedRedeliveryStatusDTO;
+  previous_attempts: FailedDeliveryAttemptDTO[];
+}
+
+export interface FailedDeliverySummaryDTO {
+  total_failed_deliveries: number;
+  today_failed_deliveries: number;
+  pending_redelivery: number;
+  most_common_failure_reason: string | null;
+}
+
+export interface FailedDeliveryListDTO {
+  items: FailedDeliveryRecordDTO[];
+  total: number;
+  summary: FailedDeliverySummaryDTO;
+}
+
+export interface FailedDeliveryParamsDTO {
+  q?: string;
+  reason?: string;
+  date?: string;
+  redelivery_status?: FailedRedeliveryStatusDTO;
+}
+
 export interface SuccessfulDeliveryRequestDTO {
   recipient_name: string;
   confirmed: boolean;

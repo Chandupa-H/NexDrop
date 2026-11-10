@@ -41,4 +41,20 @@ describe("SidebarContent", () => {
       screen.getByRole("link", { name: "Delivery History" })
     ).toHaveAttribute("aria-current", "page");
   });
+
+  it("navigates to and activates Proof of Delivery", () => {
+    route.pathname = "/courier/proof";
+    render(<SidebarContent config={courierDashboardConfig} />);
+
+    expect(screen.getByRole("link", { name: "Proof of Delivery" })).toHaveAttribute("href", "/courier/proof");
+    expect(screen.getByRole("link", { name: "Proof of Delivery" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("navigates to and activates Failed Deliveries", () => {
+    route.pathname = "/courier/failed";
+    render(<SidebarContent config={courierDashboardConfig} />);
+
+    expect(screen.getByRole("link", { name: "Failed Deliveries" })).toHaveAttribute("href", "/courier/failed");
+    expect(screen.getByRole("link", { name: "Failed Deliveries" })).toHaveAttribute("aria-current", "page");
+  });
 });

@@ -106,8 +106,8 @@ export function ParcelsTable({
           />
         ) : (
           <>
-            <div className="hidden lg:block overflow-hidden rounded-xl border border-[var(--dashboard-hairline)]">
-              <Table>
+            <div className="hidden lg:block overflow-x-auto rounded-xl border border-[var(--dashboard-hairline)]">
+              <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tracking ID</TableHead>

@@ -1,5 +1,5 @@
-from typing import List, Optional
-from datetime import datetime, timedelta, timezone
+from typing import List, Optional, Literal
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
@@ -19,6 +19,13 @@ from app.modules.couriers.schemas import (
     SuccessfulDeliveryRequest,
     FailedDeliveryRequest,
     DeliveryProofResponse,
+    CourierProofListResponse,
+    CourierProofRecord,
+    CourierProofSummary,
+    FailedDeliveryAttempt,
+    FailedDeliveryListResponse,
+    FailedDeliveryRecord,
+    FailedDeliverySummary,
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.service import CourierService
@@ -120,12 +127,201 @@ _MOCK_PARCELS = [
     {"tracking_id": "NXD001243", "customer_name": "Tharindu Bandara", "phone": "+94772345634", "destination": "Galle", "address": "23 Hikkaduwa Road, Galle", "status": "failed", "assigned_at": "2026-10-31T07:20:00+05:30", "eta": None, "notes": ["Customer unavailable", "Attempted delivery at 09:30 AM"], "timeline": [{"status": "pending", "label": "Order Created", "occurred_at": "2026-10-31T07:00:00+05:30"}, {"status": "picked_up", "label": "Picked Up", "occurred_at": "2026-10-31T07:20:00+05:30"}, {"status": "out_for_delivery", "label": "Out for Delivery", "occurred_at": "2026-10-31T08:30:00+05:30"}, {"status": "failed", "label": "Delivery Failed", "occurred_at": "2026-10-31T09:30:00+05:30", "location": "Galle"}]},
 ]
 
+
+def _seed_mock_delivery_proofs() -> None:
+    """Attach clearly labeled temporary proof images to demo delivered parcels."""
+    for tracking_id in ("NXD001248", "NXD001245", "NXD001240"):
+        parcel = next(p for p in _MOCK_PARCELS if p["tracking_id"] == tracking_id)
+        delivered_event = next(event for event in reversed(parcel["timeline"]) if event["status"] == "delivered")
+        recorded_at = delivered_event["occurred_at"]
+        parcel["delivery_proof"] = {
+            "secure_url": f"https://placehold.co/960x720/png?text=MOCK+PROOF+{tracking_id}",
+            "public_id": f"mock-proof-{tracking_id}",
+        }
+        parcel["delivery_result"] = {
+            "outcome": "delivered",
+            "recipient_name": parcel["customer_name"],
+            "recorded_at": recorded_at,
+        }
+
+
+_seed_mock_delivery_proofs()
+
+_FAILURE_REASON_LABELS = {
+    "address_not_found": "Address Not Found",
+    "customer_unavailable": "Customer Unavailable",
+    "refused_delivery": "Refused Delivery",
+    "damaged_parcel": "Damaged Parcel",
+    "other": "Other",
+}
+_MOCK_FAILED_ATTEMPTS = [
+    {"tracking_id": "NXD001243", "failed_at": "2026-10-30T14:20:00+05:30", "failure_reason": "customer_unavailable", "note": "Recipient did not answer the phone.", "redelivery_status": "superseded"},
+    {"tracking_id": "NXD001243", "failed_at": "2026-10-31T09:30:00+05:30", "failure_reason": "customer_unavailable", "note": "Attempted delivery at 09:30 AM; customer unavailable.", "redelivery_status": "pending"},
+    {"tracking_id": "NXD001244", "failed_at": "2026-10-31T09:00:00+05:30", "failure_reason": "refused_delivery", "note": "Recipient asked to reschedule delivery.", "redelivery_status": "scheduled"},
+    {"tracking_id": "NXD001242", "failed_at": "2026-10-31T08:45:00+05:30", "failure_reason": "address_not_found", "note": "Could not identify the building from the supplied address.", "redelivery_status": "scheduled"},
+    {"tracking_id": "NXD001248", "failed_at": "2026-10-30T15:10:00+05:30", "failure_reason": "damaged_parcel", "note": "Parcel returned to the hub for inspection.", "redelivery_status": "completed"},
+]
+
+
+def _mock_failed_delivery_records() -> list[FailedDeliveryRecord]:
+    """Combine sample attempt history with failures submitted in this process."""
+    parcels = {parcel["tracking_id"]: parcel for parcel in _MOCK_PARCELS}
+    attempts = [dict(attempt) for attempt in _MOCK_FAILED_ATTEMPTS]
+    seen = {(item["tracking_id"], item["failed_at"]) for item in attempts}
+    for parcel in _MOCK_PARCELS:
+        result = parcel.get("delivery_result") or {}
+        if result.get("outcome") != "failed":
+            continue
+        recorded_at = result.get("recorded_at")
+        if not recorded_at or (parcel["tracking_id"], recorded_at) in seen:
+            continue
+        attempts.append({
+            "tracking_id": parcel["tracking_id"],
+            "failed_at": recorded_at,
+            "failure_reason": result.get("failure_reason") or "other",
+            "note": result.get("note"),
+            "redelivery_status": "pending",
+        })
+
+    grouped: dict[str, list[dict]] = {}
+    for attempt in attempts:
+        grouped.setdefault(attempt["tracking_id"], []).append(attempt)
+    records: list[FailedDeliveryRecord] = []
+    for tracking_id, parcel_attempts in grouped.items():
+        parcel = parcels.get(tracking_id)
+        if not parcel:
+            continue
+        parcel_attempts.sort(key=lambda item: item["failed_at"])
+        for index, attempt in enumerate(parcel_attempts):
+            redelivery_status = attempt["redelivery_status"]
+            if parcel["status"] == "delivered" and redelivery_status == "pending":
+                redelivery_status = "completed"
+            prior = [
+                FailedDeliveryAttempt(
+                    attempt_number=prior_index + 1,
+                    failed_at=prior_attempt["failed_at"],
+                    failure_reason=prior_attempt["failure_reason"],
+                    failure_reason_label=_FAILURE_REASON_LABELS.get(prior_attempt["failure_reason"], "Other"),
+                    note=prior_attempt.get("note"),
+                )
+                for prior_index, prior_attempt in enumerate(parcel_attempts[:index])
+            ]
+            reason = attempt["failure_reason"]
+            phone = parcel.get("phone", "")
+            if len(phone) >= 12 and phone.startswith("+94"):
+                masked_phone = phone[:3] + " " + phone[3:6] + " *** " + phone[-4:]
+            elif len(phone) >= 10:
+                masked_phone = phone[:7] + " *** " + phone[-4:]
+            else:
+                masked_phone = phone or "Not available"
+            records.append(FailedDeliveryRecord(
+                tracking_number=tracking_id,
+                customer_name=parcel["customer_name"],
+                customer_phone_masked=masked_phone,
+                destination=parcel["destination"],
+                delivery_address=parcel["address"],
+                assigned_at=parcel["assigned_at"],
+                eta=parcel.get("eta"),
+                courier_name="Poorna Danushka",
+                parcel_status=parcel["status"],
+                redelivery_status=redelivery_status,
+                attempt_number=index + 1,
+                failed_at=attempt["failed_at"],
+                failure_reason=reason,
+                failure_reason_label=_FAILURE_REASON_LABELS.get(reason, "Other"),
+                note=attempt.get("note"),
+                previous_attempts=prior,
+            ))
+    records.sort(key=lambda record: record.failed_at, reverse=True)
+    return records
+
 MAX_PROOF_IMAGE_BYTES = 5 * 1024 * 1024
 _IMAGE_SIGNATURES = {
     "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
     "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
     "image/webp": lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP",
 }
+
+
+@router.get(
+    "/courier/proofs",
+    response_model=CourierProofListResponse,
+    tags=["Courier Proof of Delivery"],
+)
+async def list_courier_proofs(
+    q: Optional[str] = Query(None, max_length=100),
+    delivery_date: Optional[date] = Query(None, alias="date"),
+    delivery_status: Optional[Literal["delivered", "failed"]] = Query(None, alias="status"),
+) -> CourierProofListResponse:
+    """List proof metadata from backend-managed delivered parcel mock data."""
+    records: list[CourierProofRecord] = []
+    for parcel in _MOCK_PARCELS:
+        proof = parcel.get("delivery_proof")
+        result = parcel.get("delivery_result") or {}
+        if parcel["status"] != "delivered" or not proof or result.get("outcome") != "delivered":
+            continue
+        delivered_at = result.get("recorded_at") or next(
+            (event["occurred_at"] for event in reversed(parcel.get("timeline", [])) if event["status"] == "delivered"),
+            parcel["assigned_at"],
+        )
+        recipient = result.get("recipient_name") or parcel["customer_name"]
+        records.append(CourierProofRecord(
+            tracking_number=parcel["tracking_id"], recipient_name=recipient,
+            delivered_at=delivered_at, delivery_address=parcel["address"],
+            status="delivered", secure_url=proof["secure_url"], public_id=proof["public_id"],
+        ))
+
+    summary = CourierProofSummary(
+        total_proofs=len(records), successful_deliveries=len(records),
+        parcels_with_proof=len({record.tracking_number for record in records}),
+    )
+    filtered = records
+    if q:
+        needle = q.strip().casefold()
+        filtered = [record for record in filtered if needle in record.tracking_number.casefold() or needle in record.recipient_name.casefold()]
+    if delivery_date:
+        filtered = [record for record in filtered if datetime.fromisoformat(record.delivered_at).date() == delivery_date]
+    if delivery_status:
+        filtered = [record for record in filtered if record.status == delivery_status]
+    filtered.sort(key=lambda record: record.delivered_at, reverse=True)
+    return CourierProofListResponse(items=filtered, total=len(filtered), summary=summary)
+
+
+@router.get(
+    "/courier/failed-deliveries",
+    response_model=FailedDeliveryListResponse,
+    tags=["Courier Failed Deliveries"],
+)
+async def list_courier_failed_deliveries(
+    q: Optional[str] = Query(None, max_length=100),
+    reason: Optional[str] = Query(None, max_length=100),
+    delivery_date: Optional[date] = Query(None, alias="date"),
+    redelivery_status: Optional[Literal["pending", "scheduled", "completed", "superseded"]] = Query(None),
+) -> FailedDeliveryListResponse:
+    """Search/filter in-memory failed attempts; retry is deliberately not exposed."""
+    records = _mock_failed_delivery_records()
+    reason_counts: dict[str, int] = {}
+    for record in records:
+        reason_counts[record.failure_reason] = reason_counts.get(record.failure_reason, 0) + 1
+    most_common = max(reason_counts, key=reason_counts.get) if reason_counts else None
+    today = datetime.now(timezone(timedelta(hours=5, minutes=30))).date()
+    summary = FailedDeliverySummary(
+        total_failed_deliveries=len(records),
+        today_failed_deliveries=sum(1 for record in records if datetime.fromisoformat(record.failed_at).date() == today),
+        pending_redelivery=len({record.tracking_number for record in records if record.redelivery_status == "pending"}),
+        most_common_failure_reason=_FAILURE_REASON_LABELS.get(most_common, "Other") if most_common else None,
+    )
+    filtered = records
+    if q:
+        needle = q.strip().casefold()
+        filtered = [record for record in filtered if needle in record.tracking_number.casefold() or needle in record.customer_name.casefold()]
+    if reason:
+        filtered = [record for record in filtered if record.failure_reason == reason]
+    if delivery_date:
+        filtered = [record for record in filtered if datetime.fromisoformat(record.failed_at).date() == delivery_date]
+    if redelivery_status:
+        filtered = [record for record in filtered if record.redelivery_status == redelivery_status]
+    return FailedDeliveryListResponse(items=filtered, total=len(filtered), summary=summary)
 
 
 def _find_mock_parcel(tracking_id: str) -> dict:

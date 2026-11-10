@@ -119,6 +119,74 @@ async def test_get_parcel_detail_success(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_courier_proof_records_summary_and_filters(async_client: AsyncClient):
+    response = await async_client.get(
+        "/api/v1/couriers/courier/proofs?q=NXD001248&date=2026-10-31&status=delivered"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["tracking_number"] == "NXD001248"
+    assert data["items"][0]["recipient_name"] == "Kavindu Perera"
+    assert data["items"][0]["delivery_address"] == "123 Galle Road, Colombo 03"
+    assert data["items"][0]["secure_url"].startswith("https://placehold.co/")
+    assert data["summary"] == {
+        "total_proofs": 3,
+        "successful_deliveries": 3,
+        "parcels_with_proof": 3,
+    }
+
+    empty = await async_client.get("/api/v1/couriers/courier/proofs?q=missing-recipient")
+    assert empty.status_code == 200
+    assert empty.json()["items"] == []
+    assert empty.json()["summary"]["total_proofs"] == 3
+
+
+@pytest.mark.asyncio
+async def test_failed_deliveries_summary_filters_and_attempt_history(async_client: AsyncClient):
+    response = await async_client.get(
+        "/api/v1/couriers/courier/failed-deliveries",
+        params={
+            "q": "NXD001243",
+            "reason": "customer_unavailable",
+            "date": "2026-10-31",
+            "redelivery_status": "pending",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["items"][0]["tracking_number"] == "NXD001243"
+    assert data["items"][0]["customer_name"] == "Tharindu Bandara"
+    assert data["items"][0]["failure_reason_label"] == "Customer Unavailable"
+    assert data["items"][0]["parcel_status"] == "failed"
+    assert data["items"][0]["redelivery_status"] == "pending"
+    assert len(data["items"][0]["previous_attempts"]) == 1
+    assert data["summary"]["total_failed_deliveries"] == 5
+    assert data["summary"]["pending_redelivery"] == 1
+    assert data["summary"]["most_common_failure_reason"] == "Customer Unavailable"
+
+    scheduled = await async_client.get(
+        "/api/v1/couriers/courier/failed-deliveries?redelivery_status=scheduled"
+    )
+    assert scheduled.status_code == 200
+    assert scheduled.json()["total"] == 2
+    assert {item["tracking_number"] for item in scheduled.json()["items"]} == {"NXD001244", "NXD001242"}
+
+
+@pytest.mark.asyncio
+async def test_failed_deliveries_reject_invalid_date_and_redelivery_status(async_client: AsyncClient):
+    invalid_date = await async_client.get(
+        "/api/v1/couriers/courier/failed-deliveries?date=not-a-date"
+    )
+    assert invalid_date.status_code == 422
+    invalid_status = await async_client.get(
+        "/api/v1/couriers/courier/failed-deliveries?redelivery_status=retry"
+    )
+    assert invalid_status.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_get_parcel_detail_not_found(async_client: AsyncClient):
     """GET /courier/parcels/{tracking_id} returns 404 for unknown ID."""
     response = await async_client.get("/api/v1/couriers/courier/parcels/NXD999999")

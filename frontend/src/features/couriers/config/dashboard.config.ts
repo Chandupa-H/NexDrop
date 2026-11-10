@@ -45,14 +45,16 @@ export const courierDashboardConfig: DashboardRoleConfig = {
           label: "Proof of Delivery",
           href: "/courier/proof",
           icon: "camera",
-          availability: "planned",
+          availability: "live",
+          match: "exact",
         },
         {
           id: "failed",
           label: "Failed Deliveries",
           href: "/courier/failed",
           icon: "alert-triangle",
-          availability: "planned",
+          availability: "live",
+          match: "exact",
         },
         {
           id: "history",
