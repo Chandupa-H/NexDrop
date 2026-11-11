@@ -424,11 +424,10 @@ export default function AdminUsersPage() {
                   key={role}
                   type="button"
                   onClick={() => setSelectedRole(role)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shrink-0 ${
-                    selectedRole === role
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shrink-0 ${selectedRole === role
                       ? "bg-[#0b3d2a] text-white"
                       : "bg-[#e8f5ec] text-[#0b3d2a] hover:bg-[#d5ecd9]"
-                  }`}
+                    }`}
                 >
                   {role}
                 </button>
@@ -484,10 +483,10 @@ export default function AdminUsersPage() {
                             u.role === "Admin"
                               ? "default"
                               : u.role === "Courier"
-                              ? "lime"
-                              : u.role === "Merchant"
-                              ? "success"
-                              : "secondary"
+                                ? "lime"
+                                : u.role === "Merchant"
+                                  ? "success"
+                                  : "secondary"
                           }
                         >
                           {u.role}
@@ -498,11 +497,10 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            u.is_active
+                          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${u.is_active
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : "bg-red-50 text-red-700 border border-red-200"
-                          }`}
+                            }`}
                         >
                           {u.is_active ? (
                             <CheckCircle2 className="w-3 h-3" />
@@ -525,8 +523,8 @@ export default function AdminUsersPage() {
                           {togglingId === u.id
                             ? "Updating..."
                             : u.is_active
-                            ? "Suspend"
-                            : "Activate"}
+                              ? "Suspend"
+                              : "Activate"}
                         </Button>
                       </td>
                     </tr>
