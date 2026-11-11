@@ -1,6 +1,20 @@
 from datetime import datetime
 from typing import List, Optional, Any
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class AdminUserCreate(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+    role: str
+    is_active: bool = True
+    phone: Optional[str] = None
+    vehicle_type: Optional[str] = "motorcycle"
+    license_plate: Optional[str] = None
+    business_name: Optional[str] = None
+    registration_number: Optional[str] = None
+    business_address: Optional[str] = None
 
 
 class AdminStats(BaseModel):

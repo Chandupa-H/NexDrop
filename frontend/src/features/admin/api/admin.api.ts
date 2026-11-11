@@ -53,6 +53,20 @@ export interface AdminUserDTO {
   deliveries: number;
 }
 
+export interface AdminUserCreateDTO {
+  full_name: string;
+  email: string;
+  password: string;
+  role: "customer" | "merchant" | "courier" | "dispatcher" | "admin";
+  is_active?: boolean;
+  phone?: string;
+  vehicle_type?: string;
+  license_plate?: string;
+  business_name?: string;
+  registration_number?: string;
+  business_address?: string;
+}
+
 export interface AdminMerchantDTO {
   id: number;
   display_id: string;
@@ -158,6 +172,9 @@ export const adminApi = {
     const qs = role && role !== "All" ? `?role=${encodeURIComponent(role)}` : "";
     return apiClient.get<AdminUserDTO[]>(`/admin/users${qs}`);
   },
+
+  createUser: (payload: AdminUserCreateDTO) =>
+    apiClient.post<AdminUserDTO>("/admin/users", payload),
 
   toggleUserStatus: (userId: number) =>
     apiClient.patch<{ id: number; is_active: boolean; status: string }>(
