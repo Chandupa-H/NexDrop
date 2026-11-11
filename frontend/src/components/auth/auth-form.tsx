@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, RefreshCw, AlertCircle, ArrowRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import { resolveUserDashboardPath } from "@/lib/auth/routes";
 
 interface AuthFormProps {
   isDark?: boolean;
@@ -86,7 +87,13 @@ export function AuthForm({
         }
 
         if (data.session) {
-          router.push(onSuccessRedirect);
+          const target = await resolveUserDashboardPath(
+            supabase,
+            data.user?.id,
+            onSuccessRedirect
+          );
+          router.replace(target);
+          router.refresh();
         }
       } else {
         // Sign Up Flow
@@ -113,7 +120,13 @@ export function AuthForm({
 
         // If session is returned immediately (email confirmation disabled in Supabase)
         if (data.session) {
-          router.push(onSuccessRedirect);
+          const target = await resolveUserDashboardPath(
+            supabase,
+            data.user?.id,
+            onSuccessRedirect
+          );
+          router.replace(target);
+          router.refresh();
           return;
         }
 
