@@ -15,6 +15,14 @@ class PricingTierCreate(PricingTierBase):
     pass
 
 
+class PricingTierUpdate(BaseModel):
+    name: Optional[str] = None
+    base_rate: Optional[float] = None
+    per_km_rate: Optional[float] = None
+    per_kg_rate: Optional[float] = None
+    is_active: Optional[bool] = None
+
+
 class PricingTierResponse(PricingTierBase):
     id: int
     created_at: datetime

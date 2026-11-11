@@ -21,8 +21,14 @@ class ZoneService:
         zone = DeliveryZone(
             name=payload.name,
             code=payload.code,
-            description=payload.description,
             postcodes=payload.postcodes,
+            hub_name=payload.hub_name,
+            base_fee=payload.base_fee,
+            currency=payload.currency,
+            avg_delivery_time_mins=payload.avg_delivery_time_mins,
+            active_couriers=payload.active_couriers,
+            status=payload.status,
+            surge_multiplier=payload.surge_multiplier,
             is_active=payload.is_active,
         )
         return await self.repository.create(zone)
@@ -36,10 +42,22 @@ class ZoneService:
             zone.name = payload.name
         if payload.code is not None:
             zone.code = payload.code
-        if payload.description is not None:
-            zone.description = payload.description
         if payload.postcodes is not None:
             zone.postcodes = payload.postcodes
+        if payload.hub_name is not None:
+            zone.hub_name = payload.hub_name
+        if payload.base_fee is not None:
+            zone.base_fee = payload.base_fee
+        if payload.currency is not None:
+            zone.currency = payload.currency
+        if payload.avg_delivery_time_mins is not None:
+            zone.avg_delivery_time_mins = payload.avg_delivery_time_mins
+        if payload.active_couriers is not None:
+            zone.active_couriers = payload.active_couriers
+        if payload.status is not None:
+            zone.status = payload.status
+        if payload.surge_multiplier is not None:
+            zone.surge_multiplier = payload.surge_multiplier
         if payload.is_active is not None:
             zone.is_active = payload.is_active
 
@@ -47,4 +65,3 @@ class ZoneService:
 
 
 DeliveryZoneService = ZoneService
-
