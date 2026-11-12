@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, ConfigDict
 from app.modules.dispatch.models import DispatchStatus
 
@@ -43,3 +43,29 @@ class DispatcherMeResponse(BaseModel):
     role: str = "dispatcher"
 
 
+class CourierReassignRequest(BaseModel):
+    new_courier_id: int
+    reason: Optional[str] = None
+
+
+class WarehouseReceiveRequest(BaseModel):
+    parcel_id: int
+    warehouse_id: int
+    notes: Optional[str] = None
+
+
+class WarehouseHandoverRequest(BaseModel):
+    parcel_id: int
+    warehouse_id: int
+    courier_id: int
+    notes: Optional[str] = None
+
+
+class CourierWorkloadItem(BaseModel):
+    courier_id: int
+    user_id: int
+    full_name: Optional[str] = "Unknown Courier"
+    vehicle_type: str
+    is_available: bool
+    active_assignments: int
+    workload_status: str  # "AVAILABLE", "OPTIMAL", "BUSY", "UNAVAILABLE"

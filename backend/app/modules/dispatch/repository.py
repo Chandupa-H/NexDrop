@@ -1,8 +1,11 @@
 from typing import Optional, List, Dict, Any
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.modules.dispatch.models import DispatchAssignment
+from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
 from app.modules.parcels.models import Parcel, ParcelStatus
+from app.modules.couriers.models import Courier
+from app.modules.warehouses.models import Warehouse
+from app.modules.users.models import User
 
 
 class DispatchRepository:
@@ -14,6 +17,43 @@ class DispatchRepository:
             return None
         result = await self.session.execute(
             select(DispatchAssignment).where(DispatchAssignment.id == assignment_id)
+        )
+        return result.scalars().first()
+
+    async def get_active_by_parcel(self, parcel_id: int) -> Optional[DispatchAssignment]:
+        if not self.session:
+            return None
+        result = await self.session.execute(
+            select(DispatchAssignment).where(
+                and_(
+                    DispatchAssignment.parcel_id == parcel_id,
+                    DispatchAssignment.status.in_([DispatchStatus.ASSIGNED, DispatchStatus.ACCEPTED]),
+                )
+            ).order_by(DispatchAssignment.id.desc())
+        )
+        return result.scalars().first()
+
+    async def get_courier(self, courier_id: int) -> Optional[Courier]:
+        if not self.session:
+            return None
+        result = await self.session.execute(
+            select(Courier).where(Courier.id == courier_id)
+        )
+        return result.scalars().first()
+
+    async def get_parcel(self, parcel_id: int) -> Optional[Parcel]:
+        if not self.session:
+            return None
+        result = await self.session.execute(
+            select(Parcel).where(Parcel.id == parcel_id)
+        )
+        return result.scalars().first()
+
+    async def get_warehouse(self, warehouse_id: int) -> Optional[Warehouse]:
+        if not self.session:
+            return None
+        result = await self.session.execute(
+            select(Warehouse).where(Warehouse.id == warehouse_id)
         )
         return result.scalars().first()
 
@@ -38,6 +78,64 @@ class DispatchRepository:
         await self.session.flush()
         await self.session.refresh(assignment)
         return assignment
+
+    async def get_couriers_workload(self) -> List[Dict[str, Any]]:
+        """
+        Calculate active assignments and courier availability across the fleet.
+        """
+        if not self.session:
+            return []
+
+        # Count active assignments per courier
+        active_counts_subquery = (
+            select(
+                DispatchAssignment.courier_id,
+                func.count(DispatchAssignment.id).label("active_count"),
+            )
+            .where(
+                DispatchAssignment.status.in_([DispatchStatus.ASSIGNED, DispatchStatus.ACCEPTED])
+            )
+            .group_by(DispatchAssignment.courier_id)
+            .subquery()
+        )
+
+        query = (
+            select(
+                Courier,
+                User.full_name,
+                func.coalesce(active_counts_subquery.c.active_count, 0).label("active_assignments"),
+            )
+            .join(User, Courier.user_id == User.id, isouter=True)
+            .join(
+                active_counts_subquery,
+                Courier.id == active_counts_subquery.c.courier_id,
+                isouter=True,
+            )
+        )
+
+        result = await self.session.execute(query)
+        workloads = []
+        for row in result.all():
+            courier, full_name, active_count = row
+            if not courier.is_available:
+                status_str = "UNAVAILABLE"
+            elif active_count >= 5:
+                status_str = "BUSY"
+            elif active_count > 0:
+                status_str = "OPTIMAL"
+            else:
+                status_str = "AVAILABLE"
+
+            workloads.append({
+                "courier_id": courier.id,
+                "user_id": courier.user_id,
+                "full_name": full_name or f"Courier #{courier.id}",
+                "vehicle_type": courier.vehicle_type,
+                "is_available": courier.is_available,
+                "active_assignments": int(active_count),
+                "workload_status": status_str,
+            })
+        return workloads
 
     async def get_dashboard_stats(self) -> Dict[str, int]:
         """Strictly read-only aggregation of parcel delivery metrics."""
@@ -72,11 +170,11 @@ class DispatchRepository:
             failed_deliveries = (await self.session.execute(failed_stmt)).scalar() or 0
 
             return {
-                "total_parcels": total_parcels,
-                "unassigned_parcels": unassigned_parcels,
-                "active_deliveries": active_deliveries,
-                "completed_deliveries": completed_deliveries,
-                "failed_deliveries": failed_deliveries,
+                "total_parcels": int(total_parcels),
+                "unassigned_parcels": int(unassigned_parcels),
+                "active_deliveries": int(active_deliveries),
+                "completed_deliveries": int(completed_deliveries),
+                "failed_deliveries": int(failed_deliveries),
             }
         except Exception:
             return {

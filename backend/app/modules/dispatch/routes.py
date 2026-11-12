@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db, get_optional_db
@@ -8,6 +8,10 @@ from app.modules.dispatch.schemas import (
     DispatchStatusUpdate,
     DispatcherDashboardStats,
     DispatcherMeResponse,
+    CourierReassignRequest,
+    WarehouseReceiveRequest,
+    WarehouseHandoverRequest,
+    CourierWorkloadItem,
 )
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
@@ -34,6 +38,17 @@ async def get_dashboard_stats(
     return DispatcherDashboardStats(**stats)
 
 
+@router.get("/couriers/workload", response_model=List[CourierWorkloadItem])
+async def get_courier_workload(
+    service: DispatchService = Depends(get_dispatch_service),
+) -> List[CourierWorkloadItem]:
+    """
+    Courier Workload Management:
+    Calculate active assignments, availability, and capacity status across the fleet.
+    """
+    return await service.get_courier_workload()
+
+
 @router.get("", response_model=List[DispatchResponse])
 async def list_assignments(
     skip: int = 0,
@@ -49,11 +64,59 @@ async def list_assignments(
 
 
 @router.post("", response_model=DispatchResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/assign", response_model=DispatchResponse, status_code=status.HTTP_201_CREATED)
 async def assign_parcel(
     payload: DispatchCreate,
     service: DispatchService = Depends(get_dispatch_service),
 ) -> DispatchResponse:
+    """
+    Courier Assignment:
+    Assign courier to a parcel, validate courier availability and parcel status,
+    save assignment, and publish CourierAssigned event.
+    """
     assignment = await service.assign_parcel(payload)
+    return DispatchResponse.model_validate(assignment)
+
+
+@router.post("/{assignment_id}/reassign", response_model=DispatchResponse)
+async def reassign_courier(
+    assignment_id: int,
+    payload: CourierReassignRequest,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> DispatchResponse:
+    """
+    Courier Reassignment:
+    Handle courier changes, update assignments, validate new courier availability,
+    and publish CourierReassigned event.
+    """
+    new_assignment = await service.reassign_courier(assignment_id, payload)
+    return DispatchResponse.model_validate(new_assignment)
+
+
+@router.post("/warehouse/receive", response_model=Dict[str, Any])
+async def warehouse_receive_parcel(
+    payload: WarehouseReceiveRequest,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> Dict[str, Any]:
+    """
+    Warehouse Dispatch:
+    Receive parcel into a warehouse hub, update delivery method / location,
+    and publish WarehouseParcelReceived event.
+    """
+    return await service.warehouse_receive_parcel(payload)
+
+
+@router.post("/warehouse/handover", response_model=DispatchResponse)
+async def warehouse_handover_parcel(
+    payload: WarehouseHandoverRequest,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> DispatchResponse:
+    """
+    Warehouse Dispatch:
+    Handover parcel from warehouse to a courier for last-mile delivery,
+    and publish handover / assignment events.
+    """
+    assignment = await service.warehouse_handover_parcel(payload)
     return DispatchResponse.model_validate(assignment)
 
 
