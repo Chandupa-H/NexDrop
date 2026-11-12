@@ -41,3 +41,43 @@ async def test_get_unassigned_parcels_endpoint(async_client: AsyncClient):
 async def test_get_unassigned_parcel_not_found(async_client: AsyncClient):
     response = await async_client.get("/api/v1/dispatch/unassigned-parcels/999999")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_dispatch_history_endpoint(async_client: AsyncClient):
+    response = await async_client.get("/api/v1/dispatch/history?limit=10&offset=0")
+    assert response.status_code == 200
+    data = response.json()
+    assert "items" in data
+    assert "total" in data
+    assert "limit" in data
+    assert "offset" in data
+    assert "statuses" in data
+    assert "couriers" in data
+    assert data["limit"] == 10
+    assert data["offset"] == 0
+    assert "completed" in data["statuses"]
+    assert "rejected" in data["statuses"]
+
+
+@pytest.mark.asyncio
+async def test_get_dispatch_history_with_filters(async_client: AsyncClient):
+    # Test completed filter
+    resp_completed = await async_client.get("/api/v1/dispatch/history?status=completed")
+    assert resp_completed.status_code == 200
+
+    # Test failed filter
+    resp_failed = await async_client.get("/api/v1/dispatch/history?status=failed")
+    assert resp_failed.status_code == 200
+
+    # Test search query
+    resp_search = await async_client.get("/api/v1/dispatch/history?search=Colombo&limit=5")
+    assert resp_search.status_code == 200
+    assert resp_search.json()["limit"] == 5
+
+
+@pytest.mark.asyncio
+async def test_get_dispatch_history_detail_not_found(async_client: AsyncClient):
+    response = await async_client.get("/api/v1/dispatch/history/999999")
+    assert response.status_code == 404
+

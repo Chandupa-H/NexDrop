@@ -309,3 +309,27 @@ class DispatchService:
 
     async def get_unassigned_parcel_by_id(self, parcel_id: int) -> Optional[Parcel]:
         return await self.repository.get_unassigned_parcel_by_id(parcel_id)
+
+    async def get_dispatch_history(
+        self,
+        status: Optional[str] = None,
+        courier_id: Optional[int] = None,
+        search: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Tuple[List[Dict[str, Any]], int, List[str], List[Dict[str, Any]]]:
+        return await self.repository.get_dispatch_history(
+            status=status,
+            courier_id=courier_id,
+            search=search,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def get_dispatch_history_detail(self, assignment_id: int) -> Optional[Dict[str, Any]]:
+        return await self.repository.get_dispatch_history_detail(assignment_id)
+

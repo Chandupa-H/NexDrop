@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -247,5 +248,170 @@ class DispatchRepository:
             )
             result = await self.session.execute(stmt)
             return result.scalars().first()
+        except Exception:
+            return None
+
+    async def get_dispatch_history(
+        self,
+        status: Optional[str] = None,
+        courier_id: Optional[int] = None,
+        search: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Tuple[List[Dict[str, Any]], int, List[str], List[Dict[str, Any]]]:
+        """
+        Query completed, failed, and historical courier assignments with filtering,
+        search, pagination, and available filter metadata.
+        """
+        statuses = ["completed", "rejected", "assigned", "accepted"]
+        if not self.session:
+            return [], 0, statuses, []
+
+        try:
+            query = (
+                select(DispatchAssignment, Parcel, Courier, User)
+                .join(Parcel, DispatchAssignment.parcel_id == Parcel.id)
+                .outerjoin(Courier, DispatchAssignment.courier_id == Courier.id)
+                .outerjoin(User, Courier.user_id == User.id)
+            )
+            count_query = (
+                select(func.count(DispatchAssignment.id))
+                .join(Parcel, DispatchAssignment.parcel_id == Parcel.id)
+                .outerjoin(Courier, DispatchAssignment.courier_id == Courier.id)
+                .outerjoin(User, Courier.user_id == User.id)
+            )
+
+            # 1. Filter by assignment status (completed, failed/rejected, assigned, accepted)
+            if status and status.strip() and status.lower() != "all":
+                st = status.strip().lower()
+                if st == "failed":
+                    query = query.where(DispatchAssignment.status == DispatchStatus.REJECTED)
+                    count_query = count_query.where(DispatchAssignment.status == DispatchStatus.REJECTED)
+                elif st in [s.value for s in DispatchStatus]:
+                    query = query.where(DispatchAssignment.status == DispatchStatus(st))
+                    count_query = count_query.where(DispatchAssignment.status == DispatchStatus(st))
+
+            # 2. Filter by courier ID
+            if courier_id and courier_id > 0:
+                query = query.where(DispatchAssignment.courier_id == courier_id)
+                count_query = count_query.where(DispatchAssignment.courier_id == courier_id)
+
+            # 3. Search across parcel tracking, recipient, city, address, courier name, and notes
+            if search and search.strip():
+                term = f"%{search.strip()}%"
+                search_expr = or_(
+                    Parcel.tracking_number.ilike(term),
+                    Parcel.recipient_name.ilike(term),
+                    Parcel.recipient_phone.ilike(term),
+                    Parcel.delivery_city.ilike(term),
+                    Parcel.delivery_address.ilike(term),
+                    User.full_name.ilike(term),
+                    DispatchAssignment.notes.ilike(term),
+                )
+                query = query.where(search_expr)
+                count_query = count_query.where(search_expr)
+
+            # 4. Date range filters
+            if start_date:
+                query = query.where(DispatchAssignment.assigned_at >= start_date)
+                count_query = count_query.where(DispatchAssignment.assigned_at >= start_date)
+
+            if end_date:
+                query = query.where(DispatchAssignment.assigned_at <= end_date)
+                count_query = count_query.where(DispatchAssignment.assigned_at <= end_date)
+
+            total = (await self.session.execute(count_query)).scalar() or 0
+
+            query = (
+                query.order_by(DispatchAssignment.assigned_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            rows = (await self.session.execute(query)).all()
+
+            items: List[Dict[str, Any]] = []
+            for assignment, parcel, courier, user in rows:
+                items.append({
+                    "id": assignment.id,
+                    "parcel_id": parcel.id,
+                    "tracking_number": parcel.tracking_number,
+                    "recipient_name": parcel.recipient_name,
+                    "recipient_phone": parcel.recipient_phone,
+                    "delivery_address": parcel.delivery_address,
+                    "delivery_city": parcel.delivery_city,
+                    "weight_kg": parcel.weight_kg,
+                    "parcel_status": parcel.status.value if hasattr(parcel.status, "value") else str(parcel.status),
+                    "courier_id": assignment.courier_id,
+                    "courier_name": user.full_name if user else None,
+                    "vehicle_type": courier.vehicle_type if courier else None,
+                    "license_plate": courier.license_plate if courier else None,
+                    "status": assignment.status.value if hasattr(assignment.status, "value") else str(assignment.status),
+                    "assigned_at": assignment.assigned_at,
+                    "completed_at": assignment.completed_at,
+                    "notes": assignment.notes,
+                })
+
+            # Fetch active couriers for filtering dropdown
+            couriers_stmt = (
+                select(Courier.id, User.full_name, Courier.vehicle_type, Courier.license_plate)
+                .join(User, Courier.user_id == User.id)
+                .order_by(User.full_name.asc())
+            )
+            courier_rows = (await self.session.execute(couriers_stmt)).all()
+            courier_list = [
+                {
+                    "id": cid,
+                    "name": name,
+                    "vehicle_type": vtype,
+                    "license_plate": plate,
+                }
+                for cid, name, vtype, plate in courier_rows
+            ]
+
+            return items, total, statuses, courier_list
+        except Exception:
+            return [], 0, statuses, []
+
+    async def get_dispatch_history_detail(self, assignment_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch full details for a single dispatch history assignment."""
+        if not self.session:
+            return None
+        try:
+            stmt = (
+                select(DispatchAssignment, Parcel, Courier, User)
+                .join(Parcel, DispatchAssignment.parcel_id == Parcel.id)
+                .outerjoin(Courier, DispatchAssignment.courier_id == Courier.id)
+                .outerjoin(User, Courier.user_id == User.id)
+                .where(DispatchAssignment.id == assignment_id)
+            )
+            row = (await self.session.execute(stmt)).first()
+            if not row:
+                return None
+            assignment, parcel, courier, user = row
+            return {
+                "id": assignment.id,
+                "parcel_id": parcel.id,
+                "tracking_number": parcel.tracking_number,
+                "recipient_name": parcel.recipient_name,
+                "recipient_phone": parcel.recipient_phone,
+                "delivery_address": parcel.delivery_address,
+                "delivery_city": parcel.delivery_city,
+                "weight_kg": parcel.weight_kg,
+                "dimensions": parcel.dimensions,
+                "parcel_status": parcel.status.value if hasattr(parcel.status, "value") else str(parcel.status),
+                "special_instructions": parcel.special_instructions,
+                "courier_id": assignment.courier_id,
+                "courier_name": user.full_name if user else None,
+                "vehicle_type": courier.vehicle_type if courier else None,
+                "license_plate": courier.license_plate if courier else None,
+                "status": assignment.status.value if hasattr(assignment.status, "value") else str(assignment.status),
+                "assigned_at": assignment.assigned_at,
+                "completed_at": assignment.completed_at,
+                "notes": assignment.notes,
+                "created_at": assignment.created_at,
+                "updated_at": assignment.updated_at,
+            }
         except Exception:
             return None

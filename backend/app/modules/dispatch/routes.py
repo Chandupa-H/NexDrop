@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,10 @@ from app.modules.dispatch.schemas import (
     UnassignedParcelItem,
     UnassignedParcelListResponse,
     UnassignedParcelDetailResponse,
+    DispatchCourierSummary,
+    DispatchHistoryItem,
+    DispatchHistoryResponse,
+    DispatchHistoryDetailResponse,
 )
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
@@ -86,6 +91,56 @@ async def get_courier_workload(
     Calculate active assignments, availability, and capacity status across the fleet.
     """
     return await service.get_courier_workload()
+
+
+@router.get("/history", response_model=DispatchHistoryResponse)
+async def get_dispatch_history(
+    status: Optional[str] = None,
+    courier_id: Optional[int] = None,
+    search: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    limit: int = 10,
+    offset: int = 0,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> DispatchHistoryResponse:
+    """
+    List completed, failed, and previous courier assignments with filtering by
+    status, courier, date range, search query, and pagination.
+    """
+    items, total, statuses, couriers = await service.get_dispatch_history(
+        status=status,
+        courier_id=courier_id,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+    )
+    return DispatchHistoryResponse(
+        items=[DispatchHistoryItem.model_validate(it) for it in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+        statuses=statuses,
+        couriers=[DispatchCourierSummary.model_validate(c) for c in couriers],
+    )
+
+
+@router.get("/history/{assignment_id}", response_model=DispatchHistoryDetailResponse)
+async def get_dispatch_history_detail(
+    assignment_id: int,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> DispatchHistoryDetailResponse:
+    """Fetch complete details for a historical dispatch assignment."""
+    detail = await service.get_dispatch_history_detail(assignment_id)
+    if not detail:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dispatch assignment {assignment_id} not found",
+        )
+    return DispatchHistoryDetailResponse.model_validate(detail)
+
 
 
 @router.get("", response_model=List[DispatchResponse])
