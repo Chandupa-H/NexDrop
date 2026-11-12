@@ -75,17 +75,17 @@ class RabbitMQClient:
         """
         Publish an event to the exchange and dispatch to active consumers.
         """
+        # Always deliver to registered in-process subscribers (e.g. WebSocket bridge)
+        await self._dispatch_to_subscribers(routing_key, message)
+
         if not self.is_connected:
-            logger.warning(
-                "Cannot publish message to '%s': RabbitMQ client is not connected.",
+            logger.info(
+                "RabbitMQ broker not connected. Event '%s' dispatched to local in-process subscribers.",
                 routing_key,
             )
-            return False
+            return True
 
         logger.info("Publishing RabbitMQ message to '%s': %s", routing_key, message)
-
-        # Dispatch event to registered consumers matching routing key pattern
-        await self._dispatch_to_subscribers(routing_key, message)
         return True
 
     async def _dispatch_to_subscribers(self, routing_key: str, message: dict) -> None:
