@@ -69,7 +69,7 @@ async function request<T>(
   // Add 8-second timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
-  
+
   try {
     const response = await fetch(url, {
       ...options,
@@ -99,11 +99,11 @@ async function request<T>(
     return (await response.json()) as T;
   } catch (error) {
     clearTimeout(timeoutId);
-    
+
     if (error instanceof ApiError) {
       throw error;
     }
-    
+
     // Handle abort/timeout
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
@@ -160,6 +160,54 @@ export const apiClient = {
   /** Check an applicant's approval status by their merchant ID. */
   getMerchantStatus: (merchantId: number) =>
     apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
+
+  // ---------------------------------------------------------------------------
+  // Part 4: Merchant API Authentication & Security
+  // ---------------------------------------------------------------------------
+
+  /** Fetch live & test API keys, client ID, secret, and rate limits. */
+  getMerchantCredentials: (merchantId: number = 1) =>
+    apiClient.get<any>(`/merchants/${merchantId}/credentials`),
+
+  /** Rotate/regenerate an API key or client secret. */
+  regenerateApiKey: (merchantId: number = 1, keyType: "live" | "test" | "secret" = "live") =>
+    apiClient.post<any>(`/merchants/${merchantId}/credentials/regenerate`, { key_type: keyType }),
+
+  /** Verify whether an API key is valid and authorized. */
+  verifyApiKey: (apiKey: string) =>
+    apiClient.post<any>("/merchants/verify-key", { api_key: apiKey }),
+
+  /** Create a delivery order using merchant API key authentication. */
+  createDeliveryViaApi: (data: any, apiKey: string) =>
+    apiClient.post<any>("/merchants/deliveries", data, {
+      headers: { "X-API-Key": apiKey },
+    }),
+
+  /** List deliveries belonging to the authenticated merchant. */
+  getMerchantDeliveries: (apiKey: string) =>
+    apiClient.get<any[]>("/merchants/deliveries", {
+      headers: { "X-API-Key": apiKey },
+    }),
+
+  // ---------------------------------------------------------------------------
+  // Part 5: Merchant Webhooks
+  // ---------------------------------------------------------------------------
+
+  /** Fetch current webhook URL, secret token, and subscribed events. */
+  getMerchantWebhookConfig: (merchantId: number = 1) =>
+    apiClient.get<any>(`/webhooks/merchant/${merchantId}/config`),
+
+  /** Save webhook endpoint URL and event subscriptions. */
+  saveMerchantWebhookConfig: (merchantId: number = 1, data: any) =>
+    apiClient.post<any>(`/webhooks/merchant/${merchantId}/config`, data),
+
+  /** Retrieve recent webhook dispatch logs with latency & status codes. */
+  getMerchantWebhookLogs: (merchantId: number = 1) =>
+    apiClient.get<any[]>(`/webhooks/merchant/${merchantId}/logs`),
+
+  /** Trigger an instantaneous test ping with HMAC-SHA256 signature to target URL. */
+  sendTestWebhookPing: (data: { target_url: string; secret_key?: string; event?: string; tracking_number?: string }) =>
+    apiClient.post<any>("/webhooks/test-ping", data),
 };
 
 export default apiClient;
