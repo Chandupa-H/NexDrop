@@ -5,4 +5,5 @@ export * from "./api/dispatcher.api";
 export * from "./components/DashboardView";
 export * from "./components/DashboardData";
 export * from "./components/DispatcherTopbarUser";
+export * from "./components/DispatchConsole";
 

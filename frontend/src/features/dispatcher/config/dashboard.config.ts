@@ -22,23 +22,16 @@ export const dispatcherDashboardConfig: DashboardRoleConfig = {
         },
         {
           id: "assignments",
-          label: "Assignments",
+          label: "Dispatch Console",
           href: "/dispatcher/assignments",
           icon: "truck",
-          availability: "planned",
+          availability: "live",
         },
         {
           id: "parcels",
           label: "Parcels",
           href: "/dispatcher/parcels",
           icon: "package",
-          availability: "planned",
-        },
-        {
-          id: "couriers",
-          label: "Couriers",
-          href: "/dispatcher/couriers",
-          icon: "user",
           availability: "planned",
         },
         {
@@ -52,4 +45,3 @@ export const dispatcherDashboardConfig: DashboardRoleConfig = {
     },
   ],
 };
-
