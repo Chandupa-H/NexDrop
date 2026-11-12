@@ -22,12 +22,14 @@ interface CustomerParcelDrawerProps {
   trackingId: string;
   onClose: () => void;
   onParcelUpdated: () => void;
+  readOnly?: boolean;
 }
 
 export function CustomerParcelDrawer({
   trackingId,
   onClose,
   onParcelUpdated,
+  readOnly = false,
 }: CustomerParcelDrawerProps) {
   const [parcel, setParcel] = useState<CustomerParcelDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,7 @@ export function CustomerParcelDrawer({
   };
 
   const handleCancelDelivery = async () => {
-    if (!parcel) return;
+    if (!parcel || readOnly) return;
     try {
       setCancelling(true);
       setCancelError(null);
@@ -149,7 +151,7 @@ export function CustomerParcelDrawer({
                     Rs. {parcel.fee.toFixed(2)}
                   </p>
                 </div>
-                <Button
+                {!readOnly && <Button
                   variant="outline"
                   size="sm"
                   onClick={handlePrintReceipt}
@@ -157,7 +159,7 @@ export function CustomerParcelDrawer({
                 >
                   <Printer className="h-3.5 w-3.5" />
                   Print Receipt
-                </Button>
+                </Button>}
               </div>
 
               {/* Delivery Details Card */}
@@ -300,7 +302,7 @@ export function CustomerParcelDrawer({
               </div>
 
               {/* Cancellation Option (FR-CUS-05) */}
-              {parcel.status === "pending" && (
+              {!readOnly && parcel.status === "pending" && (
                 <div className="p-4 rounded-xl border border-[var(--dashboard-warning-bg)] bg-[var(--dashboard-warning-bg)]/20">
                   {!showCancelPrompt ? (
                     <div className="flex items-center justify-between gap-3">

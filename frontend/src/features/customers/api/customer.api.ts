@@ -102,7 +102,8 @@ export interface GetCustomerParcelsParams {
  * List customer parcels with optional status filter and pagination.
  */
 export async function getCustomerParcels(
-  params?: GetCustomerParcelsParams
+  params?: GetCustomerParcelsParams,
+  allowMockFallback = true
 ): Promise<CustomerParcelListDTO> {
   const searchParams = new URLSearchParams();
   if (params?.status && params.status !== "all") {
@@ -121,6 +122,7 @@ export async function getCustomerParcels(
       `/customers/customer/parcels${query ? `?${query}` : ""}`
     );
   } catch (err) {
+    if (!allowMockFallback) throw err;
     console.warn("[CustomerAPI] Backend unreachable, falling back to mock parcels list:", err);
     return filterMockParcels(params?.status, params?.limit, params?.offset);
   }
