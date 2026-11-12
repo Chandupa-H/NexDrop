@@ -84,6 +84,7 @@ describe("ParcelDetailsDrawer delivery result", () => {
 
   it("previews a photo, confirms, reports upload progress, and submits the result", async () => {
     const onStatusUpdated = vi.fn();
+    const onSuccessfulDelivery = vi.fn();
     let finishUpload: (() => void) | undefined;
     vi.mocked(uploadDeliveryProof).mockImplementationOnce(async (_id, _file, onProgress) => {
       onProgress(67);
@@ -97,7 +98,7 @@ describe("ParcelDetailsDrawer delivery result", () => {
         },
       } as never;
     });
-    render(<ParcelDetailsDrawer trackingId="NXD-UI-TEST" onClose={vi.fn()} onStatusUpdated={onStatusUpdated} />);
+    render(<ParcelDetailsDrawer trackingId="NXD-UI-TEST" onClose={vi.fn()} onStatusUpdated={onStatusUpdated} onSuccessfulDelivery={onSuccessfulDelivery} />);
     fireEvent.click(await screen.findByRole("button", { name: "Mark as delivered" }));
     fireEvent.change(screen.getByLabelText(/Recipient name/), { target: { value: "Recipient" } });
     const file = new File(["mock png"], "proof.png", { type: "image/png" });
@@ -114,6 +115,7 @@ describe("ParcelDetailsDrawer delivery result", () => {
     expect(uploadDeliveryProof).toHaveBeenCalledWith("NXD-UI-TEST", file, expect.any(Function));
     expect(await screen.findByRole("status")).toHaveTextContent("Delivery confirmed successfully");
     expect(onStatusUpdated).toHaveBeenCalled();
+    expect(onSuccessfulDelivery).toHaveBeenCalledTimes(1);
   });
 
   it("shows photo validation errors before uploading", async () => {

@@ -2,15 +2,19 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Camera, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Camera, PackageCheck, Search, X } from "lucide-react";
 import { PageHeader, StatCard, StatusBadge } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getCourierProofs } from "../api/courier.api";
-import type { CourierProofListDTO, CourierProofRecordDTO } from "../api/courier.dto";
+import { getAssignedParcels, getCourierProofs, getParcelDetail } from "../api/courier.api";
+import type { CourierProofListDTO, CourierProofRecordDTO, ParcelDetailDTO } from "../api/courier.dto";
+import { ParcelDetailsDrawer } from "./ParcelDetailsDrawer";
+
+const EMPTY_ELIGIBLE_PARCELS: ParcelDetailDTO[] = [];
 
 function formatColomboDate(value: string): string {
   return new Intl.DateTimeFormat("en-LK", {
@@ -21,10 +25,21 @@ function formatColomboDate(value: string): string {
 }
 
 export function ProofOfDeliveryPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
   const [status, setStatus] = useState("");
   const [selectedProof, setSelectedProof] = useState<CourierProofRecordDTO | null>(null);
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const [selectorQuery, setSelectorQuery] = useState("");
+  const [selectedTrackingId, setSelectedTrackingId] = useState<string | null>(null);
+  const [eligibleRefreshVersion, setEligibleRefreshVersion] = useState(0);
+  const [eligibleResult, setEligibleResult] = useState<{
+    key: string;
+    parcels: ParcelDetailDTO[] | null;
+    error: boolean;
+  } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [result, setResult] = useState<{
     key: string;
@@ -41,6 +56,20 @@ export function ProofOfDeliveryPage() {
   const loading = result?.key !== requestKey;
   const error = result?.key === requestKey && result.error;
   const data = result?.key === requestKey ? result.data : null;
+  const eligibleRequestKey = String(eligibleRefreshVersion);
+  const eligibleLoading = selectorOpen && eligibleResult?.key !== eligibleRequestKey;
+  const eligibleError = selectorOpen && eligibleResult?.key === eligibleRequestKey && eligibleResult.error;
+  const eligibleParcels = eligibleResult?.key === eligibleRequestKey
+    ? eligibleResult.parcels ?? EMPTY_ELIGIBLE_PARCELS
+    : EMPTY_ELIGIBLE_PARCELS;
+  const matchingEligibleParcels = useMemo(() => {
+    const needle = selectorQuery.trim().toLocaleLowerCase();
+    if (!needle) return eligibleParcels;
+    return eligibleParcels.filter((parcel) =>
+      parcel.tracking_id.toLocaleLowerCase().includes(needle) ||
+      parcel.customer_name.toLocaleLowerCase().includes(needle)
+    );
+  }, [eligibleParcels, selectorQuery]);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +86,28 @@ export function ProofOfDeliveryPage() {
   }, [params, requestKey]);
 
   useEffect(() => {
+    if (!selectorOpen) return;
+    let active = true;
+    getAssignedParcels({ status: "out_for_delivery", limit: 100 })
+      .then(({ items }) => Promise.all(items.map((parcel) => getParcelDetail(parcel.tracking_id))))
+      .then((parcels) => {
+        if (active) {
+          setEligibleResult({
+            key: eligibleRequestKey,
+            parcels: parcels.filter((parcel) => parcel.status === "out_for_delivery"),
+            error: false,
+          });
+        }
+      })
+      .catch(() => {
+        if (active) setEligibleResult({ key: eligibleRequestKey, parcels: null, error: true });
+      });
+    return () => {
+      active = false;
+    };
+  }, [eligibleRequestKey, selectorOpen]);
+
+  useEffect(() => {
     if (!selectedProof) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSelectedProof(null);
@@ -70,6 +121,25 @@ export function ProofOfDeliveryPage() {
     setDeliveryDate("");
     setStatus("");
   };
+  const openParcelSelector = () => {
+    setSuccessMessage(null);
+    setEligibleRefreshVersion((version) => version + 1);
+    setSelectorOpen(true);
+  };
+  const handleParcelDetailsClose = () => {
+    setSelectedTrackingId(null);
+    setSelectorOpen(true);
+  };
+  const handleDeliveryStatusUpdated = () => {
+    setEligibleRefreshVersion((version) => version + 1);
+    router.refresh();
+  };
+  const handleSuccessfulDelivery = () => {
+    setSelectedTrackingId(null);
+    setSelectorOpen(false);
+    setSuccessMessage("Delivery confirmed. The proof has been added to your delivery history.");
+    setRequestVersion((version) => version + 1);
+  };
   const hasFilters = Boolean(query || deliveryDate || status);
 
   return (
@@ -77,7 +147,20 @@ export function ProofOfDeliveryPage() {
       <PageHeader
         title="Proof of Delivery"
         subtitle="Review delivery confirmations and recipient proof images."
+        action={(
+          <Button type="button" onClick={openParcelSelector}>
+            <PackageCheck className="mr-2 size-4" aria-hidden="true" />
+            Add Delivery Proof
+          </Button>
+        )}
       />
+
+      {successMessage && (
+        <div role="status" className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <span>{successMessage}</span>
+          <button type="button" aria-label="Dismiss success message" onClick={() => setSuccessMessage(null)} className="rounded p-1 hover:bg-emerald-100"><X className="size-4" aria-hidden="true" /></button>
+        </div>
+      )}
 
       <section aria-label="Proof summary" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {loading && !data ? (
@@ -183,6 +266,75 @@ export function ProofOfDeliveryPage() {
             </dl>
           </section>
         </div>
+      )}
+
+      {selectorOpen && !selectedTrackingId && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-3 sm:p-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectorOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="eligible-parcels-title" className="max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-background p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="eligible-parcels-title" className="text-xl font-semibold">Add Delivery Proof</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Select a parcel that is out for delivery to confirm its delivery.</p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" aria-label="Close parcel selector" onClick={() => setSelectorOpen(false)}><X className="size-5" aria-hidden="true" />Close</Button>
+            </div>
+
+            <label className="relative mt-5 block min-w-0">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input aria-label="Search eligible parcels" className="pl-9" placeholder="Search tracking number or recipient" maxLength={100} value={selectorQuery} onChange={(event) => setSelectorQuery(event.target.value)} />
+            </label>
+
+            {eligibleLoading ? (
+              <div className="mt-4 space-y-3" aria-label="Loading eligible parcels">
+                {[0, 1].map((item) => <Card key={item} className="space-y-3 p-4"><Skeleton className="h-5 w-40" /><Skeleton className="h-4 w-3/4" /></Card>)}
+              </div>
+            ) : eligibleError ? (
+              <Card className="mt-4 flex flex-col items-center gap-3 p-6 text-center">
+                <AlertCircle className="size-7 text-destructive" aria-hidden="true" />
+                <div><h3 className="font-semibold">Unable to load eligible parcels</h3><p className="mt-1 text-sm text-muted-foreground">Check your connection and try again.</p></div>
+                <Button type="button" variant="outline" onClick={() => setEligibleRefreshVersion((version) => version + 1)}>Try Again</Button>
+              </Card>
+            ) : matchingEligibleParcels.length === 0 ? (
+              <Card className="mt-4 flex flex-col items-center gap-3 p-7 text-center">
+                <Camera className="size-8 text-muted-foreground" aria-hidden="true" />
+                <div>
+                  <h3 className="font-semibold">{eligibleParcels.length === 0 ? "No eligible parcels" : "No parcels match your search"}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{eligibleParcels.length === 0 ? "Only parcels currently out for delivery can be confirmed here." : "Try another tracking number or recipient name."}</p>
+                </div>
+              </Card>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {matchingEligibleParcels.map((parcel) => (
+                  <li key={parcel.tracking_id}>
+                    <Card className="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="break-all font-semibold">{parcel.tracking_id}</h3>
+                          <StatusBadge label="Out for delivery" tone="warning" />
+                        </div>
+                        <p className="text-sm font-medium">{parcel.customer_name}</p>
+                        <p className="break-words text-sm text-muted-foreground">{parcel.address_line}</p>
+                      </div>
+                      <Button type="button" className="shrink-0" onClick={() => { setSelectedTrackingId(parcel.tracking_id); setSelectorOpen(false); }}>
+                        Select parcel
+                      </Button>
+                    </Card>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      )}
+
+      {selectedTrackingId && (
+        <ParcelDetailsDrawer
+          trackingId={selectedTrackingId}
+          action="upload-proof"
+          onClose={handleParcelDetailsClose}
+          onStatusUpdated={handleDeliveryStatusUpdated}
+          onSuccessfulDelivery={handleSuccessfulDelivery}
+        />
       )}
     </div>
   );

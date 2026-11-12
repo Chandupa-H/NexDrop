@@ -20,6 +20,7 @@ interface ParcelDetailsDrawerProps {
   action?: ActionType;
   onClose: () => void;
   onStatusUpdated: (options?: { closeDrawer?: boolean }) => void;
+  onSuccessfulDelivery?: () => void;
 }
 
 /**
@@ -31,6 +32,7 @@ export function ParcelDetailsDrawer({
   action,
   onClose,
   onStatusUpdated,
+  onSuccessfulDelivery,
 }: ParcelDetailsDrawerProps) {
   const [parcel, setParcel] = useState<ParcelDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -218,6 +220,7 @@ export function ParcelDetailsDrawer({
       setSelectedAction(null);
       setResultMessage("Delivery confirmed successfully.");
       onStatusUpdated({ closeDrawer: false });
+      onSuccessfulDelivery?.();
     } catch (err) {
       setUploadProgress(null);
       setResultError(err instanceof Error ? err.message : "Unable to complete the delivery result.");

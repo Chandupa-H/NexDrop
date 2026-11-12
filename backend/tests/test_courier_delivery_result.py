@@ -145,6 +145,20 @@ async def test_successful_delivery_upload_and_result(async_client: AsyncClient, 
     assert data["delivery_proof"]["secure_url"] == "https://res.cloudinary.test/proof.jpg"
     assert data["delivery_proof"]["public_id"] == "proof-1"
 
+    eligible = await async_client.get(
+        "/api/v1/couriers/courier/parcels?status=out_for_delivery"
+    )
+    assert eligible.status_code == 200
+    assert eligible.json()["total"] == 0
+
+    proof_history = await async_client.get(
+        "/api/v1/couriers/courier/proofs?q=NXD-RESULT-TEST"
+    )
+    assert proof_history.status_code == 200
+    assert proof_history.json()["total"] == 1
+    assert proof_history.json()["items"][0]["secure_url"] == "https://res.cloudinary.test/proof.jpg"
+    assert proof_history.json()["items"][0]["public_id"] == "proof-1"
+
 
 @pytest.mark.asyncio
 async def test_success_requires_confirmation(async_client: AsyncClient, result_parcel, monkeypatch):
