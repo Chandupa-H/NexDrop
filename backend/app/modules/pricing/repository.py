@@ -28,7 +28,15 @@ class PricingRepository:
         if self.session is None:
             return []
         result = await self.session.execute(
-            select(PricingTier).where(PricingTier.is_active.is_(True))
+            select(PricingTier).where(PricingTier.is_active.is_(True)).order_by(PricingTier.id.asc())
+        )
+        return list(result.scalars().all())
+
+    async def list_all(self) -> List[PricingTier]:
+        if self.session is None:
+            return []
+        result = await self.session.execute(
+            select(PricingTier).order_by(PricingTier.id.asc())
         )
         return list(result.scalars().all())
 
@@ -36,6 +44,13 @@ class PricingRepository:
         if self.session is None:
             raise RuntimeError("Database session unavailable")
         self.session.add(tier)
+        await self.session.flush()
+        await self.session.refresh(tier)
+        return tier
+
+    async def update(self, tier: PricingTier) -> PricingTier:
+        if self.session is None:
+            raise RuntimeError("Database session unavailable")
         await self.session.flush()
         await self.session.refresh(tier)
         return tier

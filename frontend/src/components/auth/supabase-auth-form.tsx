@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa, type ViewType } from "@supabase/auth-ui-shared";
@@ -23,13 +23,16 @@ export function SupabaseAuthForm({
   isDark = false,
 }: SupabaseAuthFormProps) {
   const router = useRouter();
-  const [callbackUrl, setCallbackUrl] = useState<string>("");
+
+  const origin = useSyncExternalStore(
+    () => () => {},
+    () => window.location.origin,
+    () => ""
+  );
+
+  const callbackUrl = redirectTo || (origin ? `${origin}/auth/callback` : undefined);
 
   useEffect(() => {
-    setCallbackUrl(
-      redirectTo || `${window.location.origin}/auth/callback`
-    );
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
@@ -41,7 +44,7 @@ export function SupabaseAuthForm({
     return () => {
       subscription.unsubscribe();
     };
-  }, [router, redirectTo, onSuccessRedirect]);
+  }, [router, onSuccessRedirect]);
 
   return (
     <div className="w-full waypoint-auth-card">

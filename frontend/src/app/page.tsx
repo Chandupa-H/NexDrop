@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Layers,
   ArrowRight,
-  Server,
   Zap,
   Calculator,
   RefreshCw,
@@ -20,6 +19,7 @@ import {
   Webhook,
   LogIn,
   UserPlus,
+  LayoutDashboard,
 } from "lucide-react";
 import { Navbar } from "@/components/shared/navbar";
 import { Footer } from "@/components/shared/footer";
@@ -27,10 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useBackendHealth } from "@/hooks/use-health";
+import { useAuthUser } from "@/hooks/use-auth-user";
 import apiClient, { PriceEstimateResponse } from "@/lib/api-client";
 
 export default function Home() {
   const { health, isHealthy, isLoading, error, refetch } = useBackendHealth();
+  const { user, dashboardHref, isLoading: authLoading } = useAuthUser();
 
   // Interactive Pricing Calculator State
   const [distanceKm, setDistanceKm] = useState<number>(12);
@@ -155,19 +157,31 @@ export default function Home() {
               </p>
 
               <div className="flex flex-wrap items-center gap-3.5 pt-2">
-                <Link href="/login">
-                  <Button variant="primary" size="lg" className="shadow-sm font-bold">
-                    <LogIn className="h-4 w-4" />
-                    Sign In
-                  </Button>
-                </Link>
+                {!authLoading && user ? (
+                  <Link href={dashboardHref}>
+                    <Button variant="primary" size="lg" className="shadow-sm font-bold">
+                      <LayoutDashboard className="h-4 w-4" />
+                      Open Dashboard
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                ) : (
+                  <>
+                    <Link href="/login">
+                      <Button variant="primary" size="lg" className="shadow-sm font-bold">
+                        <LogIn className="h-4 w-4" />
+                        Sign In
+                      </Button>
+                    </Link>
 
-                <Link href="/login?view=sign_up">
-                  <Button variant="lime" size="lg" className="shadow-sm font-bold">
-                    <UserPlus className="h-4 w-4" />
-                    Sign Up
-                  </Button>
-                </Link>
+                    <Link href="/login?view=sign_up">
+                      <Button variant="lime" size="lg" className="shadow-sm font-bold">
+                        <UserPlus className="h-4 w-4" />
+                        Sign Up
+                      </Button>
+                    </Link>
+                  </>
+                )}
 
                 <Button
                   variant="outline"
