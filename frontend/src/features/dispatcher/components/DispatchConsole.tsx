@@ -164,11 +164,10 @@ export function DispatchConsole() {
       {/* Notifications Alert */}
       {message && (
         <div
-          className={`p-4 rounded-xl flex items-center justify-between text-sm ${
-            message.type === "success"
+          className={`p-4 rounded-xl flex items-center justify-between text-sm ${message.type === "success"
               ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
               : "bg-rose-50 text-rose-800 border border-rose-200"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             {message.type === "success" ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <AlertCircle className="w-5 h-5 text-rose-600" />}
@@ -185,31 +184,28 @@ export function DispatchConsole() {
         <div className="flex items-center gap-2 p-1 bg-[var(--dashboard-surface)] border border-[var(--dashboard-border)] rounded-xl">
           <button
             onClick={() => setTab("assignments")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-              tab === "assignments"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${tab === "assignments"
                 ? "bg-[#16a34a] text-white shadow-sm"
                 : "text-[var(--dashboard-muted)] hover:text-[var(--dashboard-text)]"
-            }`}
+              }`}
           >
             <Truck className="w-4 h-4" /> Assignments
           </button>
           <button
             onClick={() => setTab("workload")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-              tab === "workload"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${tab === "workload"
                 ? "bg-[#16a34a] text-white shadow-sm"
                 : "text-[var(--dashboard-muted)] hover:text-[var(--dashboard-text)]"
-            }`}
+              }`}
           >
             <Users className="w-4 h-4" /> Courier Workload ({workloads.length})
           </button>
           <button
             onClick={() => setTab("warehouse")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-              tab === "warehouse"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${tab === "warehouse"
                 ? "bg-[#16a34a] text-white shadow-sm"
                 : "text-[var(--dashboard-muted)] hover:text-[var(--dashboard-text)]"
-            }`}
+              }`}
           >
             <WarehouseIcon className="w-4 h-4" /> Warehouse Routing
           </button>
@@ -261,8 +257,8 @@ export function DispatchConsole() {
                             a.status === "completed"
                               ? "success"
                               : a.status === "rejected"
-                              ? "danger"
-                              : "info"
+                                ? "danger"
+                                : "info"
                           }
                         />
                       </td>
@@ -321,10 +317,10 @@ export function DispatchConsole() {
                         c.workload_status === "AVAILABLE"
                           ? "success"
                           : c.workload_status === "OPTIMAL"
-                          ? "info"
-                          : c.workload_status === "BUSY"
-                          ? "warning"
-                          : "danger"
+                            ? "info"
+                            : c.workload_status === "BUSY"
+                              ? "warning"
+                              : "danger"
                       }
                     />
                   </div>
