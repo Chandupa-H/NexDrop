@@ -12,6 +12,9 @@ from app.modules.dispatch.schemas import (
     WarehouseReceiveRequest,
     WarehouseHandoverRequest,
     CourierWorkloadItem,
+    UnassignedParcelItem,
+    UnassignedParcelListResponse,
+    UnassignedParcelDetailResponse,
 )
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
@@ -36,6 +39,42 @@ async def get_dashboard_stats(
     """Strictly read-only delivery statistics for dispatcher dashboard."""
     stats = await service.get_dashboard_stats()
     return DispatcherDashboardStats(**stats)
+
+
+@router.get("/unassigned-parcels", response_model=UnassignedParcelListResponse)
+async def list_unassigned_parcels(
+    search: Optional[str] = None,
+    city: Optional[str] = None,
+    limit: int = 10,
+    offset: int = 0,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> UnassignedParcelListResponse:
+    """List unassigned parcels with search, city filtering, and pagination."""
+    items, total, cities = await service.get_unassigned_parcels(
+        search=search, city=city, limit=limit, offset=offset
+    )
+    return UnassignedParcelListResponse(
+        items=[UnassignedParcelItem.model_validate(p) for p in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+        cities=cities,
+    )
+
+
+@router.get("/unassigned-parcels/{parcel_id}", response_model=UnassignedParcelDetailResponse)
+async def get_unassigned_parcel(
+    parcel_id: int,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> UnassignedParcelDetailResponse:
+    """Fetch complete details for a specific unassigned parcel."""
+    parcel = await service.get_unassigned_parcel_by_id(parcel_id)
+    if not parcel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unassigned parcel {parcel_id} not found",
+        )
+    return UnassignedParcelDetailResponse.model_validate(parcel)
 
 
 @router.get("/couriers/workload", response_model=List[CourierWorkloadItem])

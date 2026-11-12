@@ -1,5 +1,5 @@
-from typing import Optional, List, Dict, Any
-from sqlalchemy import select, func, and_
+from typing import Optional, List, Dict, Any, Tuple
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
 from app.modules.parcels.models import Parcel, ParcelStatus
@@ -184,3 +184,68 @@ class DispatchRepository:
                 "completed_deliveries": 0,
                 "failed_deliveries": 0,
             }
+
+    async def get_unassigned_parcels(
+        self,
+        search: Optional[str] = None,
+        city: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Tuple[List[Parcel], int, List[str]]:
+        """
+        Query unassigned (status == PENDING) parcels with search, city filtering,
+        pagination, and the distinct list of unassigned cities.
+        """
+        if not self.session:
+            return [], 0, []
+
+        try:
+            query = select(Parcel).where(Parcel.status == ParcelStatus.PENDING)
+            count_query = select(func.count(Parcel.id)).where(Parcel.status == ParcelStatus.PENDING)
+            cities_query = (
+                select(Parcel.delivery_city)
+                .where(Parcel.status == ParcelStatus.PENDING)
+                .distinct()
+            )
+
+            if search:
+                term = f"%{search.strip()}%"
+                search_filter = or_(
+                    Parcel.tracking_number.ilike(term),
+                    Parcel.recipient_name.ilike(term),
+                    Parcel.delivery_city.ilike(term),
+                    Parcel.delivery_address.ilike(term),
+                    Parcel.recipient_phone.ilike(term),
+                )
+                query = query.where(search_filter)
+                count_query = count_query.where(search_filter)
+
+            if city and city.strip() and city.lower() != "all":
+                query = query.where(Parcel.delivery_city.ilike(city.strip()))
+                count_query = count_query.where(Parcel.delivery_city.ilike(city.strip()))
+
+            total = (await self.session.execute(count_query)).scalar() or 0
+
+            query = query.order_by(Parcel.created_at.desc()).offset(offset).limit(limit)
+            items = list((await self.session.execute(query)).scalars().all())
+
+            cities_res = (await self.session.execute(cities_query)).scalars().all()
+            cities = sorted([c for c in cities_res if c])
+
+            return items, total, cities
+        except Exception:
+            return [], 0, []
+
+    async def get_unassigned_parcel_by_id(self, parcel_id: int) -> Optional[Parcel]:
+        """Fetch full details for an unassigned parcel."""
+        if not self.session:
+            return None
+        try:
+            stmt = select(Parcel).where(
+                Parcel.id == parcel_id,
+                Parcel.status == ParcelStatus.PENDING,
+            )
+            result = await self.session.execute(stmt)
+            return result.scalars().first()
+        except Exception:
+            return None

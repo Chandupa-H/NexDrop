@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from fastapi import HTTPException, status
 from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
 from app.modules.dispatch.schemas import (
@@ -11,7 +11,7 @@ from app.modules.dispatch.schemas import (
     CourierWorkloadItem,
 )
 from app.modules.dispatch.repository import DispatchRepository
-from app.modules.parcels.models import ParcelStatus, CurrentLocationType, DeliveryMethod
+from app.modules.parcels.models import Parcel, ParcelStatus, CurrentLocationType, DeliveryMethod
 from app.integrations.rabbitmq.client import rabbitmq_client
 
 
@@ -295,3 +295,17 @@ class DispatchService:
 
     async def get_dashboard_stats(self) -> Dict[str, int]:
         return await self.repository.get_dashboard_stats()
+
+    async def get_unassigned_parcels(
+        self,
+        search: Optional[str] = None,
+        city: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Tuple[List[Parcel], int, List[str]]:
+        return await self.repository.get_unassigned_parcels(
+            search=search, city=city, limit=limit, offset=offset
+        )
+
+    async def get_unassigned_parcel_by_id(self, parcel_id: int) -> Optional[Parcel]:
+        return await self.repository.get_unassigned_parcel_by_id(parcel_id)

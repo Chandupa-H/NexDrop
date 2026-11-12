@@ -9,6 +9,9 @@ from app.modules.dispatch.schemas import (
     CourierWorkloadItem,
     DispatcherDashboardStats,
     DispatcherMeResponse,
+    UnassignedParcelItem,
+    UnassignedParcelListResponse,
+    UnassignedParcelDetailResponse,
 )
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
@@ -26,6 +29,9 @@ __all__ = [
     "CourierWorkloadItem",
     "DispatcherDashboardStats",
     "DispatcherMeResponse",
+    "UnassignedParcelItem",
+    "UnassignedParcelListResponse",
+    "UnassignedParcelDetailResponse",
     "DispatchRepository",
     "DispatchService",
     "dispatch_router",

@@ -6,4 +6,6 @@ export * from "./components/DashboardView";
 export * from "./components/DashboardData";
 export * from "./components/DispatcherTopbarUser";
 export * from "./components/DispatchConsole";
-
+export * from "./components/ParcelDetailDrawer";
+export * from "./components/UnassignedParcelsView";
+export * from "./components/UnassignedParcelsData";

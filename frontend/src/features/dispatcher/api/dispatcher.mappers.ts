@@ -1,5 +1,12 @@
-import type { DispatcherMeDTO, DispatcherStatsDTO } from "./dispatcher.dto";
+import type {
+  DispatcherMeDTO,
+  DispatcherStatsDTO,
+  UnassignedParcelItemDTO,
+  UnassignedParcelListDTO,
+  UnassignedParcelDetailDTO,
+} from "./dispatcher.dto";
 import type { DonutSegment, NavIconName, DashboardTone } from "@/lib/dashboard/types";
+import { formatDateTime } from "@/lib/dashboard/format";
 
 export interface DispatcherProfile {
   id: string;
@@ -23,6 +30,46 @@ export interface DispatcherStatsViewModel {
   completedDeliveries: number;
   failedDeliveries: number;
   kpis: DispatcherDashboardKPI[];
+}
+
+export interface UnassignedParcelItemViewModel {
+  id: number;
+  trackingNumber: string;
+  recipientName: string;
+  recipientPhone: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  weightKg: number;
+  dimensions: string | null;
+  status: string;
+  createdAt: string;
+  formattedDate: string;
+}
+
+export interface UnassignedParcelListViewModel {
+  items: UnassignedParcelItemViewModel[];
+  total: number;
+  limit: number;
+  offset: number;
+  cities: string[];
+}
+
+export interface UnassignedParcelDetailViewModel {
+  id: number;
+  trackingNumber: string;
+  senderId: number;
+  recipientName: string;
+  recipientPhone: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  weightKg: number;
+  dimensions: string | null;
+  status: string;
+  specialInstructions: string | null;
+  createdAt: string;
+  updatedAt: string;
+  formattedCreatedAt: string;
+  formattedUpdatedAt: string;
 }
 
 export function mapDispatcherProfile(dto: DispatcherMeDTO): DispatcherProfile {
@@ -116,3 +163,48 @@ export function computeDispatcherDonutSegments(stats: DispatcherStatsViewModel):
   ];
 }
 
+export function mapUnassignedParcelItem(dto: UnassignedParcelItemDTO): UnassignedParcelItemViewModel {
+  return {
+    id: dto.id,
+    trackingNumber: dto.tracking_number,
+    recipientName: dto.recipient_name,
+    recipientPhone: dto.recipient_phone,
+    deliveryAddress: dto.delivery_address,
+    deliveryCity: dto.delivery_city,
+    weightKg: dto.weight_kg,
+    dimensions: dto.dimensions ?? null,
+    status: dto.status,
+    createdAt: dto.created_at,
+    formattedDate: formatDateTime(dto.created_at),
+  };
+}
+
+export function mapUnassignedParcelList(dto: UnassignedParcelListDTO): UnassignedParcelListViewModel {
+  return {
+    items: dto.items.map(mapUnassignedParcelItem),
+    total: dto.total,
+    limit: dto.limit,
+    offset: dto.offset,
+    cities: dto.cities,
+  };
+}
+
+export function mapUnassignedParcelDetail(dto: UnassignedParcelDetailDTO): UnassignedParcelDetailViewModel {
+  return {
+    id: dto.id,
+    trackingNumber: dto.tracking_number,
+    senderId: dto.sender_id,
+    recipientName: dto.recipient_name,
+    recipientPhone: dto.recipient_phone,
+    deliveryAddress: dto.delivery_address,
+    deliveryCity: dto.delivery_city,
+    weightKg: dto.weight_kg,
+    dimensions: dto.dimensions ?? null,
+    status: dto.status,
+    specialInstructions: dto.special_instructions ?? null,
+    createdAt: dto.created_at,
+    updatedAt: dto.updated_at,
+    formattedCreatedAt: formatDateTime(dto.created_at),
+    formattedUpdatedAt: formatDateTime(dto.updated_at),
+  };
+}
