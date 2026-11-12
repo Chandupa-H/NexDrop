@@ -29,10 +29,10 @@ export const dispatcherDashboardConfig: DashboardRoleConfig = {
         },
         {
           id: "parcels",
-          label: "Parcels",
+          label: "Unassigned Parcels",
           href: "/dispatcher/parcels",
           icon: "package",
-          availability: "planned",
+          availability: "live",
         },
         {
           id: "couriers",

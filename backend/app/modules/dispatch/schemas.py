@@ -43,3 +43,45 @@ class DispatcherMeResponse(BaseModel):
     role: str = "dispatcher"
 
 
+class UnassignedParcelItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    dimensions: Optional[str] = None
+    status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UnassignedParcelListResponse(BaseModel):
+    items: list[UnassignedParcelItem]
+    total: int
+    limit: int
+    offset: int
+    cities: list[str]
+
+
+class UnassignedParcelDetailResponse(BaseModel):
+    id: int
+    tracking_number: str
+    sender_id: int
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    dimensions: Optional[str] = None
+    status: str
+    special_instructions: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+

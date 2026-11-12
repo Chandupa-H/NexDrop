@@ -17,3 +17,39 @@ export interface DispatcherStatsDTO {
   failed_deliveries: number;
 }
 
+export interface UnassignedParcelItemDTO {
+  id: number;
+  tracking_number: string;
+  recipient_name: string;
+  recipient_phone: string;
+  delivery_address: string;
+  delivery_city: string;
+  weight_kg: number;
+  dimensions?: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface UnassignedParcelListDTO {
+  items: UnassignedParcelItemDTO[];
+  total: number;
+  limit: number;
+  offset: number;
+  cities: string[];
+}
+
+export interface UnassignedParcelDetailDTO {
+  id: number;
+  tracking_number: string;
+  sender_id: number;
+  recipient_name: string;
+  recipient_phone: string;
+  delivery_address: string;
+  delivery_city: string;
+  weight_kg: number;
+  dimensions?: string | null;
+  status: string;
+  special_instructions?: string | null;
+  created_at: string;
+  updated_at: string;
+}
