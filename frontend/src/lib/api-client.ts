@@ -3,6 +3,12 @@
  * Connects frontend to the FastAPI modular monolith backend.
  */
 
+import type {
+  MerchantRegisterRequest,
+  MerchantRegistrationResponse,
+  MerchantStatusResponse,
+} from "@/features/merchants";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000/api/v1";
 
@@ -58,6 +64,24 @@ async function request<T>(
   const headers = new Headers(options.headers || {});
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
+  }
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+    !headers.has("Authorization")
+  ) {
+    try {
+      const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+      const {
+        data: { session },
+      } = await createSupabaseBrowserClient().auth.getSession();
+      if (session?.access_token) {
+        headers.set("Authorization", `Bearer ${session.access_token}`);
+      }
+    } catch {
+      // Proceed unauthenticated if no browser session is available.
+    }
   }
 
   // Add 8-second timeout
@@ -134,6 +158,18 @@ export const apiClient = {
   // Instant pricing estimate helper
   getPricingEstimate: (data: PriceEstimateRequest) =>
     apiClient.post<PriceEstimateResponse>("/pricing/estimate", data),
+
+  // ---------------------------------------------------------------------------
+  // Merchant — Registration & Approval
+  // ---------------------------------------------------------------------------
+
+  /** Submit a new merchant registration application. */
+  registerMerchant: (data: MerchantRegisterRequest) =>
+    apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
+
+  /** Check an applicant's approval status by their merchant ID. */
+  getMerchantStatus: (merchantId: number) =>
+    apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
 };
 
 export default apiClient;
