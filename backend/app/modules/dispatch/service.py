@@ -333,3 +333,69 @@ class DispatchService:
     async def get_dispatch_history_detail(self, assignment_id: int) -> Optional[Dict[str, Any]]:
         return await self.repository.get_dispatch_history_detail(assignment_id)
 
+    async def get_active_deliveries(
+        self,
+        city: Optional[str] = None,
+        status: Optional[str] = None,
+        courier_id: Optional[int] = None,
+        search: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Tuple[List[Dict[str, Any]], int, int, int, int]:
+        """
+        Active Delivery Monitoring:
+        Retrieve live deliveries currently in transit, out for delivery, or picked up.
+        """
+        return await self.repository.get_active_deliveries(
+            city=city,
+            status=status,
+            courier_id=courier_id,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def update_active_delivery_status(
+        self,
+        parcel_id: int,
+        status_value: str,
+        current_latitude: Optional[float] = None,
+        current_longitude: Optional[float] = None,
+        notes: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Active Delivery Monitoring:
+        Update parcel delivery status, optionally record courier coordinates,
+        and publish `parcel.status.updated` event to RabbitMQ for live dashboard broadcast.
+        """
+        result = await self.repository.update_active_delivery_status(
+            parcel_id=parcel_id,
+            status_value=status_value,
+            current_latitude=current_latitude,
+            current_longitude=current_longitude,
+            notes=notes,
+        )
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Active delivery for parcel {parcel_id} not found or status invalid",
+            )
+
+        # Publish parcel.status.updated event to RabbitMQ broker
+        event_payload = {
+            "event": "ParcelStatusUpdated",
+            "parcel_id": result["parcel_id"],
+            "tracking_number": result["tracking_number"],
+            "status": result["status"],
+            "delivery_city": result["delivery_city"],
+            "courier_id": result["courier_id"],
+            "current_latitude": result["current_latitude"],
+            "current_longitude": result["current_longitude"],
+            "notes": result["notes"],
+            "occurred_at": result["updated_at"],
+        }
+        await rabbitmq_client.publish_message("parcel.status.updated", event_payload)
+
+        return result
+
+

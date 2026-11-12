@@ -29,6 +29,49 @@ class DispatchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
+
+
 class DispatcherDashboardStats(BaseModel):
     total_parcels: int
     unassigned_parcels: int
@@ -86,6 +129,49 @@ class UnassignedParcelItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
+
+
 class UnassignedParcelListResponse(BaseModel):
     items: list[UnassignedParcelItem]
     total: int
@@ -110,6 +196,92 @@ class UnassignedParcelDetailResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
+
+
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
 
 
 class DispatchCourierSummary(BaseModel):
@@ -139,6 +311,49 @@ class DispatchHistoryItem(BaseModel):
     notes: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
 
 
 class DispatchHistoryResponse(BaseModel):
@@ -175,4 +390,90 @@ class DispatchHistoryDetailResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
+
+
+class ActiveDeliveryItem(BaseModel):
+    id: int
+    tracking_number: str
+    recipient_name: str
+    recipient_phone: str
+    delivery_address: str
+    delivery_city: str
+    weight_kg: float
+    status: str
+    current_location_type: str
+    delivery_method: str
+    current_warehouse_id: Optional[int] = None
+    assignment_id: Optional[int] = None
+    courier_id: Optional[int] = None
+    courier_name: Optional[str] = None
+    vehicle_type: Optional[str] = None
+    license_plate: Optional[str] = None
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    assigned_at: Optional[datetime] = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActiveDeliveryListResponse(BaseModel):
+    items: list[ActiveDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+    in_transit_count: int
+    out_for_delivery_count: int
+    picked_up_count: int
+
+
+class ActiveDeliveryStatusUpdateRequest(BaseModel):
+    status: str
+    current_latitude: Optional[float] = None
+    current_longitude: Optional[float] = None
+    notes: Optional[str] = None
+
 

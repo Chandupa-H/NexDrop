@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.api.v1.api import api_router
 from app.integrations.rabbitmq.client import rabbitmq_client
 from app.integrations.websockets.manager import ws_manager
+from app.modules.dispatch.events import setup_delivery_monitoring_consumer
 
 # Configure structured logging
 logging.basicConfig(
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     # Initialize optional messaging connection
     try:
         await rabbitmq_client.connect()
+        setup_delivery_monitoring_consumer()
     except Exception as exc:
         logger.warning("RabbitMQ connection skipped: %s", exc)
 

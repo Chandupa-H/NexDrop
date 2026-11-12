@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db, get_optional_db
+from app.integrations.websockets.manager import ws_manager
 from app.modules.dispatch.schemas import (
     DispatchResponse,
     DispatchCreate,
@@ -20,6 +21,9 @@ from app.modules.dispatch.schemas import (
     DispatchHistoryItem,
     DispatchHistoryResponse,
     DispatchHistoryDetailResponse,
+    ActiveDeliveryItem,
+    ActiveDeliveryListResponse,
+    ActiveDeliveryStatusUpdateRequest,
 )
 from app.modules.dispatch.repository import DispatchRepository
 from app.modules.dispatch.service import DispatchService
@@ -140,6 +144,80 @@ async def get_dispatch_history_detail(
             detail=f"Dispatch assignment {assignment_id} not found",
         )
     return DispatchHistoryDetailResponse.model_validate(detail)
+
+
+@router.get("/active-deliveries", response_model=ActiveDeliveryListResponse)
+async def get_active_deliveries(
+    city: Optional[str] = None,
+    status: Optional[str] = None,
+    courier_id: Optional[int] = None,
+    search: Optional[str] = None,
+    limit: int = 10,
+    offset: int = 0,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> ActiveDeliveryListResponse:
+    """
+    Active Delivery Monitoring:
+    List parcels currently active in transit, out for delivery, or picked up,
+    with live courier telemetry, destination, and status breakdown.
+    """
+    items, total, in_transit, out_for_delivery, picked_up = (
+        await service.get_active_deliveries(
+            city=city,
+            status=status,
+            courier_id=courier_id,
+            search=search,
+            limit=limit,
+            offset=offset,
+        )
+    )
+    return ActiveDeliveryListResponse(
+        items=[ActiveDeliveryItem.model_validate(it) for it in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+        in_transit_count=in_transit,
+        out_for_delivery_count=out_for_delivery,
+        picked_up_count=picked_up,
+    )
+
+
+@router.patch("/active-deliveries/{parcel_id}/status")
+async def update_active_delivery_status(
+    parcel_id: int,
+    payload: ActiveDeliveryStatusUpdateRequest,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> Dict[str, Any]:
+    """
+    Active Delivery Monitoring:
+    Update parcel delivery progress status and publish event to RabbitMQ,
+    triggering real-time WebSocket broadcast to the dispatcher dashboard.
+    """
+    return await service.update_active_delivery_status(
+        parcel_id=parcel_id,
+        status_value=payload.status,
+        current_latitude=payload.current_latitude,
+        current_longitude=payload.current_longitude,
+        notes=payload.notes,
+    )
+
+
+@router.websocket("/ws/active-deliveries")
+async def active_deliveries_ws(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time Active Delivery Monitoring.
+    Broadcasts live updates consumed from RabbitMQ events to connected dashboard clients.
+    """
+    await ws_manager.connect(websocket, "deliveries")
+    try:
+        while True:
+            # Keep-alive ping/pong listener
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, "deliveries")
+
 
 
 
