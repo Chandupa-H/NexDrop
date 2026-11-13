@@ -15,19 +15,16 @@ const API_BASE_URL =
 export interface ApiErrorResponse {
   detail?: string | Array<{ msg: string; loc: string[] }>;
   message?: string;
-  code?: string;
 }
 
 export class ApiError extends Error {
   status: number;
-  code?: string;
   data: ApiErrorResponse;
 
   constructor(status: number, message: string, data: ApiErrorResponse = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
-    this.code = data.code;
     this.data = data;
   }
 }
@@ -84,19 +81,11 @@ async function request<T>(
     }
   }
 
-  // Add 8-second timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-  
   try {
     const response = await fetch(url, {
       ...options,
       headers,
-      signal: options.signal || controller.signal,
-      cache: options.cache || "no-store",
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       let errorData: ApiErrorResponse = {};
@@ -116,17 +105,9 @@ async function request<T>(
 
     return (await response.json()) as T;
   } catch (error) {
-    clearTimeout(timeoutId);
-    
     if (error instanceof ApiError) {
       throw error;
     }
-    
-    // Handle abort/timeout
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
-    }
-    
     throw new ApiError(500, (error as Error).message || "Network error communicating with backend");
   }
 }
