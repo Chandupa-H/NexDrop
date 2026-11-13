@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, ArrowRight, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import { resolveUserDashboardPath } from "@/lib/auth/routes";
 
 interface VerifyEmailFormProps {
   email: string;
@@ -65,11 +66,13 @@ export function VerifyEmailForm({
         return;
       }
 
-      if (data.session) {
-        router.push(onSuccessRedirect);
-      } else {
-        router.push(onSuccessRedirect);
-      }
+      const target = await resolveUserDashboardPath(
+        supabase,
+        data.user?.id ?? data.session?.user?.id,
+        onSuccessRedirect
+      );
+      router.replace(target);
+      router.refresh();
     } catch {
       setError("Verification failed. Please check the code or click the link in your email.");
       setIsLoading(false);

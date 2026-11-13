@@ -65,6 +65,24 @@ async function request<T>(
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+    !headers.has("Authorization")
+  ) {
+    try {
+      const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+      const {
+        data: { session },
+      } = await createSupabaseBrowserClient().auth.getSession();
+      if (session?.access_token) {
+        headers.set("Authorization", `Bearer ${session.access_token}`);
+      }
+    } catch {
+      // Proceed unauthenticated if no browser session is available.
+    }
+  }
 
   // Add 8-second timeout
   const controller = new AbortController();

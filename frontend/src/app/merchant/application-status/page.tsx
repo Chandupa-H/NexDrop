@@ -207,7 +207,7 @@ export default function ApplicationStatusPage() {
                 )}
 
                 {statusData.approval_status === "approved" && (
-                  <Link href="/merchant/login">
+                  <Link href="/login">
                     <Button variant="primary" size="md" className="w-full mt-1">
                       Sign In to Merchant Portal →
                     </Button>
