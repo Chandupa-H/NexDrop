@@ -70,6 +70,10 @@ def upgrade() -> None:
         )
         op.create_index(op.f("ix_delivery_zones_id"), "delivery_zones", ["id"], unique=False)
         op.create_index(op.f("ix_delivery_zones_code"), "delivery_zones", ["code"], unique=True)
+    else:
+        existing_zone_cols = {c["name"] for c in insp.get_columns("delivery_zones")}
+        if "description" not in existing_zone_cols:
+            op.add_column("delivery_zones", sa.Column("description", sa.Text(), nullable=True))
 
     # 4. Add warehouse delivery fields to parcels table
     existing_cols = {c["name"] for c in insp.get_columns("parcels")}
