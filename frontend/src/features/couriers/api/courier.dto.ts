@@ -9,6 +9,26 @@ export interface CourierMeDTO {
   role: string;
 }
 
+export interface CourierProfileDTO {
+  id: number;
+  full_name: string;
+  email: string;
+  contact_phone: string;
+  status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
+  joined_date: string;
+}
+
+export interface CourierProfileUpdateDTO {
+  full_name: string;
+  contact_phone: string;
+}
+
+export interface CourierPasswordChangeDTO {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 export interface DashboardTotalsDTO {
   assigned: number;
   delivered: number;
@@ -66,10 +86,222 @@ export interface ParcelDetailDTO {
   eta: string | null;
   notes: string[];
   timeline: TimelineEventDTO[];
+  delivery_proof: DeliveryProofDTO | null;
+  delivery_result: DeliveryResultDTO | null;
+  proof_cleanup_pending: boolean;
+}
+
+export interface DeliveryProofDTO {
+  secure_url: string;
+  public_id: string;
+}
+
+export interface DeliveryResultDTO {
+  outcome: "delivered" | "failed";
+  recorded_at: string;
+  recipient_name?: string | null;
+  failure_reason?: string | null;
+  note?: string | null;
+}
+
+export interface DeliveryProofUploadDTO {
+  secure_url: string;
+  public_id: string;
+  parcel: ParcelDetailDTO;
+}
+
+export interface CourierProofRecordDTO {
+  tracking_number: string;
+  recipient_name: string;
+  delivered_at: string;
+  delivery_address: string;
+  status: string;
+  secure_url: string;
+  public_id: string;
+}
+
+export interface CourierProofSummaryDTO {
+  total_proofs: number;
+  successful_deliveries: number;
+  parcels_with_proof: number;
+}
+
+export interface CourierProofListDTO {
+  items: CourierProofRecordDTO[];
+  total: number;
+  summary: CourierProofSummaryDTO;
+}
+
+export interface CourierProofParamsDTO {
+  q?: string;
+  date?: string;
+  status?: "delivered" | "failed";
+}
+
+export type FailedRedeliveryStatusDTO = "pending" | "scheduled" | "completed" | "superseded";
+
+export interface FailedDeliveryAttemptDTO {
+  attempt_number: number;
+  failed_at: string;
+  failure_reason: string;
+  failure_reason_label: string;
+  note: string | null;
+}
+
+export interface FailedDeliveryRecordDTO extends FailedDeliveryAttemptDTO {
+  tracking_number: string;
+  customer_name: string;
+  customer_phone_masked: string;
+  destination: string;
+  delivery_address: string;
+  assigned_at: string;
+  eta: string | null;
+  courier_name: string | null;
+  parcel_status: string;
+  redelivery_status: FailedRedeliveryStatusDTO;
+  previous_attempts: FailedDeliveryAttemptDTO[];
+}
+
+export interface FailedDeliverySummaryDTO {
+  total_failed_deliveries: number;
+  today_failed_deliveries: number;
+  pending_redelivery: number;
+  most_common_failure_reason: string | null;
+}
+
+export interface FailedDeliveryListDTO {
+  items: FailedDeliveryRecordDTO[];
+  total: number;
+  summary: FailedDeliverySummaryDTO;
+}
+
+export interface FailedDeliveryParamsDTO {
+  q?: string;
+  reason?: string;
+  date?: string;
+  redelivery_status?: FailedRedeliveryStatusDTO;
+}
+
+export interface SuccessfulDeliveryRequestDTO {
+  recipient_name: string;
+  confirmed: boolean;
+}
+
+export interface FailedDeliveryRequestDTO {
+  failure_reason: string;
+  note?: string;
+  confirmed: boolean;
 }
 
 export interface ParcelStatusUpdateRequestDTO {
   status: string;
   note?: string;
   failure_reason?: string;
+}
+
+export interface DeliveryListItemDTO {
+  parcel_id: number;
+  tracking_number: string;
+  status: import("../types").DeliveryStatus;
+  pickup_address: string;
+  dropoff_address: string;
+  size: string | null;
+  weight: number;
+  recipient_name: string;
+  recipient_phone: string;
+  assigned_at: string;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  dropoff_lat: number | null;
+  dropoff_lng: number | null;
+  delivery_instructions: string | null;
+}
+
+export interface StatusHistoryEntryDTO {
+  status: import("../types").ParcelStatus;
+  timestamp: string;
+  note: string | null;
+  proof_reference: string | null;
+  actor: string | null;
+}
+
+export interface DeliveryDetailDTO extends DeliveryListItemDTO {
+  completed_at: string | null;
+  failure_reason: string | null;
+  status_history: StatusHistoryEntryDTO[];
+}
+
+export interface DeliveryHistoryItemDTO {
+  parcel_id: number;
+  tracking_number: string;
+  status: "delivered" | "cancelled";
+  pickup_address: string;
+  dropoff_address: string;
+  recipient_name: string;
+  completed_at: string;
+  failure_reason: string | null;
+}
+
+export interface DeliveryHistoryResponseDTO {
+  items: DeliveryHistoryItemDTO[];
+  total: number;
+  page: number;
+  page_size: number;
+  history_summary: {
+    delivered: number;
+    cancelled: number;
+    total: number;
+  };
+}
+
+export interface DeliveryHistoryParams {
+  status?: "delivered" | "cancelled";
+  from?: string;
+  to?: string;
+  q?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface CourierLocationDTO {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  heading: number | null;
+  speed: number | null;
+  updated_at: string;
+  active_delivery_id: number | null;
+}
+
+export interface DeliveryDestinationDTO {
+  address: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+export interface DeliveryTrackingDTO {
+  delivery: DeliveryListItemDTO;
+  courier_location: CourierLocationDTO | null;
+  location_source: "live" | "simulated" | "unavailable";
+  next_destination: DeliveryDestinationDTO | null;
+  next_action: string;
+  simulation_route?: Array<{ lat: number; lng: number }>;
+}
+
+export interface CourierLocationUpdateDTO {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  heading?: number;
+  speed?: number;
+  deliveryId?: number;
+}
+
+export interface CourierLocationUpdateResponseDTO {
+  location: CourierLocationDTO;
+  accepted: boolean;
+}
+
+export interface DeliveryStatusUpdateDTO {
+  status: import("../types").DeliveryStatus;
 }

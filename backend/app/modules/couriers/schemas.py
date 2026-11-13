@@ -1,6 +1,9 @@
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Literal, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.modules.parcels.models import ParcelStatus
 
 
 class CourierBase(BaseModel):
@@ -37,6 +40,66 @@ class CourierMeResponse(BaseModel):
     id: int
     full_name: str
     role: str = "courier"
+
+
+class CourierProfileResponse(BaseModel):
+    """Authenticated courier profile details."""
+
+    id: int
+    full_name: str
+    email: str
+    contact_phone: str
+    status: Literal["ACTIVE", "INACTIVE", "SUSPENDED"]
+    joined_date: str
+
+
+class CourierProfileUpdateRequest(BaseModel):
+    """Editable courier profile fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str = Field(min_length=2, max_length=255)
+    contact_phone: str = Field(min_length=7, max_length=24)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Full name must contain at least 2 characters.")
+        return value
+
+    @field_validator("contact_phone")
+    @classmethod
+    def validate_contact_phone(cls, value: str) -> str:
+        import re
+
+        value = value.strip()
+        if not re.fullmatch(r"\+?[0-9][0-9\s()-]*", value):
+            raise ValueError("Enter a valid contact phone number.")
+        digit_count = sum(character.isdigit() for character in value)
+        if not 7 <= digit_count <= 15:
+            raise ValueError("Phone number must contain 7 to 15 digits.")
+        return value
+
+
+class CourierPasswordChangeRequest(BaseModel):
+    """Validate a courier password-change request before auth is implemented."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+    confirm_password: str = Field(min_length=12, max_length=1024)
+
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_password_confirmation(
+        cls, value: str, info
+    ) -> str:
+        if "new_password" in info.data and value != info.data["new_password"]:
+            raise ValueError("Password confirmation does not match.")
+        return value
 
 
 class DashboardTotals(BaseModel):
@@ -92,6 +155,19 @@ class TimelineEvent(BaseModel):
     location: Optional[str] = None
 
 
+class DeliveryProof(BaseModel):
+    secure_url: str
+    public_id: str
+
+
+class DeliveryResult(BaseModel):
+    outcome: Literal["delivered", "failed"]
+    recorded_at: str
+    recipient_name: Optional[str] = None
+    failure_reason: Optional[str] = None
+    note: Optional[str] = None
+
+
 class ParcelDetailResponse(BaseModel):
     """GET /courier/parcels/{tracking_id} - Full parcel details."""
     tracking_id: str
@@ -104,6 +180,36 @@ class ParcelDetailResponse(BaseModel):
     eta: Optional[str] = None
     notes: List[str] = Field(default_factory=list)
     timeline: List[TimelineEvent]
+    delivery_proof: Optional[DeliveryProof] = None
+    delivery_result: Optional[DeliveryResult] = None
+    proof_cleanup_pending: bool = False
+
+
+class SuccessfulDeliveryRequest(BaseModel):
+    recipient_name: str = Field(min_length=1, max_length=255)
+    confirmed: bool
+
+    @field_validator("recipient_name")
+    @classmethod
+    def recipient_name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("recipient_name is required")
+        return value
+
+
+class FailedDeliveryRequest(BaseModel):
+    failure_reason: str = Field(min_length=1, max_length=100)
+    note: Optional[str] = Field(default=None, max_length=2000)
+    confirmed: bool
+
+    @field_validator("failure_reason")
+    @classmethod
+    def failure_reason_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("failure_reason is required")
+        return value
 
 
 class ParcelStatusUpdateRequest(BaseModel):
@@ -111,3 +217,177 @@ class ParcelStatusUpdateRequest(BaseModel):
     status: str
     note: Optional[str] = None
     failure_reason: Optional[str] = None  # Required when status is "failed"
+
+
+class DeliveryProofResponse(BaseModel):
+    secure_url: str
+    public_id: str
+    parcel: ParcelDetailResponse
+
+
+class CourierProofRecord(BaseModel):
+    tracking_number: str
+    recipient_name: str
+    delivered_at: str
+    delivery_address: str
+    status: str
+    secure_url: str
+    public_id: str
+
+
+class CourierProofSummary(BaseModel):
+    total_proofs: int
+    successful_deliveries: int
+    parcels_with_proof: int
+
+
+class CourierProofListResponse(BaseModel):
+    items: List[CourierProofRecord]
+    total: int
+    summary: CourierProofSummary
+
+
+class FailedDeliveryAttempt(BaseModel):
+    attempt_number: int
+    failed_at: str
+    failure_reason: str
+    failure_reason_label: str
+    note: Optional[str] = None
+
+
+class FailedDeliveryRecord(FailedDeliveryAttempt):
+    tracking_number: str
+    customer_name: str
+    customer_phone_masked: str
+    destination: str
+    delivery_address: str
+    assigned_at: str
+    eta: Optional[str] = None
+    courier_name: Optional[str] = None
+    parcel_status: str
+    redelivery_status: Literal["pending", "scheduled", "completed", "superseded"]
+    previous_attempts: List[FailedDeliveryAttempt] = Field(default_factory=list)
+
+
+class FailedDeliverySummary(BaseModel):
+    total_failed_deliveries: int
+    today_failed_deliveries: int
+    pending_redelivery: int
+    most_common_failure_reason: Optional[str] = None
+
+
+class FailedDeliveryListResponse(BaseModel):
+    items: List[FailedDeliveryRecord]
+    total: int
+    summary: FailedDeliverySummary
+
+
+class DeliveryListItem(BaseModel):
+    parcel_id: int
+    tracking_number: str
+    status: ParcelStatus
+    pickup_address: str
+    dropoff_address: str
+    size: Optional[str] = None
+    weight: float
+    recipient_name: str
+    recipient_phone: str
+    assigned_at: datetime
+    pickup_lat: Optional[float] = None
+    pickup_lng: Optional[float] = None
+    dropoff_lat: Optional[float] = None
+    dropoff_lng: Optional[float] = None
+    delivery_instructions: Optional[str] = None
+
+
+class StatusHistoryEntry(BaseModel):
+    status: ParcelStatus
+    timestamp: datetime
+    note: Optional[str] = None
+    proof_reference: Optional[str] = None
+    actor: Optional[str] = None
+
+
+class DeliveryDetail(DeliveryListItem):
+    completed_at: Optional[datetime] = None
+    failure_reason: Optional[str] = None
+    status_history: List[StatusHistoryEntry] = Field(default_factory=list)
+
+
+class DeliveryHistoryItem(BaseModel):
+    parcel_id: int
+    tracking_number: str
+    status: ParcelStatus
+    pickup_address: str
+    dropoff_address: str
+    recipient_name: str
+    completed_at: datetime
+    failure_reason: Optional[str] = None
+
+
+class DeliveryHistorySummary(BaseModel):
+    delivered: int
+    cancelled: int
+    total: int
+
+
+class DeliveryHistoryResponse(BaseModel):
+    items: List[DeliveryHistoryItem]
+    total: int
+    page: int
+    page_size: int
+    history_summary: DeliveryHistorySummary
+
+
+class CourierLocationUpdateRequest(BaseModel):
+    lat: float = Field(strict=True, ge=-90, le=90, allow_inf_nan=False)
+    lng: float = Field(strict=True, ge=-180, le=180, allow_inf_nan=False)
+    accuracy: Optional[float] = Field(
+        default=None, strict=True, ge=0, allow_inf_nan=False
+    )
+    heading: Optional[float] = Field(
+        default=None, strict=True, ge=0, le=360, allow_inf_nan=False
+    )
+    speed: Optional[float] = Field(
+        default=None, strict=True, ge=0, allow_inf_nan=False
+    )
+    delivery_id: Optional[int] = Field(default=None, gt=0, alias="deliveryId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CourierLocationResponse(BaseModel):
+    courier_id: int
+    lat: float
+    lng: float
+    accuracy: Optional[float] = None
+    heading: Optional[float] = None
+    speed: Optional[float] = None
+    updated_at: datetime
+    active_delivery_id: Optional[int] = None
+
+
+class CourierLocationUpdateResponse(BaseModel):
+    location: CourierLocationResponse
+    accepted: bool
+
+
+class DeliveryDestination(BaseModel):
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class DeliveryTrackingResponse(BaseModel):
+    delivery: DeliveryListItem
+    courier_location: Optional[CourierLocationResponse] = None
+    location_source: str
+    next_destination: Optional[DeliveryDestination] = None
+    next_action: str
+
+
+class DeliveryStatusUpdateRequest(BaseModel):
+    status: ParcelStatus
+    note: Optional[str] = Field(default=None, max_length=2000)
+    proof_reference: Optional[str] = Field(default=None, max_length=512)
+    failure_reason: Optional[str] = Field(default=None, max_length=2000)

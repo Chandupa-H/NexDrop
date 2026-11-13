@@ -1,6 +1,8 @@
 import type { DashboardRoleConfig, NavItem } from "./types";
 
 export function getTopbarTitle(config: DashboardRoleConfig, pathname: string): string {
+  if (config.topbarTitle) return config.topbarTitle;
+
   const homeTitle = `${config.roleLabel} Dashboard`;
   if (pathname === config.homeHref) return homeTitle;
   if (config.profileHref && (pathname === config.profileHref || pathname.startsWith(config.profileHref + '/'))) {
