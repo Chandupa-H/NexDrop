@@ -1,18 +1,30 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { MerchantOrder, OrderStatus } from "../../types";
+import type { MerchantOrder, OrderStatus, MerchantKpis } from "../../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Search,
+  Package,
+  PackageX,
+  Truck,
+  Navigation,
+  CheckCircle2,
+  AlertCircle,
+  CreditCard,
+} from "lucide-react";
 
 interface OrdersTabProps {
   orders: MerchantOrder[];
+  kpis?: MerchantKpis;
   onSelectOrder: (order: MerchantOrder) => void;
   onNavigateCreate: () => void;
 }
 
 export function OrdersTab({
   orders,
+  kpis,
   onSelectOrder,
   onNavigateCreate,
 }: OrdersTabProps) {
@@ -44,6 +56,61 @@ export function OrdersTab({
 
   return (
     <div className="space-y-4">
+      {/* Optional Top KPI Summary Strip */}
+      {kpis && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">Total</span>
+              <Package className="w-3.5 h-3.5 text-gray-400" />
+            </div>
+            <div className="text-xl font-bold text-[#064E3B] mt-1">{kpis.totalOrders}</div>
+          </div>
+
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">In Transit</span>
+              <Truck className="w-3.5 h-3.5 text-blue-500" />
+            </div>
+            <div className="text-xl font-bold text-blue-600 mt-1">{kpis.inTransit}</div>
+          </div>
+
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">Out for Delivery</span>
+              <Navigation className="w-3.5 h-3.5 text-amber-500" />
+            </div>
+            <div className="text-xl font-bold text-amber-600 mt-1">{kpis.outForDelivery}</div>
+          </div>
+
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">Delivered</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
+            </div>
+            <div className="text-xl font-bold text-[#16A34A] mt-1">{kpis.delivered}</div>
+          </div>
+
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">Issues</span>
+              <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+            </div>
+            <div className="text-xl font-bold text-rose-600 mt-1">{kpis.failed}</div>
+          </div>
+
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase">Pending COD</span>
+              <CreditCard className="w-3.5 h-3.5 text-[#064E3B]" />
+            </div>
+            <div className="text-base font-bold text-[#064E3B] mt-1 truncate">
+              LKR {kpis.pendingCod.toLocaleString()}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Filter and Actions Bar */}
       <div className="bg-white border border-[#E5E7EB] rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Status Filters */}
@@ -93,7 +160,7 @@ export function OrdersTab({
               onChange={(e) => setSearch(e.target.value)}
               className="text-xs pl-8 pr-3 py-2 border border-[#E5E7EB] rounded-lg bg-[#F8FAF8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#064E3B] w-56 sm:w-64"
             />
-            <span className="absolute left-2.5 top-2.5 text-gray-400 text-xs">🔍</span>
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5 pointer-events-none" />
           </div>
 
           <Button
@@ -111,19 +178,38 @@ export function OrdersTab({
       <div className="bg-white border border-[#E5E7EB] rounded-xl shadow-sm overflow-hidden">
         {filteredOrders.length === 0 ? (
           <div className="p-12 text-center space-y-3">
-            <span className="text-3xl">📭</span>
-            <p className="text-sm font-semibold text-gray-700">No shipments match your criteria</p>
-            <p className="text-xs text-gray-500">Try adjusting your filters or search terms.</p>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setFilter("all");
-                setSearch("");
-              }}
-            >
-              Reset Filters
-            </Button>
+            <PackageX className="w-10 h-10 text-gray-300 mx-auto" />
+            <p className="text-sm font-semibold text-gray-700">
+              {orders.length === 0
+                ? "No shipments registered yet"
+                : "No shipments match your criteria"}
+            </p>
+            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+              {orders.length === 0
+                ? "You haven't created any delivery shipments yet. Click below to dispatch your first parcel."
+                : "Try adjusting your status filter or search keywords."}
+            </p>
+            {orders.length === 0 ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onNavigateCreate}
+                className="font-semibold shadow-sm"
+              >
+                + Create First Shipment
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setFilter("all");
+                  setSearch("");
+                }}
+              >
+                Reset Filters
+              </Button>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -142,62 +228,61 @@ export function OrdersTab({
               <tbody className="divide-y divide-[#E5E7EB]">
                 {filteredOrders.map((ord) => (
                   <tr key={ord.id} className="hover:bg-[#F9FAF9] transition-colors">
-                    <td className="px-5 py-3.5">
-                      <button
-                        onClick={() => onSelectOrder(ord)}
-                        className="font-mono font-bold text-[#064E3B] hover:text-[#16A34A] hover:underline"
-                      >
-                        {ord.trackingNumber}
-                      </button>
-                      <div className="text-[10px] text-gray-400 mt-0.5">
-                        {new Date(ord.createdAt).toLocaleDateString()}
-                      </div>
+                    <td className="px-5 py-3.5 font-mono font-bold text-[#064E3B]">
+                      {ord.trackingNumber}
                     </td>
 
                     <td className="px-5 py-3.5">
                       <div className="font-semibold text-gray-900">{ord.recipientName}</div>
-                      <div className="text-gray-500 text-[11px]">{ord.deliveryAddress}, {ord.deliveryCity}</div>
+                      <div className="text-gray-500 text-[11px] truncate max-w-[200px]">
+                        {ord.deliveryAddress}, {ord.deliveryCity}
+                      </div>
                       <div className="text-gray-400 text-[10px]">{ord.recipientPhone}</div>
                     </td>
 
                     <td className="px-5 py-3.5 text-gray-700">
                       <div>{ord.weightKg} kg</div>
-                      <div className="text-[10px] text-gray-400">{ord.dimensions || "Medium Box"}</div>
+                      <span className="text-[10px] text-gray-400 font-mono">
+                        {ord.dimensions || "Standard"}
+                      </span>
                     </td>
 
                     <td className="px-5 py-3.5">
                       {ord.codAmount > 0 ? (
-                        <span className="font-semibold text-[#064E3B]">
-                          COD LKR {ord.codAmount.toLocaleString()}
-                        </span>
+                        <div>
+                          <span className="font-semibold text-[#064E3B]">
+                            LKR {ord.codAmount.toLocaleString()}
+                          </span>
+                          <span className="block text-[10px] text-amber-700 font-medium">
+                            COD to Collect
+                          </span>
+                        </div>
                       ) : (
-                        <span className="text-gray-500">Prepaid</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          Prepaid
+                        </Badge>
                       )}
                     </td>
 
-                    <td className="px-5 py-3.5 text-gray-700">
+                    <td className="px-5 py-3.5 text-gray-600">
                       <div>{ord.estimatedDelivery}</div>
+                      <div className="text-[10px] text-gray-400">
+                        {new Date(ord.createdAt).toLocaleDateString()}
+                      </div>
                     </td>
 
                     <td className="px-5 py-3.5">
-                      <Badge variant={ord.status} className="capitalize">
+                      <Badge variant={ord.status} className="capitalize text-[11px]">
                         {ord.status.replace(/_/g, " ")}
                       </Badge>
-                      {ord.status === "failed" && (
-                        <span
-                          className="block text-[10px] text-red-600 truncate max-w-[150px] mt-0.5 cursor-pointer"
-                          title={ord.failureReason}
-                        >
-                          {ord.failureReason}
-                        </span>
-                      )}
                     </td>
 
-                    <td className="px-5 py-3.5 text-right space-x-2">
+                    <td className="px-5 py-3.5 text-right">
                       <Button
                         variant="secondary"
                         size="sm"
                         onClick={() => onSelectOrder(ord)}
+                        className="text-xs"
                       >
                         Details
                       </Button>
@@ -212,4 +297,3 @@ export function OrdersTab({
     </div>
   );
 }
-

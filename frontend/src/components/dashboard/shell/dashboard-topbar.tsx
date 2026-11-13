@@ -3,10 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { Bell, Menu, Search } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Bell, Menu, Search, Home, LogOut, Key, ChevronDown, Package } from "lucide-react";
 import { getTopbarTitle } from "@/lib/dashboard/topbar";
 import type { DashboardRoleConfig, DashboardUser } from "@/lib/dashboard/types";
+import { logoutAction } from "@/lib/auth/logout";
 
 export function DashboardTopbar({
   config,
@@ -174,6 +175,10 @@ export function TopbarProfileLink({
   user: DashboardUser;
   profileHref: string;
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isLoggingOut, startTransition] = useTransition();
+  const rootRef = useRef<HTMLDivElement>(null);
+
   const initials = user.name
     .trim()
     .split(/\s+/)
@@ -182,26 +187,139 @@ export function TopbarProfileLink({
     .toUpperCase()
     .slice(0, 2);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem("nexdrop_merchant_application");
+    } catch {}
+    startTransition(async () => {
+      await logoutAction();
+    });
+  };
+
   return (
-    <Link href={profileHref} className="dashboard-user-link" aria-label="Open profile">
-      {user.avatarUrl ? (
-        <Image
-          src={user.avatarUrl}
-          alt=""
-          width={32}
-          height={32}
-          unoptimized
-          className="dashboard-user-avatar"
-        />
-      ) : (
-        <span className="dashboard-user-avatar" aria-hidden="true">
-          {initials}
+    <div className="relative" ref={rootRef}>
+      <Link
+        href={profileHref}
+        onClick={(e) => {
+          e.preventDefault();
+          setIsOpen((prev) => !prev);
+        }}
+        className="dashboard-user-link focus:outline-none cursor-pointer"
+        aria-label="Open profile"
+        aria-expanded={isOpen}
+      >
+        {user.avatarUrl ? (
+          <Image
+            src={user.avatarUrl}
+            alt=""
+            width={32}
+            height={32}
+            unoptimized
+            className="dashboard-user-avatar"
+          />
+        ) : (
+          <span className="dashboard-user-avatar" aria-hidden="true">
+            {initials}
+          </span>
+        )}
+        <span className="dashboard-user-copy">
+          <span className="dashboard-user-name">{user.name}</span>
+          <span className="dashboard-user-role">{user.roleLabel}</span>
         </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-150 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+          aria-hidden="true"
+        />
+      </Link>
+
+      {/* Account Popover Menu */}
+      {isOpen && (
+        <div
+          className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[#E5E7EB] bg-white p-2 shadow-2xl z-50 text-xs animate-in fade-in duration-150"
+          role="menu"
+        >
+          {/* User Info Header */}
+          <div className="p-3 border-b border-[#E5E7EB] bg-[#F8FAF8] rounded-lg mb-1">
+            <span className="font-bold text-gray-900 block truncate text-sm">
+              {user.name}
+            </span>
+            <span className="text-[11px] text-[#064E3B] font-semibold bg-emerald-100 px-2 py-0.5 rounded-full inline-block mt-1">
+              {user.roleLabel}
+            </span>
+          </div>
+
+          {/* Navigation Links */}
+          <div className="py-1 space-y-0.5">
+            <Link
+              href="/"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-[#F0FDF4] hover:text-[#064E3B] font-medium transition-colors"
+              role="menuitem"
+            >
+              <Home className="w-4 h-4 text-[#064E3B]" />
+              <span>Return to Home Page</span>
+            </Link>
+
+            <Link
+              href="/merchant/dashboard?tab=orders"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-[#F0FDF4] hover:text-[#064E3B] font-medium transition-colors"
+              role="menuitem"
+            >
+              <Package className="w-4 h-4 text-gray-500" />
+              <span>All Shipments</span>
+            </Link>
+
+            {profileHref && (
+              <Link
+                href={profileHref}
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-[#F0FDF4] hover:text-[#064E3B] font-medium transition-colors"
+                role="menuitem"
+              >
+                <Key className="w-4 h-4 text-gray-500" />
+                <span>API Keys & Integrations</span>
+              </Link>
+            )}
+          </div>
+
+          <div className="border-t border-[#E5E7EB] my-1" />
+
+          {/* Sign Out Action */}
+          <button
+            type="button"
+            disabled={isLoggingOut}
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 font-semibold transition-colors text-left"
+            role="menuitem"
+          >
+            <LogOut className="w-4 h-4 text-red-600" />
+            <span>{isLoggingOut ? "Signing out..." : "Log out"}</span>
+          </button>
+        </div>
       )}
-      <span className="dashboard-user-copy">
-        <span className="dashboard-user-name">{user.name}</span>
-        <span className="dashboard-user-role">{user.roleLabel}</span>
-      </span>
-    </Link>
+    </div>
   );
 }

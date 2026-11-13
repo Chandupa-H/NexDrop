@@ -1,11 +1,11 @@
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from app.modules.merchants.models import ApprovalStatus
 
 
 # ---------------------------------------------------------------------------
-# Base / shared fields
+# Base / shared merchant fields
 # ---------------------------------------------------------------------------
 
 class MerchantBase(BaseModel):
@@ -25,13 +25,16 @@ class MerchantRegisterRequest(MerchantBase):
     """Submitted by a new merchant on the public registration form."""
     email: EmailStr
     full_name: str
-    password: str
-    confirm_password: str
+    password: Optional[str] = None
+    confirm_password: Optional[str] = None
+    role_designation: Optional[str] = None
+    direct_phone: Optional[str] = None
 
     @field_validator("confirm_password")
     @classmethod
-    def passwords_match(cls, v: str, info) -> str:
-        if "password" in info.data and v != info.data["password"]:
+    def passwords_match(cls, v: Optional[str], info) -> Optional[str]:
+        pwd = info.data.get("password")
+        if v and pwd and v != pwd:
             raise ValueError("Passwords do not match")
         return v
 
@@ -105,34 +108,6 @@ class MerchantStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# ---------------------------------------------------------------------------
-# API Credentials & Security (Part 4)
-# ---------------------------------------------------------------------------
-
-class ApiCredentialsResponse(BaseModel):
-    merchant_id: int
-    business_name: str
-    live_key: str
-    test_key: str
-    client_id: str
-    client_secret: str
-    rate_limit_per_day: int = 10000
-    used_today: int = 42
-    approval_status: ApprovalStatus
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class RegenerateKeyRequest(BaseModel):
-    key_type: str = "live"  # "live", "test", or "secret"
-
-
-class RegenerateKeyResponse(BaseModel):
-    key_type: str
-    new_key: str
-    message: str
-
-
 class OAuthTokenRequest(BaseModel):
     grant_type: str = "client_credentials"
     client_id: str
@@ -184,3 +159,141 @@ class MerchantDeliveryResponse(BaseModel):
     cod_amount: float
     special_instructions: Optional[str] = None
     created_at: str
+
+
+# ===========================================================================
+# Merchant Portal Dashboard & Orders Schemas
+# ===========================================================================
+
+class MerchantOrderBase(BaseModel):
+    recipient_name: str = Field(..., alias="recipientName")
+    recipient_phone: str = Field(..., alias="recipientPhone")
+    delivery_address: str = Field(..., alias="deliveryAddress")
+    delivery_city: str = Field(..., alias="deliveryCity")
+    weight_kg: float = Field(default=1.0, alias="weightKg")
+    dimensions: Optional[str] = "20x15x10 cm"
+    cod_amount: float = Field(default=0.0, alias="codAmount")
+    is_prepaid: bool = Field(default=False, alias="isPrepaid")
+    special_instructions: Optional[str] = Field(default=None, alias="specialInstructions")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class MerchantOrderCreate(MerchantOrderBase):
+    """Payload to create a new delivery order from the merchant dashboard."""
+    sender_id: Optional[int] = None
+
+
+class MerchantOrderResponse(BaseModel):
+    """Full order object matching frontend MerchantOrder interface."""
+    id: str
+    tracking_number: str = Field(..., alias="trackingNumber", serialization_alias="trackingNumber")
+    recipient_name: str = Field(..., alias="recipientName", serialization_alias="recipientName")
+    recipient_phone: str = Field(..., alias="recipientPhone", serialization_alias="recipientPhone")
+    delivery_address: str = Field(..., alias="deliveryAddress", serialization_alias="deliveryAddress")
+    delivery_city: str = Field(..., alias="deliveryCity", serialization_alias="deliveryCity")
+    status: str
+    weight_kg: float = Field(..., alias="weightKg", serialization_alias="weightKg")
+    dimensions: Optional[str] = None
+    cod_amount: float = Field(default=0.0, alias="codAmount", serialization_alias="codAmount")
+    is_prepaid: bool = Field(default=False, alias="isPrepaid", serialization_alias="isPrepaid")
+    estimated_delivery: str = Field(..., alias="estimatedDelivery", serialization_alias="estimatedDelivery")
+    created_at: str = Field(..., alias="createdAt", serialization_alias="createdAt")
+    special_instructions: Optional[str] = Field(default=None, alias="specialInstructions", serialization_alias="specialInstructions")
+    failure_reason: Optional[str] = Field(default=None, alias="failureReason", serialization_alias="failureReason")
+    courier_name: Optional[str] = Field(default=None, alias="courierName", serialization_alias="courierName")
+    courier_phone: Optional[str] = Field(default=None, alias="courierPhone", serialization_alias="courierPhone")
+
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+
+class MerchantOrderStatusUpdate(BaseModel):
+    status: str
+    failure_reason: Optional[str] = None
+    courier_name: Optional[str] = None
+    courier_phone: Optional[str] = None
+
+
+class MerchantKpisResponse(BaseModel):
+    """KPI summary matching frontend MerchantKpis interface."""
+    total_orders: int = Field(..., alias="totalOrders", serialization_alias="totalOrders")
+    in_transit: int = Field(..., alias="inTransit", serialization_alias="inTransit")
+    out_for_delivery: int = Field(..., alias="outForDelivery", serialization_alias="outForDelivery")
+    delivered: int = Field(..., alias="delivered", serialization_alias="delivered")
+    failed: int = Field(..., alias="failed", serialization_alias="failed")
+    pending_cod: float = Field(..., alias="pendingCod", serialization_alias="pendingCod")
+    success_rate: int = Field(..., alias="successRate", serialization_alias="successRate")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ApiCredentialsResponse(BaseModel):
+    """API & OAuth credentials matching frontend ApiCredentials interface."""
+    merchant_id: str = Field(..., alias="merchantId", serialization_alias="merchantId")
+    business_name: str = Field(..., alias="businessName", serialization_alias="businessName")
+    live_key: str = Field(..., alias="liveKey", serialization_alias="liveKey")
+    test_key: str = Field(..., alias="testKey", serialization_alias="testKey")
+    client_id: str = Field(..., alias="clientId", serialization_alias="clientId")
+    client_secret: str = Field(..., alias="clientSecret", serialization_alias="clientSecret")
+    rate_limit_per_day: int = Field(..., alias="rateLimitPerDay", serialization_alias="rateLimitPerDay")
+    used_today: int = Field(..., alias="usedToday", serialization_alias="usedToday")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RegenerateKeyRequest(BaseModel):
+    key_type: str = "live"  # "live" | "test"
+
+
+class WebhookConfigResponse(BaseModel):
+    """Webhook config matching frontend WebhookConfig interface."""
+    target_url: str = Field(..., alias="targetUrl", serialization_alias="targetUrl")
+    secret_key: str = Field(..., alias="secretKey", serialization_alias="secretKey")
+    is_active: bool = Field(..., alias="isActive", serialization_alias="isActive")
+    subscribed_events: List[str] = Field(..., alias="subscribedEvents", serialization_alias="subscribedEvents")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookConfigUpdate(BaseModel):
+    target_url: Optional[str] = Field(default=None, alias="targetUrl")
+    secret_key: Optional[str] = Field(default=None, alias="secretKey")
+    is_active: Optional[bool] = Field(default=None, alias="isActive")
+    subscribed_events: Optional[List[str]] = Field(default=None, alias="subscribedEvents")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookDeliveryLogResponse(BaseModel):
+    """Webhook delivery attempt log matching frontend WebhookDeliveryLog interface."""
+    id: str
+    event: str
+    tracking_number: str = Field(..., alias="trackingNumber", serialization_alias="trackingNumber")
+    status: int
+    status_text: str = Field(..., alias="statusText", serialization_alias="statusText")
+    timestamp: str
+    duration_ms: int = Field(..., alias="durationMs", serialization_alias="durationMs")
+    payload_summary: str = Field(..., alias="payloadSummary", serialization_alias="payloadSummary")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookTestRequest(BaseModel):
+    event_type: str = "order.in_transit"
+    tracking_number: Optional[str] = None
+
+
+class WebhookTestResponse(BaseModel):
+    log: WebhookDeliveryLogResponse
+    message: str
+
+
+class MerchantDashboardSummaryResponse(BaseModel):
+    merchant_id: str = Field(..., alias="merchantId", serialization_alias="merchantId")
+    business_name: str = Field(..., alias="businessName", serialization_alias="businessName")
+    kpis: MerchantKpisResponse
+    recent_orders: List[MerchantOrderResponse] = Field(..., alias="recentOrders", serialization_alias="recentOrders")
+    credentials: ApiCredentialsResponse
+    webhook_config: WebhookConfigResponse = Field(..., alias="webhookConfig", serialization_alias="webhookConfig")
+
+    model_config = ConfigDict(populate_by_name=True)

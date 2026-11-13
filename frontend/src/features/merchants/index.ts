@@ -32,8 +32,10 @@ export interface MerchantRegisterRequest {
   // Account
   email: string;
   full_name: string;
-  password: string;
-  confirm_password: string;
+  password?: string;
+  confirm_password?: string;
+  role_designation?: string;
+  direct_phone?: string;
   // Business
   business_name: string;
   registration_number: string;

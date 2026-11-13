@@ -6,7 +6,7 @@ import type { DashboardUser } from "@/lib/dashboard/types";
 import { MOCK_API_CREDENTIALS } from "../data/mock-merchant-data";
 
 export function MerchantTopbarUser({ profileHref }: { profileHref: string }) {
-  const [businessName, setBusinessName] = useState(MOCK_API_CREDENTIALS.businessName);
+  const [businessName, setBusinessName] = useState("Merchant Portal");
 
   useEffect(() => {
     try {

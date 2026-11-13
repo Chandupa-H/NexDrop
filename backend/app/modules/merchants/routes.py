@@ -1,7 +1,7 @@
 import secrets
 from typing import List, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -15,13 +15,22 @@ from app.modules.merchants.schemas import (
     MerchantStatusResponse,
     ApiCredentialsResponse,
     RegenerateKeyRequest,
-    RegenerateKeyResponse,
     OAuthTokenRequest,
     OAuthTokenResponse,
     VerifyKeyRequest,
     VerifyKeyResponse,
     MerchantDeliveryCreate,
     MerchantDeliveryResponse,
+    MerchantOrderCreate,
+    MerchantOrderResponse,
+    MerchantOrderStatusUpdate,
+    MerchantKpisResponse,
+    WebhookConfigResponse,
+    WebhookConfigUpdate,
+    WebhookDeliveryLogResponse,
+    WebhookTestRequest,
+    WebhookTestResponse,
+    MerchantDashboardSummaryResponse,
 )
 from app.modules.merchants.repository import MerchantRepository
 from app.modules.merchants.service import MerchantService
@@ -39,8 +48,9 @@ router = APIRouter(prefix="/merchants", tags=["Merchants"])
 # Dependency
 # ---------------------------------------------------------------------------
 
-def get_merchant_service(session: AsyncSession = Depends(get_db)) -> MerchantService:
-    return MerchantService(MerchantRepository(session))
+def get_merchant_service(session: Optional[AsyncSession] = Depends(get_optional_db)) -> MerchantService:
+    repo = MerchantRepository(session) if session else None
+    return MerchantService(repo)
 
 
 # In-memory deliveries store for merchant API orders (offline / persistent runtime)
@@ -98,26 +108,30 @@ _MERCHANT_DELIVERIES: List[dict] = [
     summary="Submit merchant registration application",
     description=(
         "Creates a new User (role=merchant, inactive) and a Merchant profile "
-        "(approval_status=pending) in a single transaction. The merchant must wait "
-        "for admin approval before they can log in."
+        "(approval_status=pending). Supported by persistent DB or resilient in-memory mode."
     ),
 )
 async def register_merchant(
     payload: MerchantRegisterRequest,
-    session: AsyncSession = Depends(get_db),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantRegistrationResponse:
-    service = MerchantService(MerchantRepository(session))
+    repo = MerchantRepository(session) if session else None
+    service = MerchantService(repo)
     try:
         merchant = await service.register_merchant(payload, session)
-        await session.commit()
+        if session:
+            try:
+                await session.commit()
+            except Exception:
+                pass
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         )
     return MerchantRegistrationResponse(
-        merchant_id=merchant.id,
-        approval_status=merchant.approval_status,
+        merchant_id=merchant["id"] if isinstance(merchant, dict) else merchant.id,
+        approval_status=merchant["approval_status"] if isinstance(merchant, dict) else merchant.approval_status,
         message=(
             "Your application has been submitted successfully. "
             "You will be notified once an admin reviews your account."
@@ -133,43 +147,139 @@ async def register_merchant(
     "/{merchant_id}/status",
     response_model=MerchantStatusResponse,
     summary="Check merchant application status",
-    description=(
-        "Allows an applicant to check if their registration has been "
-        "approved, is still pending, or was rejected."
-    ),
+    description="Allows an applicant to check if their registration is approved, pending, or rejected.",
 )
 async def get_merchant_status(
-    merchant_id: int,
-    session: Optional[AsyncSession] = Depends(get_optional_db),
+    merchant_id: str,
+    service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantStatusResponse:
-    if session:
-        service = MerchantService(MerchantRepository(session))
-        merchant = await service.get_merchant(merchant_id)
-        if merchant:
-            return MerchantStatusResponse(
-                merchant_id=merchant.id,
-                business_name=merchant.business_name,
-                approval_status=merchant.approval_status,
-                rejection_reason=merchant.rejection_reason,
-            )
-
-    # Demo fallback
-    if merchant_id == 1:
-        return MerchantStatusResponse(
-            merchant_id=1,
-            business_name=MOCK_APPROVED_MERCHANT["business_name"],
-            approval_status=ApprovalStatus.APPROVED,
-            rejection_reason=None,
+    merchant = await service.get_merchant_by_identifier(merchant_id)
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No merchant application found with ID '{merchant_id}'.",
         )
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"No merchant application found with ID {merchant_id}.",
+    return MerchantStatusResponse(
+        merchant_id=merchant["id"],
+        business_name=merchant["business_name"],
+        approval_status=merchant["approval_status"],
+        rejection_reason=merchant.get("rejection_reason"),
     )
 
 
 # ---------------------------------------------------------------------------
-# Part 4: API Authentication & Security Endpoints
+# Dashboard — Summary & KPIs
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{merchant_id}/dashboard/summary",
+    response_model=MerchantDashboardSummaryResponse,
+    summary="Get full merchant dashboard bundle",
+    description="Returns KPIs, recent orders, API credentials, and webhook config in a single call.",
+)
+async def get_dashboard_summary(
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> MerchantDashboardSummaryResponse:
+    return await service.get_dashboard_summary(merchant_id)
+
+
+@router.get(
+    "/{merchant_id}/kpis",
+    response_model=MerchantKpisResponse,
+    summary="Get merchant delivery KPIs",
+    description="Calculates total shipments, in-transit, out for delivery, delivered, failed, COD, and success rate.",
+)
+async def get_merchant_kpis(
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> MerchantKpisResponse:
+    return await service.get_kpis(merchant_id)
+
+
+# ---------------------------------------------------------------------------
+# Orders / Shipments Management
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{merchant_id}/orders",
+    response_model=List[MerchantOrderResponse],
+    summary="List merchant shipment orders",
+    description="Returns filtered list of orders by status and search keyword.",
+)
+async def list_merchant_orders(
+    merchant_id: str = "me",
+    status: Optional[str] = Query(default=None, description="Status filter: all, created, in_transit, out_for_delivery, delivered, failed"),
+    search: Optional[str] = Query(default=None, description="Search by tracking number, recipient name, city, or phone"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    service: MerchantService = Depends(get_merchant_service),
+) -> List[MerchantOrderResponse]:
+    return await service.get_orders(
+        merchant_id=merchant_id,
+        status=status,
+        search=search,
+        skip=skip,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/{merchant_id}/orders",
+    response_model=MerchantOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new shipment order",
+    description="Registers a new parcel delivery order, generates a tracking ID, and triggers webhooks.",
+)
+async def create_merchant_order(
+    payload: MerchantOrderCreate,
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> MerchantOrderResponse:
+    return await service.create_order(merchant_id=merchant_id, payload=payload)
+
+
+@router.get(
+    "/{merchant_id}/orders/{order_id}",
+    response_model=MerchantOrderResponse,
+    summary="Get single order detail by ID or tracking number",
+)
+async def get_merchant_order(
+    merchant_id: str,
+    order_id: str,
+    service: MerchantService = Depends(get_merchant_service),
+) -> MerchantOrderResponse:
+    order = await service.get_order_by_id_or_tracking(order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order with ID or tracking number '{order_id}' not found.",
+        )
+    return order
+
+
+@router.patch(
+    "/{merchant_id}/orders/{order_id}/status",
+    response_model=MerchantOrderResponse,
+    summary="Update shipment order status",
+)
+async def update_merchant_order_status(
+    merchant_id: str,
+    order_id: str,
+    payload: MerchantOrderStatusUpdate,
+    service: MerchantService = Depends(get_merchant_service),
+) -> MerchantOrderResponse:
+    order = await service.update_order_status(order_id, payload)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order with ID or tracking number '{order_id}' not found.",
+        )
+    return order
+
+
+# ---------------------------------------------------------------------------
+# API Credentials & Key Management
 # ---------------------------------------------------------------------------
 
 @router.get(
@@ -177,84 +287,29 @@ async def get_merchant_status(
     response_model=ApiCredentialsResponse,
     summary="Get merchant API keys and OAuth credentials",
 )
-async def get_merchant_api_credentials(
-    merchant_id: int,
-    session: Optional[AsyncSession] = Depends(get_optional_db),
+async def get_merchant_credentials(
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
 ) -> ApiCredentialsResponse:
-    """Return live API key, test key, client ID, client secret, and rate limits."""
-    if session:
-        stmt = select(Merchant).where(Merchant.id == merchant_id)
-        res = await session.execute(stmt)
-        merchant = res.scalar_one_or_none()
-        if merchant:
-            return ApiCredentialsResponse(
-                merchant_id=merchant.id,
-                business_name=merchant.business_name,
-                live_key=merchant.api_key or f"nd_live_{secrets.token_hex(16)}",
-                test_key=merchant.test_api_key or f"nd_test_{secrets.token_hex(16)}",
-                client_id=merchant.client_id or f"nd_client_{merchant.id:04d}",
-                client_secret=merchant.client_secret or f"nd_secret_{secrets.token_hex(16)}",
-                rate_limit_per_day=10000,
-                used_today=len(_MERCHANT_DELIVERIES),
-                approval_status=merchant.approval_status,
-            )
-
-    # Demo fallback for merchant_id == 1
-    return ApiCredentialsResponse(
-        merchant_id=MOCK_APPROVED_MERCHANT["id"],
-        business_name=MOCK_APPROVED_MERCHANT["business_name"],
-        live_key=MOCK_APPROVED_MERCHANT["api_key"],
-        test_key=MOCK_APPROVED_MERCHANT["test_api_key"],
-        client_id=MOCK_APPROVED_MERCHANT["client_id"],
-        client_secret=MOCK_APPROVED_MERCHANT["client_secret"],
-        rate_limit_per_day=10000,
-        used_today=len(_MERCHANT_DELIVERIES),
-        approval_status=ApprovalStatus.APPROVED,
-    )
+    return await service.get_credentials(merchant_id)
 
 
 @router.post(
     "/{merchant_id}/credentials/regenerate",
-    response_model=RegenerateKeyResponse,
-    summary="Regenerate an API key or client secret",
+    response_model=ApiCredentialsResponse,
+    summary="Regenerate merchant API key",
 )
 async def regenerate_api_key(
-    merchant_id: int,
     payload: RegenerateKeyRequest,
-    session: Optional[AsyncSession] = Depends(get_optional_db),
-) -> RegenerateKeyResponse:
-    """Rotate an API credential. Old key is immediately invalidated."""
-    new_token = ""
-    prefix = "nd_live_" if payload.key_type == "live" else "nd_test_" if payload.key_type == "test" else "nd_secret_"
-    new_token = f"{prefix}{secrets.token_hex(16)}"
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> ApiCredentialsResponse:
+    return await service.regenerate_key(merchant_id=merchant_id, key_type=payload.key_type)
 
-    if session:
-        stmt = select(Merchant).where(Merchant.id == merchant_id)
-        res = await session.execute(stmt)
-        merchant = res.scalar_one_or_none()
-        if merchant:
-            if payload.key_type == "live":
-                merchant.api_key = new_token
-            elif payload.key_type == "test":
-                merchant.test_api_key = new_token
-            elif payload.key_type == "secret":
-                merchant.client_secret = new_token
-            await session.commit()
 
-    # Update demo mock
-    if payload.key_type == "live":
-        MOCK_APPROVED_MERCHANT["api_key"] = new_token
-    elif payload.key_type == "test":
-        MOCK_APPROVED_MERCHANT["test_api_key"] = new_token
-    elif payload.key_type == "secret":
-        MOCK_APPROVED_MERCHANT["client_secret"] = new_token
-
-    return RegenerateKeyResponse(
-        key_type=payload.key_type,
-        new_key=new_token,
-        message=f"{payload.key_type.title()} credential has been regenerated successfully. Store it securely.",
-    )
-
+# ---------------------------------------------------------------------------
+# Developer REST API & OAuth 2.0 Integration
+# ---------------------------------------------------------------------------
 
 @router.post(
     "/oauth/token",
@@ -451,7 +506,67 @@ async def get_merchant_delivery(
 
 
 # ---------------------------------------------------------------------------
-# Admin — List & Approvals
+# Webhooks Management
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/{merchant_id}/webhooks",
+    response_model=WebhookConfigResponse,
+    summary="Get merchant webhook configuration",
+)
+async def get_webhook_config(
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> WebhookConfigResponse:
+    return await service.get_webhook_config(merchant_id)
+
+
+@router.put(
+    "/{merchant_id}/webhooks",
+    response_model=WebhookConfigResponse,
+    summary="Update merchant webhook configuration",
+)
+async def update_webhook_config(
+    payload: WebhookConfigUpdate,
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> WebhookConfigResponse:
+    return await service.update_webhook_config(merchant_id=merchant_id, payload=payload)
+
+
+@router.post(
+    "/{merchant_id}/webhooks/test",
+    response_model=WebhookTestResponse,
+    summary="Send test webhook event",
+    description="Dispatches a test HMAC-SHA256 signed webhook ping and logs the delivery attempt.",
+)
+async def test_webhook(
+    payload: WebhookTestRequest = WebhookTestRequest(),
+    merchant_id: str = "me",
+    service: MerchantService = Depends(get_merchant_service),
+) -> WebhookTestResponse:
+    return await service.send_test_webhook(
+        merchant_id=merchant_id,
+        event_type=payload.event_type,
+        tracking_number=payload.tracking_number,
+    )
+
+
+@router.get(
+    "/{merchant_id}/webhooks/logs",
+    response_model=List[WebhookDeliveryLogResponse],
+    summary="Get merchant webhook delivery logs",
+)
+async def get_webhook_logs(
+    merchant_id: str = "me",
+    limit: int = Query(default=50, ge=1, le=100),
+    service: MerchantService = Depends(get_merchant_service),
+) -> List[WebhookDeliveryLogResponse]:
+    return await service.get_webhook_logs(merchant_id=merchant_id, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Admin — Review & Approvals
 # ---------------------------------------------------------------------------
 
 @router.get(
@@ -465,7 +580,27 @@ async def list_merchants(
     service: MerchantService = Depends(get_merchant_service),
 ) -> List[MerchantResponse]:
     merchants = await service.list_merchants(skip=skip, limit=limit)
-    return [MerchantResponse.model_validate(m) for m in merchants]
+    res = []
+    for m in merchants:
+        if isinstance(m, dict):
+            res.append(MerchantResponse(
+                id=m["id"],
+                user_id=m["user_id"],
+                business_name=m["business_name"],
+                registration_number=m["registration_number"],
+                contact_phone=m["contact_phone"],
+                business_address=m["business_address"],
+                business_type=m.get("business_type"),
+                website_url=m.get("website_url"),
+                approval_status=m["approval_status"],
+                rejection_reason=m.get("rejection_reason"),
+                api_key=m.get("live_key"),
+                created_at=m.get("created_at") or datetime.now(),
+                updated_at=m.get("updated_at") or datetime.now(),
+            ))
+        else:
+            res.append(MerchantResponse.model_validate(m))
+    return res
 
 
 @router.get(
@@ -479,13 +614,33 @@ async def list_pending_merchants(
     service: MerchantService = Depends(get_merchant_service),
 ) -> List[MerchantResponse]:
     merchants = await service.get_pending_merchants(skip=skip, limit=limit)
-    return [MerchantResponse.model_validate(m) for m in merchants]
+    res = []
+    for m in merchants:
+        if isinstance(m, dict):
+            res.append(MerchantResponse(
+                id=m["id"],
+                user_id=m["user_id"],
+                business_name=m["business_name"],
+                registration_number=m["registration_number"],
+                contact_phone=m["contact_phone"],
+                business_address=m["business_address"],
+                business_type=m.get("business_type"),
+                website_url=m.get("website_url"),
+                approval_status=m["approval_status"],
+                rejection_reason=m.get("rejection_reason"),
+                api_key=m.get("live_key"),
+                created_at=m.get("created_at") or datetime.now(),
+                updated_at=m.get("updated_at") or datetime.now(),
+            ))
+        else:
+            res.append(MerchantResponse.model_validate(m))
+    return res
 
 
 @router.get(
-    "/{merchant_id}",
+    "/{merchant_id}/detail",
     response_model=MerchantResponse,
-    summary="Get merchant by ID (admin)",
+    summary="Get merchant profile by ID (admin)",
 )
 async def get_merchant(
     merchant_id: int,
@@ -508,9 +663,10 @@ async def get_merchant(
 async def update_merchant_approval(
     merchant_id: int,
     payload: MerchantApprovalUpdate,
-    session: AsyncSession = Depends(get_db),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantResponse:
-    service = MerchantService(MerchantRepository(session))
+    repo = MerchantRepository(session) if session else None
+    service = MerchantService(repo)
     try:
         merchant = await service.approve_merchant(
             merchant_id=merchant_id,
@@ -518,10 +674,30 @@ async def update_merchant_approval(
             rejection_reason=payload.rejection_reason,
             session=session,
         )
-        await session.commit()
+        if session:
+            try:
+                await session.commit()
+            except Exception:
+                pass
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
+        )
+    if isinstance(merchant, dict):
+        return MerchantResponse(
+            id=merchant["id"],
+            user_id=merchant["user_id"],
+            business_name=merchant["business_name"],
+            registration_number=merchant["registration_number"],
+            contact_phone=merchant["contact_phone"],
+            business_address=merchant["business_address"],
+            business_type=merchant.get("business_type"),
+            website_url=merchant.get("website_url"),
+            approval_status=merchant["approval_status"],
+            rejection_reason=merchant.get("rejection_reason"),
+            api_key=merchant.get("live_key"),
+            created_at=merchant.get("created_at") or datetime.now(),
+            updated_at=merchant.get("updated_at") or datetime.now(),
         )
     return MerchantResponse.model_validate(merchant)

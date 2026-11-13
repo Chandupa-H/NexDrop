@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Printer, Phone, MapPin, Truck, FileText, Package } from "lucide-react";
 import type { MerchantOrder } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,16 @@ import { Button } from "@/components/ui/button";
 interface ParcelDetailModalProps {
   order: MerchantOrder | null;
   onClose: () => void;
+  merchantName?: string;
+  merchantAddress?: string;
 }
 
-export function ParcelDetailModal({ order, onClose }: ParcelDetailModalProps) {
+export function ParcelDetailModal({
+  order,
+  onClose,
+  merchantName,
+  merchantAddress,
+}: ParcelDetailModalProps) {
   const [showReceipt, setShowReceipt] = useState(false);
 
   if (!order) return null;
@@ -117,8 +125,12 @@ export function ParcelDetailModal({ order, onClose }: ParcelDetailModalProps) {
               <div className="grid grid-cols-2 gap-4 text-xs">
                 <div>
                   <span className="text-[#64748B] block">Sender / Merchant</span>
-                  <strong className="text-[#064E3B] text-sm">Ceylon Artisan Crafts Ltd</strong>
-                  <p className="text-gray-600">Colombo, Sri Lanka</p>
+                  <strong className="text-[#064E3B] text-sm">
+                    {merchantName || "NexDrop Merchant Partner"}
+                  </strong>
+                  <p className="text-gray-600">
+                    {merchantAddress || "Colombo, Sri Lanka"}
+                  </p>
                 </div>
                 <div>
                   <span className="text-[#64748B] block">Recipient</span>
@@ -163,8 +175,10 @@ export function ParcelDetailModal({ order, onClose }: ParcelDetailModalProps) {
                   variant="primary"
                   size="sm"
                   onClick={() => window.print()}
+                  className="flex items-center gap-1.5"
                 >
-                  🖨️ Print Receipt
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Receipt</span>
                 </Button>
               </div>
             </div>
@@ -223,8 +237,14 @@ export function ParcelDetailModal({ order, onClose }: ParcelDetailModalProps) {
                   </span>
                   <div className="text-xs space-y-1 text-gray-700">
                     <p className="font-semibold text-sm text-gray-900">{order.recipientName}</p>
-                    <p className="text-gray-600">📞 {order.recipientPhone}</p>
-                    <p className="text-gray-600">📍 {order.deliveryAddress}</p>
+                    <p className="text-gray-600 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{order.recipientPhone}</span>
+                    </p>
+                    <p className="text-gray-600 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                      <span>{order.deliveryAddress}</span>
+                    </p>
                     <p className="font-medium text-[#064E3B]">{order.deliveryCity}</p>
                   </div>
                 </div>
@@ -261,7 +281,7 @@ export function ParcelDetailModal({ order, onClose }: ParcelDetailModalProps) {
                 <div className="p-3.5 bg-emerald-50/60 border border-emerald-200 rounded-xl flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-[#064E3B] text-white flex items-center justify-center font-bold">
-                      🛵
+                      <Truck className="w-4 h-4 text-[#A3E635]" />
                     </div>
                     <div>
                       <p className="font-bold text-[#064E3B]">Assigned Courier: {order.courierName}</p>
@@ -289,9 +309,10 @@ export function ParcelDetailModal({ order, onClose }: ParcelDetailModalProps) {
               variant="outline"
               size="sm"
               onClick={() => setShowReceipt(true)}
-              className="text-[#064E3B] font-semibold"
+              className="text-[#064E3B] font-semibold flex items-center gap-1.5"
             >
-              📄 View Delivery Receipt
+              <FileText className="w-3.5 h-3.5" />
+              <span>View Delivery Receipt</span>
             </Button>
           )}
 

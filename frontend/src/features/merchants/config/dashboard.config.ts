@@ -9,7 +9,7 @@ export const merchantDashboardConfig: DashboardRoleConfig = {
   role: "merchant",
   roleLabel: "Merchant Portal",
   basePath: "/merchant",
-  homeHref: "/merchant/dashboard",
+  homeHref: "/merchant/dashboard?tab=orders",
   profileHref: "/merchant/dashboard?tab=api",
   searchPlaceholder: "Search shipments, tracking #, recipient...",
   nav: [
@@ -18,19 +18,10 @@ export const merchantDashboardConfig: DashboardRoleConfig = {
       label: "Shipments & Orders",
       items: [
         {
-          id: "dashboard",
-          label: "Dashboard",
-          href: "/merchant/dashboard",
-          icon: "layout-dashboard",
-          availability: "live",
-          match: "exact",
-        },
-        {
           id: "orders",
           label: "All Shipments",
           href: "/merchant/dashboard?tab=orders",
           icon: "package",
-          badge: "6",
           availability: "live",
         },
         {
@@ -64,4 +55,3 @@ export const merchantDashboardConfig: DashboardRoleConfig = {
     },
   ],
 };
-

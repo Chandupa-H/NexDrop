@@ -12,6 +12,8 @@ class ParcelBase(BaseModel):
     weight_kg: float = 1.0
     dimensions: Optional[str] = None
     special_instructions: Optional[str] = None
+    cod_amount: Optional[float] = 0.0
+    is_prepaid: Optional[bool] = False
 
 
 class ParcelCreate(ParcelBase):
