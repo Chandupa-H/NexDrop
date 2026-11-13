@@ -22,7 +22,7 @@ export function LoginView() {
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [authStep, setAuthStep] = useState<"credentials" | "verify_email">("credentials");
   const [pendingEmail, setPendingEmail] = useState<string>("");
-  const [returnTo, setReturnTo] = useState<string>("/courier/dashboard");
+  const [returnTo, setReturnTo] = useState<string | undefined>();
 
   useEffect(() => {
     // Read URL params and stored theme on mount without blocking initial effect
