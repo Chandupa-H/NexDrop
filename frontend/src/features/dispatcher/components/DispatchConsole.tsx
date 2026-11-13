@@ -17,10 +17,18 @@ import {
   AlertCircle,
   Plus,
   RefreshCw,
+  Package,
+  Weight,
+  MapPin,
+  Clock,
+  Check,
+  ChevronRight,
+  ShieldAlert,
 } from "lucide-react";
 import {
   getAssignments,
   getCourierWorkload,
+  getUnassignedParcels,
   assignCourier,
   reassignCourier,
   receiveAtWarehouse,
@@ -29,6 +37,7 @@ import {
 import type {
   DispatchAssignmentDTO,
   CourierWorkloadDTO,
+  UnassignedParcelItemDTO,
 } from "../api/dispatcher.dto";
 
 export function DispatchConsole() {
@@ -37,6 +46,7 @@ export function DispatchConsole() {
   // State data
   const [assignments, setAssignments] = useState<DispatchAssignmentDTO[]>([]);
   const [workloads, setWorkloads] = useState<CourierWorkloadDTO[]>([]);
+  const [unassignedParcels, setUnassignedParcels] = useState<UnassignedParcelItemDTO[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -57,12 +67,14 @@ export function DispatchConsole() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [assigns, fleet] = await Promise.all([
+      const [assigns, fleet, parcelsRes] = await Promise.all([
         getAssignments().catch(() => []),
         getCourierWorkload().catch(() => []),
+        getUnassignedParcels({ limit: 100 }).catch(() => ({ items: [] })),
       ]);
       setAssignments(assigns);
       setWorkloads(fleet);
+      setUnassignedParcels(parcelsRes.items || []);
     } catch {
       // Fallback empty
     } finally {
@@ -374,75 +386,345 @@ export function DispatchConsole() {
       )}
 
       {/* Modal 1: Assign Courier */}
-      <Modal isOpen={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Courier to Parcel">
-        <form onSubmit={handleAssign} className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Parcel ID</label>
-            <Input
-              type="number"
-              required
-              placeholder="e.g. 1"
-              value={assignForm.parcel_id}
-              onChange={(e) => setAssignForm({ ...assignForm, parcel_id: e.target.value })}
-            />
+      <Modal
+        isOpen={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        title="Assign Courier to Parcel"
+        description="Select an unassigned parcel and assign the most suitable available courier based on workload, vehicle capacity, and delivery city."
+        maxWidth="3xl"
+      >
+        <form onSubmit={handleAssign} className="space-y-5">
+          {/* Step 1: Select Unassigned Parcel */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-[#16a34a]" />
+                <span>1. Select Unassigned Parcel</span>
+                <span className="text-red-500">*</span>
+              </label>
+              <span className="text-[11px] text-[var(--dashboard-muted)]">
+                {unassignedParcels.length} unassigned parcel{unassignedParcels.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            {unassignedParcels.length === 0 ? (
+              <div className="p-4 rounded-xl border border-dashed border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] text-center text-xs text-[var(--dashboard-muted)]">
+                No unassigned parcels available. You can manually enter a Parcel ID below if required.
+                <div className="mt-2">
+                  <Input
+                    type="number"
+                    required
+                    placeholder="Enter Parcel ID manually (e.g. 1)"
+                    value={assignForm.parcel_id}
+                    onChange={(e) => setAssignForm({ ...assignForm, parcel_id: e.target.value })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                {unassignedParcels.map((parcel) => {
+                  const isSelected = assignForm.parcel_id === String(parcel.id);
+                  return (
+                    <div
+                      key={parcel.id}
+                      onClick={() => setAssignForm({ ...assignForm, parcel_id: String(parcel.id) })}
+                      className={`cursor-pointer p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                        isSelected
+                          ? "border-[#16a34a] bg-emerald-50/70 dark:bg-emerald-950/20 shadow-xs"
+                          : "border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] hover:border-emerald-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-mono font-semibold text-xs text-[var(--dashboard-text)]">
+                          {parcel.tracking_number}
+                        </span>
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                          #{parcel.id}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 text-[11px] text-[var(--dashboard-muted)]">
+                        <div className="flex items-center gap-1.5 text-[var(--dashboard-text)] font-medium">
+                          <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">{parcel.delivery_city || parcel.delivery_address}</span>
+                        </div>
+                        <div className="flex items-center justify-between pt-0.5">
+                          <span className="flex items-center gap-1">
+                            <Weight className="w-3 h-3" />
+                            <strong>{parcel.weight_kg} kg</strong>
+                          </span>
+                          <span className="truncate text-[10px]">
+                            To: {parcel.recipient_name}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <div className="mt-2 pt-1.5 border-t border-emerald-200 dark:border-emerald-900/40 flex items-center justify-end gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                          <Check className="w-3.5 h-3.5" /> Selected
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Courier ID</label>
-            <Input
-              type="number"
-              required
-              placeholder="e.g. 1"
-              value={assignForm.courier_id}
-              onChange={(e) => setAssignForm({ ...assignForm, courier_id: e.target.value })}
-            />
+
+          {/* Step 2: Select Courier */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-[#16a34a]" />
+                <span>2. Select Available Courier</span>
+                <span className="text-red-500">*</span>
+              </label>
+              <span className="text-[11px] text-[var(--dashboard-muted)]">
+                {workloads.filter((w) => w.is_available).length} of {workloads.length} couriers available
+              </span>
+            </div>
+
+            {workloads.length === 0 ? (
+              <div className="p-4 rounded-xl border border-dashed border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] text-center text-xs text-[var(--dashboard-muted)]">
+                No couriers found. You can manually enter a Courier ID below.
+                <div className="mt-2">
+                  <Input
+                    type="number"
+                    required
+                    placeholder="Enter Courier ID manually (e.g. 1)"
+                    value={assignForm.courier_id}
+                    onChange={(e) => setAssignForm({ ...assignForm, courier_id: e.target.value })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                {workloads.map((courier) => {
+                  const isSelected = assignForm.courier_id === String(courier.courier_id);
+                  const isAvailable = courier.is_available;
+
+                  let badgeColor = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
+                  if (courier.workload_status === "OPTIMAL") {
+                    badgeColor = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+                  } else if (courier.workload_status === "BUSY") {
+                    badgeColor = "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+                  } else if (!isAvailable || courier.workload_status === "UNAVAILABLE") {
+                    badgeColor = "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300";
+                  }
+
+                  return (
+                    <div
+                      key={courier.courier_id}
+                      onClick={() => {
+                        if (isAvailable) {
+                          setAssignForm({ ...assignForm, courier_id: String(courier.courier_id) });
+                        }
+                      }}
+                      className={`p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                        !isAvailable
+                          ? "opacity-50 cursor-not-allowed bg-[var(--dashboard-surface)]/50 border-[var(--dashboard-border)]"
+                          : isSelected
+                          ? "cursor-pointer border-[#16a34a] bg-emerald-50/70 dark:bg-emerald-950/20 shadow-xs"
+                          : "cursor-pointer border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] hover:border-emerald-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="font-semibold text-xs text-[var(--dashboard-text)] truncate">
+                            {courier.full_name}
+                          </span>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColor}`}>
+                          {courier.workload_status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[11px] text-[var(--dashboard-muted)] mt-1">
+                        <div>
+                          <span>Vehicle: </span>
+                          <strong className="text-[var(--dashboard-text)] capitalize">{courier.vehicle_type}</strong>
+                        </div>
+                        <div>
+                          <span>Active: </span>
+                          <strong className="text-[var(--dashboard-text)]">
+                            {courier.active_assignments} {courier.active_assignments === 1 ? "parcel" : "parcels"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-[var(--dashboard-border)] text-[10px]">
+                        <span className="text-[var(--dashboard-muted)]">Courier ID: #{courier.courier_id}</span>
+                        {isSelected ? (
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Selected
+                          </span>
+                        ) : isAvailable ? (
+                          <span className="text-[#16a34a] font-medium">Click to select</span>
+                        ) : (
+                          <span className="text-rose-500 font-medium">Unavailable</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
+          {/* Step 3: Optional Notes & Summary */}
           <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Notes (optional)</label>
+            <label className="text-xs font-semibold text-[var(--dashboard-text)]">
+              Pickup Instructions or Priority Notes (optional)
+            </label>
             <Input
-              placeholder="Pickup instructions or priority..."
+              placeholder="e.g. Fragile items, deliver before 5 PM, customer requires signature..."
               value={assignForm.notes}
               onChange={(e) => setAssignForm({ ...assignForm, notes: e.target.value })}
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setAssignOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={submitting} className="bg-[#16a34a] hover:bg-[#15803d] text-white">
-              {submitting ? "Assigning..." : "Assign & Publish"}
-            </Button>
+
+          <div className="flex items-center justify-between pt-2 border-t border-[var(--dashboard-border)]">
+            <div className="text-xs text-[var(--dashboard-muted)]">
+              {assignForm.parcel_id && assignForm.courier_id ? (
+                <span className="text-emerald-600 font-medium flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Ready: Parcel #{assignForm.parcel_id} &rarr; Courier #{assignForm.courier_id}
+                </span>
+              ) : (
+                <span>Please select both a parcel and an available courier.</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setAssignOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={submitting || !assignForm.parcel_id || !assignForm.courier_id}
+                className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+              >
+                {submitting ? "Assigning..." : "Assign & Publish"}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
 
       {/* Modal 2: Reassign Courier */}
-      <Modal isOpen={reassignOpen} onClose={() => setReassignOpen(false)} title={`Reassign Dispatch #${selectedAssignmentId}`}>
+      <Modal
+        isOpen={reassignOpen}
+        onClose={() => setReassignOpen(false)}
+        title={`Reassign Dispatch #${selectedAssignmentId}`}
+        description="Select a replacement courier with available workload capacity and provide a reason for reassignment."
+        maxWidth="2xl"
+      >
         <form onSubmit={handleReassign} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">New Courier ID</label>
-            <Input
-              type="number"
-              required
-              placeholder="e.g. 2"
-              value={reassignForm.new_courier_id}
-              onChange={(e) => setReassignForm({ ...reassignForm, new_courier_id: e.target.value })}
-            />
+            <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center justify-between mb-2">
+              <span className="flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-[#16a34a]" />
+                Select New Replacement Courier
+              </span>
+              <span className="text-[11px] text-[var(--dashboard-muted)]">
+                {workloads.filter((w) => w.is_available).length} available
+              </span>
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              {workloads.map((courier) => {
+                const isSelected = reassignForm.new_courier_id === String(courier.courier_id);
+                const isAvailable = courier.is_available;
+
+                let badgeColor = "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
+                if (courier.workload_status === "OPTIMAL") {
+                  badgeColor = "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+                } else if (courier.workload_status === "BUSY") {
+                  badgeColor = "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300";
+                } else if (!isAvailable || courier.workload_status === "UNAVAILABLE") {
+                  badgeColor = "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300";
+                }
+
+                return (
+                  <div
+                    key={courier.courier_id}
+                    onClick={() => {
+                      if (isAvailable) {
+                        setReassignForm({ ...reassignForm, new_courier_id: String(courier.courier_id) });
+                      }
+                    }}
+                    className={`p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                      !isAvailable
+                        ? "opacity-50 cursor-not-allowed bg-[var(--dashboard-surface)]/50 border-[var(--dashboard-border)]"
+                        : isSelected
+                        ? "cursor-pointer border-amber-600 bg-amber-50/70 dark:bg-amber-950/20 shadow-xs"
+                        : "cursor-pointer border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] hover:border-amber-400"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="font-semibold text-xs text-[var(--dashboard-text)] truncate">
+                        {courier.full_name}
+                      </span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColor}`}>
+                        {courier.workload_status}
+                      </span>
+                    </div>
+
+                    <div className="text-[11px] text-[var(--dashboard-muted)] flex items-center justify-between">
+                      <span className="capitalize">{courier.vehicle_type}</span>
+                      <span>{courier.active_assignments} active</span>
+                    </div>
+
+                    <div className="mt-1.5 pt-1 border-t border-[var(--dashboard-border)] text-[10px] flex justify-between items-center">
+                      <span className="text-[var(--dashboard-muted)]">ID: #{courier.courier_id}</span>
+                      {isSelected ? (
+                        <span className="font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Selected
+                        </span>
+                      ) : isAvailable ? (
+                        <span className="text-amber-600 font-medium">Click to select</span>
+                      ) : (
+                        <span className="text-rose-500">Unavailable</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
           <div>
             <label className="text-xs font-semibold text-[var(--dashboard-text)]">Reassignment Reason</label>
             <Input
-              placeholder="e.g. Vehicle breakdown, shift ended..."
+              placeholder="e.g. Vehicle breakdown, courier requested leave, zone re-balance..."
               value={reassignForm.reason}
               onChange={(e) => setReassignForm({ ...reassignForm, reason: e.target.value })}
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setReassignOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={submitting} className="bg-amber-600 hover:bg-amber-700 text-white">
-              {submitting ? "Reassigning..." : "Confirm Reassignment"}
-            </Button>
+
+          <div className="flex items-center justify-between pt-2 border-t border-[var(--dashboard-border)]">
+            <span className="text-xs text-[var(--dashboard-muted)]">
+              {reassignForm.new_courier_id ? (
+                <span className="text-amber-600 font-medium">
+                  Reassigning to Courier #{reassignForm.new_courier_id}
+                </span>
+              ) : (
+                "Please pick a new courier"
+              )}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setReassignOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={submitting || !reassignForm.new_courier_id}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {submitting ? "Reassigning..." : "Confirm Reassignment"}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
