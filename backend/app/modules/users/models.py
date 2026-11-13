@@ -5,6 +5,7 @@ from app.db.base import Base, TimestampMixin
 
 
 class UserRole(str, enum.Enum):
+    UNASSIGNED = "unassigned"
     ADMIN = "admin"
     CUSTOMER = "customer"
     MERCHANT = "merchant"

@@ -31,73 +31,84 @@ CURRENT_LOCATION_TYPE_ENUM = sa.Enum(
 
 def upgrade() -> None:
     bind = op.get_bind()
+    insp = sa.inspect(bind)
+    existing_tables = set(insp.get_table_names())
 
     # 1. Create PostgreSQL enums if not existing
     DELIVERY_METHOD_ENUM.create(bind, checkfirst=True)
     CURRENT_LOCATION_TYPE_ENUM.create(bind, checkfirst=True)
 
     # 2. Create warehouses table
-    op.create_table(
-        "warehouses",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("address", sa.String(length=255), nullable=False),
-        sa.Column("city", sa.String(length=100), nullable=False),
-        sa.Column("contact_number", sa.String(length=32), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_warehouses_id"), "warehouses", ["id"], unique=False)
+    if "warehouses" not in existing_tables:
+        op.create_table(
+            "warehouses",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("name", sa.String(length=255), nullable=False),
+            sa.Column("address", sa.String(length=255), nullable=False),
+            sa.Column("city", sa.String(length=100), nullable=False),
+            sa.Column("contact_number", sa.String(length=32), nullable=False),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(op.f("ix_warehouses_id"), "warehouses", ["id"], unique=False)
 
     # 3. Create delivery_zones table
-    op.create_table(
-        "delivery_zones",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("name", sa.String(length=100), nullable=False),
-        sa.Column("code", sa.String(length=50), nullable=False),
-        sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("postcodes", sa.JSON(), nullable=False, server_default="[]"),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_delivery_zones_id"), "delivery_zones", ["id"], unique=False)
-    op.create_index(op.f("ix_delivery_zones_code"), "delivery_zones", ["code"], unique=True)
+    if "delivery_zones" not in existing_tables:
+        op.create_table(
+            "delivery_zones",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("name", sa.String(length=100), nullable=False),
+            sa.Column("code", sa.String(length=50), nullable=False),
+            sa.Column("description", sa.Text(), nullable=True),
+            sa.Column("postcodes", sa.JSON(), nullable=False, server_default="[]"),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(op.f("ix_delivery_zones_id"), "delivery_zones", ["id"], unique=False)
+        op.create_index(op.f("ix_delivery_zones_code"), "delivery_zones", ["code"], unique=True)
+    else:
+        existing_zone_cols = {c["name"] for c in insp.get_columns("delivery_zones")}
+        if "description" not in existing_zone_cols:
+            op.add_column("delivery_zones", sa.Column("description", sa.Text(), nullable=True))
 
     # 4. Add warehouse delivery fields to parcels table
-    # Using server_default ensures existing parcel rows are not broken
-    op.add_column(
-        "parcels",
-        sa.Column(
-            "delivery_method",
-            sa.Enum("DIRECT", "VIA_WAREHOUSE", name="delivery_method_enum"),
-            nullable=False,
-            server_default="DIRECT",
-        ),
-    )
-    op.add_column(
-        "parcels",
-        sa.Column(
-            "current_location_type",
-            sa.Enum("SENDER", "COURIER", "WAREHOUSE", "RECIPIENT", name="current_location_type_enum"),
-            nullable=False,
-            server_default="SENDER",
-        ),
-    )
-    op.add_column(
-        "parcels",
-        sa.Column("current_warehouse_id", sa.Integer(), nullable=True),
-    )
-    op.create_foreign_key(
-        "fk_parcels_current_warehouse_id_warehouses",
-        "parcels",
-        "warehouses",
-        ["current_warehouse_id"],
-        ["id"],
-    )
+    existing_cols = {c["name"] for c in insp.get_columns("parcels")}
+    if "delivery_method" not in existing_cols:
+        op.add_column(
+            "parcels",
+            sa.Column(
+                "delivery_method",
+                sa.Enum("DIRECT", "VIA_WAREHOUSE", name="delivery_method_enum"),
+                nullable=False,
+                server_default="DIRECT",
+            ),
+        )
+    if "current_location_type" not in existing_cols:
+        op.add_column(
+            "parcels",
+            sa.Column(
+                "current_location_type",
+                sa.Enum("SENDER", "COURIER", "WAREHOUSE", "RECIPIENT", name="current_location_type_enum"),
+                nullable=False,
+                server_default="SENDER",
+            ),
+        )
+    if "current_warehouse_id" not in existing_cols:
+        op.add_column(
+            "parcels",
+            sa.Column("current_warehouse_id", sa.Integer(), nullable=True),
+        )
+        op.create_foreign_key(
+            "fk_parcels_current_warehouse_id_warehouses",
+            "parcels",
+            "warehouses",
+            ["current_warehouse_id"],
+            ["id"],
+        )
 
 
 def downgrade() -> None:

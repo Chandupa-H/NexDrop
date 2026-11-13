@@ -1,6 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveUserDashboardPath } from "@/lib/auth/routes";
+import {
+  getDashboardPathForRole,
+  isProtectedRoute,
+  isRouteAllowedForRole,
+  resolveUserRole,
+  isRegistrationRoute,
+  hasAssignedRole,
+} from "@/lib/auth/routes";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -37,17 +44,34 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname, searchParams } = request.nextUrl;
 
-  // Keep already-authenticated users from being prompted to sign in again on /login.
+  // Assigned users have completed onboarding, including direct visits to registration.
+  if (user && isRegistrationRoute(pathname)) {
+    const role = await resolveUserRole(supabase, user.id);
+    if (hasAssignedRole(role)) {
+      const response = NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
+      supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+      return response;
+    }
+  }
+
+  // 1. Keep already-authenticated users from re-visiting /login (unless verifying email)
   if (
     user &&
     pathname === "/login" &&
     searchParams.get("step") !== "verify"
   ) {
-    const dashboardPath = await resolveUserDashboardPath(supabase, user.id);
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = dashboardPath;
-    redirectUrl.search = "";
+    const role = await resolveUserRole(supabase, user.id);
+    const returnTo = searchParams.get("returnTo");
 
+    let destination = getDashboardPathForRole(role);
+    if (returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+      const returnPath = returnTo.split("?")[0];
+      if (isRouteAllowedForRole(returnPath, role)) {
+        destination = returnTo;
+      }
+    }
+
+    const redirectUrl = new URL(destination, request.url);
     const redirectResponse = NextResponse.redirect(redirectUrl);
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie);
@@ -55,6 +79,38 @@ export async function updateSession(request: NextRequest) {
     return redirectResponse;
   }
 
+  // 2. Role-Based Route Guards for protected dashboard routes (/admin, /courier, /merchant)
+  if (isProtectedRoute(pathname)) {
+    // If user is not authenticated, bounce to /login with returnTo parameter
+    if (!user) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      const fullPath = pathname + (request.nextUrl.search || "");
+      loginUrl.searchParams.set("returnTo", fullPath);
+
+      const redirectResponse = NextResponse.redirect(loginUrl);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie);
+      });
+      return redirectResponse;
+    }
+
+    // Authenticated user: verify role authorization
+    const role = await resolveUserRole(supabase, user.id);
+    if (!isRouteAllowedForRole(pathname, role)) {
+      // Forbidden for this role -> bounce to the user's assigned dashboard
+      const authorizedDashboard = getDashboardPathForRole(role);
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = authorizedDashboard;
+      redirectUrl.search = "";
+
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie);
+      });
+      return redirectResponse;
+    }
+  }
+
   return supabaseResponse;
 }
-

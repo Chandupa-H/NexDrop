@@ -102,6 +102,36 @@ cp .env.example .env
 
 Default settings are pre-configured to allow the application to start in offline mode without requiring live database credentials.
 
+#### Administrator-created users
+
+Set backend `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the same project as
+the frontend's Supabase URL. Keep the service key exclusively on the backend.
+Adding a user in the admin portal now creates a confirmed Supabase login with
+the assigned role, together with the application user and role profile. Active
+users can sign in immediately. The caller must have a valid Supabase session
+and an administrator role in trusted app metadata or the application database.
+
+Users created before this integration exist only in the application database.
+Provision those accounts separately in Supabase Auth with the same email,
+assign their role in `app_metadata.role`, and set a new password. Their stored
+application password hashes cannot be converted into Supabase credentials.
+
+User Management also provides an Edit action for names and roles, including
+Unassigned accounts. Edits synchronize trusted Supabase role metadata and create
+missing courier or merchant profiles. New merchant profiles require business
+details. Users should sign in again after a role change to refresh their token.
+Existing email addresses and passwords are not edited by this form.
+
+#### Maps
+
+The courier delivery details map uses Leaflet with OpenStreetMap tiles and OSRM routing. No API key or billing setup is required. Set the optional `NEXT_PUBLIC_ROUTING_BASE_URL` in `frontend/.env.local` and restart the dev server to use another OSRM-compatible routing service; otherwise the app uses `https://router.project-osrm.org`.
+
+OpenStreetMap's public tile servers and the public OSRM demo server are intended for light development/demo use and are subject to their usage policies. Production deployments should use a self-hosted or commercial tile and routing provider.
+
+Courier delivery mock data and simulated GPS are development-only. `NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES=true` enables the mock fallback during local development; set it to `false` to disable the mock fallback and use authenticated API requests. The production frontend never switches to mock data.
+
+Courier delivery mock data and simulated GPS are development-only. `NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES=true` enables the mock fallback during local development; set it to `false` to disable the mock fallback and use authenticated API requests. The production frontend never switches to mock data.
+
 ---
 
 ### 2. Backend Setup (FastAPI)

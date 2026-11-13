@@ -65,6 +65,7 @@ export interface DashboardRoleConfig {
   roleLabel: string;
   basePath: string;
   homeHref: string;
+  topbarTitle?: string;
   profileHref?: string;
   searchPlaceholder: string;
   nav: NavSection[];

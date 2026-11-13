@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type {
   ParcelListItem,
   DashboardSummary,
@@ -10,7 +11,6 @@ import type {
 import type { NavIconName } from "@/lib/dashboard/types";
 import type { DonutSegment } from "@/lib/dashboard/types";
 import { useParcels } from "../hooks/useParcels";
-import { getUpNext } from "../lib/status";
 
 import {
   WelcomeHeader,
@@ -22,7 +22,6 @@ import {
 } from "@/components/dashboard";
 
 import { ParcelsTable } from "./ParcelsTable";
-import { LiveRouteCard } from "./LiveRouteCard";
 import { ParcelDetailsDrawer } from "./ParcelDetailsDrawer";
 
 export interface DashboardViewProps {
@@ -46,9 +45,20 @@ export function DashboardView({
   parcelsTotal,
   donutSegments,
 }: DashboardViewProps) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTrackingId = searchParams.get("tracking_id");
+
   // State: active filter (driven by KPI cards)
   const [activeFilter, setActiveFilter] = useState<TableFilter>("all");
-  const filteredParcels = useParcels(activeFilter, parcels, parcelsTotal);
+  const [parcelPage, setParcelPage] = useState(1);
+  const filteredParcels = useParcels(activeFilter, parcelPage, parcels, parcelsTotal);
+
+  const handleFilterChange = (filter: TableFilter) => {
+    setActiveFilter(filter);
+    setParcelPage(1);
+  };
 
   // State: drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -80,9 +90,6 @@ export function DashboardView({
     failed: "alert-triangle",
   };
 
-  // Derived: up-next parcel
-  const upNextParcel = useMemo(() => getUpNext(parcels), [parcels]);
-
   // Handlers
   const handleOpenDrawer = (trackingId: string, action?: ActionType) => {
     setSelectedTrackingId(trackingId);
@@ -94,12 +101,23 @@ export function DashboardView({
     setDrawerOpen(false);
     setSelectedTrackingId(null);
     setDrawerAction(undefined);
+    if (requestedTrackingId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("tracking_id");
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ""}`, {
+        scroll: false,
+      });
+    }
   };
+  const activeTrackingId = requestedTrackingId ?? selectedTrackingId;
 
-  const handleStatusUpdated = () => {
-    // In real app, refetch parcels or use optimistic update
-    // For now, just close drawer
-    handleCloseDrawer();
+  const handleStatusUpdated = (options?: { closeDrawer?: boolean }) => {
+    filteredParcels.refetch();
+    router.refresh();
+    if (options?.closeDrawer !== false) {
+      handleCloseDrawer();
+    }
   };
 
   return (
@@ -128,7 +146,7 @@ export function DashboardView({
               deltaPct={kpi.deltaPct}
               selectable
               selected={activeFilter === filter}
-              onSelect={() => setActiveFilter(filter)}
+              onSelect={() => handleFilterChange(filter)}
             />
           );
         })}
@@ -165,39 +183,28 @@ export function DashboardView({
         </div>
       </div>
 
-      {/* Row 4: table + sidebar (desktop: 2-col, mobile: stack) */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        {/* Parcels table (3/5) */}
-        <div className="lg:col-span-3">
-          <ParcelsTable
-            parcels={filteredParcels.parcels}
-            total={filteredParcels.total}
-            filter={activeFilter}
-            onFilterChange={setActiveFilter}
-            onOpen={handleOpenDrawer}
-            loading={filteredParcels.loading}
-            error={filteredParcels.error ?? undefined}
-            onRetry={filteredParcels.refetch}
-          />
-        </div>
-
-        {/* Live Route (2/5) */}
-        <div className="h-full lg:col-span-2 [&>.dashboard-section-card]:h-full">
-          <LiveRouteCard
-            upNext={upNextParcel}
-            onUpdateStatus={() =>
-              upNextParcel &&
-              handleOpenDrawer(upNextParcel.trackingId, "update-status")
-            }
-          />
-        </div>
+      {/* Today's parcels use the full dashboard content width. */}
+      <div className="min-w-0 w-full">
+        <ParcelsTable
+          parcels={filteredParcels.parcels}
+          total={filteredParcels.total}
+          page={parcelPage}
+          pageSize={filteredParcels.pageSize}
+          filter={activeFilter}
+          onPageChange={setParcelPage}
+          onFilterChange={handleFilterChange}
+          onOpen={handleOpenDrawer}
+          loading={filteredParcels.loading}
+          error={filteredParcels.error ?? undefined}
+          onRetry={filteredParcels.refetch}
+        />
       </div>
 
       {/* Drawer */}
-      {drawerOpen && selectedTrackingId && (
+      {(drawerOpen || requestedTrackingId !== null) && activeTrackingId && (
         <ParcelDetailsDrawer
-          trackingId={selectedTrackingId}
-          action={drawerAction}
+          trackingId={activeTrackingId}
+          action={requestedTrackingId ? undefined : drawerAction}
           onClose={handleCloseDrawer}
           onStatusUpdated={handleStatusUpdated}
         />

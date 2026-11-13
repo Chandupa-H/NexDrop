@@ -80,6 +80,21 @@ Lists registered couriers, optionally filtered by `available_only=true`.
 ### `PATCH /api/v1/couriers/{courier_id}/location`
 Receives live GPS coordinates (`current_latitude`, `current_longitude`).
 
+### `GET /api/v1/courier/deliveries`
+Returns today's deliveries assigned to the authenticated courier. Requires a valid
+Supabase bearer access token and configured `SUPABASE_URL` and `SUPABASE_JWT_SECRET`;
+the courier identity is resolved from the token and cannot be supplied as a query
+parameter. "Today" uses the `Asia/Colombo` timezone.
+
+Repeat the optional `status` parameter to request multiple delivery statuses:
+
+```text
+/api/v1/courier/deliveries?status=picked_up&status=in_transit&status=out_for_delivery
+```
+
+Supported values are `pending`, `picked_up`, `in_transit`, `out_for_delivery`,
+`delivered`, and `cancelled`. Results are ordered by `assigned_at` ascending.
+
 ### `POST /api/v1/dispatch`
 Creates a new parcel-to-courier assignment.
 

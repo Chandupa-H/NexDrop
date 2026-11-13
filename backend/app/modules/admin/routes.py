@@ -1,4 +1,3 @@
-import hashlib
 import math
 import secrets
 from datetime import datetime, timezone
@@ -8,6 +7,9 @@ from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.modules.admin.auth import require_admin, provision_auth_user, remove_auth_user
+from app.modules.admin.users_service import edit_user
+from app.modules.admin.schemas import AdminUserUpdate
 from app.modules.users.models import User, UserRole
 from app.modules.customers.models import Customer
 from app.modules.merchants.models import Merchant, ApprovalStatus
@@ -252,7 +254,7 @@ async def list_admin_users(
     return items
 
 
-@router.post("/users", response_model=AdminUserItem, status_code=status.HTTP_201_CREATED)
+@router.post("/users", response_model=AdminUserItem, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 async def create_admin_user(
     payload: AdminUserCreate,
     session: AsyncSession = Depends(get_db),
@@ -277,51 +279,60 @@ async def create_admin_user(
             detail=f"Invalid role '{payload.role}'. Must be one of: customer, merchant, courier, dispatcher, admin.",
         )
 
-    hashed_pw = hashlib.sha256(payload.password.encode()).hexdigest()
-    new_user = User(
-        email=payload.email,
-        full_name=payload.full_name,
-        hashed_password=hashed_pw,
-        role=role_enum,
-        is_active=payload.is_active,
-    )
-    session.add(new_user)
-    await session.flush()
-    await session.refresh(new_user)
+    auth_user_id = None
+    try:
+        hashed_pw = "supabase-managed:" + secrets.token_hex(32)
+        new_user = User(
+            email=payload.email,
+            full_name=payload.full_name,
+            hashed_password=hashed_pw,
+            role=role_enum,
+            is_active=payload.is_active,
+        )
+        session.add(new_user)
+        await session.flush()
+        await session.refresh(new_user)
 
-    # Role-specific profile records
-    if role_enum == UserRole.COURIER:
-        courier = Courier(
-            user_id=new_user.id,
-            vehicle_type=(payload.vehicle_type or "motorcycle").lower(),
-            license_plate=payload.license_plate,
-            is_available=True,
-        )
-        session.add(courier)
-    elif role_enum == UserRole.MERCHANT:
-        reg_num = payload.registration_number or f"PV-{new_user.id:04d}-{secrets.token_hex(2).upper()}"
-        merchant = Merchant(
-            user_id=new_user.id,
-            business_name=payload.business_name or f"{payload.full_name} Store",
-            registration_number=reg_num,
-            contact_phone=payload.phone or "+94 77 000 0000",
-            business_address=payload.business_address or "Colombo, Sri Lanka",
-            approval_status=ApprovalStatus.APPROVED if payload.is_active else ApprovalStatus.PENDING,
-            api_key=f"nd_live_{secrets.token_hex(16)}" if payload.is_active else None,
-        )
-        session.add(merchant)
-    elif role_enum == UserRole.CUSTOMER and payload.phone:
-        customer = Customer(
-            user_id=new_user.id,
-            phone=payload.phone,
-            default_address=payload.business_address or "Colombo",
-            city="Colombo",
-            postal_code="00100",
-        )
-        session.add(customer)
+        # Role-specific profile records
+        if role_enum == UserRole.COURIER:
+            courier = Courier(
+                user_id=new_user.id,
+                vehicle_type=(payload.vehicle_type or "motorcycle").lower(),
+                license_plate=payload.license_plate,
+                is_available=True,
+            )
+            session.add(courier)
+        elif role_enum == UserRole.MERCHANT:
+            reg_num = payload.registration_number or f"PV-{new_user.id:04d}-{secrets.token_hex(2).upper()}"
+            merchant = Merchant(
+                user_id=new_user.id,
+                business_name=payload.business_name or f"{payload.full_name} Store",
+                registration_number=reg_num,
+                contact_phone=payload.phone or "+94 77 000 0000",
+                business_address=payload.business_address or "Colombo, Sri Lanka",
+                approval_status=ApprovalStatus.APPROVED if payload.is_active else ApprovalStatus.PENDING,
+                api_key=f"nd_live_{secrets.token_hex(16)}" if payload.is_active else None,
+            )
+            session.add(merchant)
+        elif role_enum == UserRole.CUSTOMER and payload.phone:
+            customer = Customer(
+                user_id=new_user.id,
+                phone=payload.phone,
+                default_address=payload.business_address or "Colombo",
+                city="Colombo",
+                postal_code="00100",
+            )
+            session.add(customer)
 
-    await session.commit()
-    await session.refresh(new_user)
+        await session.flush()
+        await session.refresh(new_user)
+        auth_user_id = await provision_auth_user(payload)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        if auth_user_id:
+            await remove_auth_user(auth_user_id)
+        raise
 
     return AdminUserItem(
         id=new_user.id,
@@ -336,6 +347,18 @@ async def create_admin_user(
         created_at=new_user.created_at or datetime.now(timezone.utc),
         deliveries=0,
     )
+
+
+@router.patch("/users/{user_id}", response_model=AdminUserItem)
+async def update_admin_user(
+    user_id: int,
+    payload: AdminUserUpdate,
+    caller: dict = Depends(require_admin),
+    session: AsyncSession = Depends(get_db),
+):
+    await edit_user(session, user_id, payload, caller)
+    users = await list_admin_users(session=session)
+    return next(user for user in users if user.id == user_id)
 
 
 @router.patch("/users/{user_id}/toggle-status")

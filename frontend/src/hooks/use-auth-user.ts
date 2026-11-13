@@ -5,27 +5,53 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import {
   DEFAULT_AUTHENTICATED_REDIRECT,
-  resolveUserDashboardPath,
+  resolveUserRole,
+  getDashboardPathForRole,
 } from "@/lib/auth/routes";
 
 export interface AuthUserState {
   user: User | null;
+  role: string | null;
   dashboardHref: string;
   isLoading: boolean;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 export function useAuthUser(): AuthUserState {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [dashboardHref, setDashboardHref] = useState<string>(
     DEFAULT_AUTHENTICATED_REDIRECT
   );
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  const syncUser = useCallback(async () => {
+    try {
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
+
+      setUser(currentUser);
+
+      if (currentUser) {
+        const resolvedRole = await resolveUserRole(supabase, currentUser.id);
+        const target = getDashboardPathForRole(resolvedRole);
+        setRole(resolvedRole);
+        setDashboardHref(target);
+      } else {
+        setRole(null);
+        setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
 
-    async function syncUser() {
+    async function initialSync() {
       try {
         const {
           data: { user: currentUser },
@@ -35,19 +61,24 @@ export function useAuthUser(): AuthUserState {
         setUser(currentUser);
 
         if (currentUser) {
-          const target = await resolveUserDashboardPath(
-            supabase,
-            currentUser.id,
-            DEFAULT_AUTHENTICATED_REDIRECT
-          );
-          if (active) setDashboardHref(target);
+          const resolvedRole = await resolveUserRole(supabase, currentUser.id);
+          const target = getDashboardPathForRole(resolvedRole);
+          if (active) {
+            setRole(resolvedRole);
+            setDashboardHref(target);
+          }
+        } else {
+          if (active) {
+            setRole(null);
+            setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+          }
         }
       } finally {
         if (active) setIsLoading(false);
       }
     }
 
-    syncUser();
+    initialSync();
 
     const {
       data: { subscription },
@@ -58,13 +89,14 @@ export function useAuthUser(): AuthUserState {
       setIsLoading(false);
 
       if (nextUser) {
-        const target = await resolveUserDashboardPath(
-          supabase,
-          nextUser.id,
-          DEFAULT_AUTHENTICATED_REDIRECT
-        );
-        if (active) setDashboardHref(target);
+        const resolvedRole = await resolveUserRole(supabase, nextUser.id);
+        const target = getDashboardPathForRole(resolvedRole);
+        if (active) {
+          setRole(resolvedRole);
+          setDashboardHref(target);
+        }
       } else {
+        setRole(null);
         setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
       }
     });
@@ -78,9 +110,9 @@ export function useAuthUser(): AuthUserState {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setRole(null);
     setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
   }, []);
 
-  return { user, dashboardHref, isLoading, signOut };
+  return { user, role, dashboardHref, isLoading, signOut, refresh: syncUser };
 }
-
