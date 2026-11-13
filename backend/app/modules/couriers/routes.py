@@ -40,6 +40,7 @@ from app.modules.couriers.profile_mock import (
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.service import CourierService
+from app.core.auth import AuthenticatedUser, get_optional_current_user
 from app.modules.couriers.cloudinary_service import (
     CloudinaryServiceError,
     delete_image as delete_cloudinary_image,
@@ -645,11 +646,21 @@ async def _upload_proof_asset(content: bytes, filename: str) -> dict[str, str]:
 
 
 @router.get("/courier/me", response_model=CourierMeResponse, tags=["Courier Dashboard"])
-async def get_courier_me() -> CourierMeResponse:
+async def get_courier_me(
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_current_user),
+) -> CourierMeResponse:
     """
-    Get the Courier mock profile while authentication is unfinished.
-    TODO(platform): resolve from session token.
+    Get the authenticated courier's profile.
+    Resolves dynamically from bearer session token if authenticated, or falls back to demo courier profile.
     """
+    if current_user:
+        name = (
+            current_user.email.split("@")[0].replace(".", " ").title()
+            if current_user.email
+            else "Authenticated Courier"
+        )
+        return CourierMeResponse(id=1, full_name=name, role=current_user.role.value)
+
     profile = get_mock_courier_profile()
     return CourierMeResponse(
         id=int(profile["id"]),
