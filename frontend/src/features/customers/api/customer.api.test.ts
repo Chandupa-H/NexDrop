@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import apiClient from "@/lib/api-client";
-import { getCustomerParcels } from "./customer.api";
+import { getCustomerParcels, getCustomerParcelDetail } from "./customer.api";
 
 vi.mock("@/lib/api-client", () => ({ default: { get: vi.fn() } }));
 
@@ -21,5 +21,10 @@ describe("customer parcel list API", () => {
   it("propagates history failures rather than returning frontend mocks", async () => {
     vi.mocked(apiClient.get).mockRejectedValue(new Error("Unavailable"));
     await expect(getCustomerParcels({ limit: 10 }, false)).rejects.toThrow("Unavailable");
+  });
+  it("encodes receipt tracking IDs and propagates detail errors without frontend mock fallback", async () => {
+    vi.mocked(apiClient.get).mockRejectedValue(new Error("Not found"));
+    await expect(getCustomerParcelDetail("ND/TEST", false)).rejects.toThrow("Not found");
+    expect(apiClient.get).toHaveBeenCalledWith("/customers/customer/parcels/ND%2FTEST");
   });
 });

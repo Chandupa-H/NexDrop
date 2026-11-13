@@ -132,13 +132,15 @@ export async function getCustomerParcels(
  * Get full customer parcel details including timeline and masked phone.
  */
 export async function getCustomerParcelDetail(
-  trackingId: string
+  trackingId: string,
+  allowMockFallback = true
 ): Promise<CustomerParcelDetailDTO> {
   try {
     return await apiClient.get<CustomerParcelDetailDTO>(
-      `/customers/customer/parcels/${trackingId}`
+      `/customers/customer/parcels/${encodeURIComponent(trackingId)}`
     );
   } catch (err) {
+    if (!allowMockFallback) throw err;
     console.warn(`[CustomerAPI] Backend unreachable, falling back to mock parcel detail for ${trackingId}:`, err);
     return getMockCustomerParcelDetail(trackingId);
   }

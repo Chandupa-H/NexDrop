@@ -29,6 +29,7 @@ export function CustomerHistoryView() {
         Displayed records are not verified PostgreSQL history. Details are read-only here.
       </p>
       <CustomerParcelsTable
+        showReceipts
         parcels={data.parcels} total={data.total} filter={filter}
         onFilterChange={(next) => { setFilter(next); setPage(1); }}
         onSelectParcel={setTrackingId} loading={data.loading}

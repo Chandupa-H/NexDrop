@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Search, Eye } from "lucide-react";
 import { getCustomerStatusLabel, getCustomerStatusTone } from "../lib/status";
+import { isCustomerReceiptEligible } from "../lib/receipt";
 import type { CustomerParcelListItem, CustomerTableFilter } from "../types";
 
 const filterTabs: Array<{ key: CustomerTableFilter; label: string }> = [
@@ -34,6 +35,7 @@ export interface CustomerParcelsTableProps {
   loading?: boolean;
   error?: string;
   onRetry?: () => void;
+  showReceipts?: boolean;
 }
 
 export function CustomerParcelsTable({
@@ -45,6 +47,7 @@ export function CustomerParcelsTable({
   loading,
   error,
   onRetry,
+  showReceipts = false,
 }: CustomerParcelsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const searchId = useId();
@@ -222,6 +225,16 @@ export function CustomerParcelsTable({
                         <Eye className="h-3.5 w-3.5" />
                         Details
                       </Button>
+                      {showReceipts && isCustomerReceiptEligible(parcel.status, parcel.trackingId) && (
+                        <Link
+                          href={`/customer/history/receipt?trackingId=${encodeURIComponent(parcel.trackingId)}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="inline-flex min-h-10 items-center px-3 text-sm font-medium text-primary underline"
+                          aria-label={`View shipment receipt for ${parcel.trackingId}`}
+                        >
+                          View Receipt
+                        </Link>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
