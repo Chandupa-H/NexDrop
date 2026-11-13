@@ -102,7 +102,7 @@ class PricingRepository:
         if self.session is not None:
             try:
                 result = await self.session.execute(
-                    select(PricingTier).where(PricingTier.is_active.is_(True))
+                    select(PricingTier).where(PricingTier.is_active.is_(True)).order_by(PricingTier.id.asc())
                 )
                 db_tiers = list(result.scalars().all())
                 if db_tiers:
@@ -111,6 +111,20 @@ class PricingRepository:
                 logger.warning("DB query failed, using in-memory pricing tiers: %s", exc)
 
         return [t for t in _FALLBACK_TIERS if t.get("is_active", True)]
+
+    async def list_all(self) -> List[Any]:
+        if self.session is not None:
+            try:
+                result = await self.session.execute(
+                    select(PricingTier).order_by(PricingTier.id.asc())
+                )
+                db_tiers = list(result.scalars().all())
+                if db_tiers:
+                    return db_tiers
+            except Exception as exc:
+                logger.warning("DB query failed, using in-memory pricing tiers: %s", exc)
+
+        return list(_FALLBACK_TIERS)
 
     async def create(self, tier: PricingTier) -> Any:
         if self.session is not None:
@@ -137,6 +151,13 @@ class PricingRepository:
         }
         _FALLBACK_TIERS.append(record)
         return record
+
+    async def update(self, tier: PricingTier) -> PricingTier:
+        if self.session is not None:
+            await self.session.flush()
+            await self.session.refresh(tier)
+            return tier
+        return tier
 
     async def update_tier(self, tier_id: int, updates: Dict[str, Any]) -> Optional[Any]:
         if self.session is not None:

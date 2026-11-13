@@ -10,6 +10,9 @@ from app.modules.dispatch.routes import router as dispatch_router
 from app.modules.pricing.routes import router as pricing_router
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.webhooks.routes import router as webhooks_router
+from app.modules.zones.routes import router as zones_router
+from app.modules.warehouses.routes import router as warehouses_router
+from app.modules.admin.routes import router as admin_router
 
 api_router = APIRouter()
 
@@ -27,3 +30,6 @@ api_router.include_router(dispatch_router)
 api_router.include_router(pricing_router)
 api_router.include_router(notifications_router)
 api_router.include_router(webhooks_router)
+api_router.include_router(zones_router)
+api_router.include_router(warehouses_router)
+api_router.include_router(admin_router)

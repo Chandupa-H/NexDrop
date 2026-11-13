@@ -33,7 +33,7 @@ export default function MerchantRegisterLayout({
             Already have an account?
           </span>
           <Link
-            href="/merchant/login"
+            href="/login"
             className="text-sm font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors"
           >
             Sign in →

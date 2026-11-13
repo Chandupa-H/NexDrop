@@ -19,6 +19,7 @@ from app.modules.couriers.schemas import (
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.service import CourierService
+from app.core.auth import AuthenticatedUser, get_optional_current_user
 
 router = APIRouter(prefix="/couriers", tags=["Couriers"])
 
@@ -117,11 +118,21 @@ _MOCK_PARCELS = [
 
 
 @router.get("/courier/me", response_model=CourierMeResponse, tags=["Courier Dashboard"])
-async def get_courier_me() -> CourierMeResponse:
+async def get_courier_me(
+    current_user: Optional[AuthenticatedUser] = Depends(get_optional_current_user),
+) -> CourierMeResponse:
     """
     Get the authenticated courier's profile.
-    TODO(platform): resolve from session token.
+    Resolves dynamically from bearer session token if authenticated, or falls back to demo courier.
     """
+    if current_user:
+        name = (
+            current_user.email.split("@")[0].replace(".", " ").title()
+            if current_user.email
+            else "Authenticated Courier"
+        )
+        return CourierMeResponse(id=1, full_name=name, role=current_user.role.value)
+
     return CourierMeResponse(id=1, full_name="Poorna Danushka", role="courier")
 
 

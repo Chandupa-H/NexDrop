@@ -51,11 +51,14 @@ async def update_pricing_rules(
 
 @router.get("/tiers", response_model=List[PricingTierResponse])
 async def list_pricing_tiers(
+    include_inactive: bool = False,
     service: PricingService = Depends(get_pricing_service),
 ) -> List[PricingTierResponse]:
     """
-    List all active delivery pricing tiers.
+    List delivery pricing tiers (active by default, or all when include_inactive=True).
     """
+    if include_inactive:
+        return await service.list_all_tiers()
     return await service.list_active_tiers()
 
 

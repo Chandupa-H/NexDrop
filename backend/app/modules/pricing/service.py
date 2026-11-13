@@ -34,6 +34,19 @@ class PricingService:
             return PricingTierResponse(**tier)
         return PricingTierResponse.model_validate(tier)
 
+    async def list_all_tiers(self) -> List[PricingTierResponse]:
+        raw_tiers = await self.repository.list_all()
+        results = []
+        for t in raw_tiers:
+            if isinstance(t, dict):
+                results.append(PricingTierResponse(**t))
+            else:
+                results.append(PricingTierResponse.model_validate(t))
+        return results
+
+    async def get_tier(self, tier_id: int) -> Optional[PricingTier]:
+        return await self.repository.get_by_id(tier_id)
+
     async def calculate_estimate(self, request: PriceCalculationRequest) -> PriceCalculationResponse:
         tier_name = request.tier_name or "Standard"
         tier = await self.repository.get_by_name(tier_name)

@@ -2,13 +2,17 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Sun, Moon } from "lucide-react";
 import { NexDropLogo } from "@/components/shared/nexdrop-logo";
 import { LogisticsSceneBackground } from "@/components/auth/logistics-scene-background";
 import { AuthForm } from "@/components/auth/auth-form";
 import { VerifyEmailForm } from "@/components/auth/verify-email-form";
+import { supabase } from "@/lib/supabase/client";
+import { resolveUserDashboardPath } from "@/lib/auth/routes";
 
 export function LoginView() {
+  const router = useRouter();
   const [isDark, setIsDark] = useState<boolean>(false);
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -18,6 +22,7 @@ export function LoginView() {
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [authStep, setAuthStep] = useState<"credentials" | "verify_email">("credentials");
   const [pendingEmail, setPendingEmail] = useState<string>("");
+  const [returnTo, setReturnTo] = useState<string>("/courier/dashboard");
 
   useEffect(() => {
     // Read URL params and stored theme on mount without blocking initial effect
@@ -26,9 +31,14 @@ export function LoginView() {
     const stepParam = params.get("step");
     const emailParam = params.get("email");
     const themeParam = params.get("theme");
+    const returnToParam = params.get("returnTo");
     const savedTheme = localStorage.getItem("nexdrop-theme");
 
     queueMicrotask(() => {
+      if (returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")) {
+        setReturnTo(returnToParam);
+      }
+
       if (viewParam === "sign_up") {
         setAuthMode("sign_up");
       }
@@ -38,6 +48,19 @@ export function LoginView() {
         if (emailParam) {
           setPendingEmail(emailParam);
         }
+      } else {
+        supabase.auth.getUser().then(async ({ data }) => {
+          if (data.user) {
+            const target = await resolveUserDashboardPath(
+              supabase,
+              data.user.id,
+              returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")
+                ? returnToParam
+                : "/courier/dashboard"
+            );
+            router.replace(target);
+          }
+        });
       }
 
       if (themeParam === "dark") {
@@ -54,7 +77,7 @@ export function LoginView() {
         setIsDark(false);
       }
     });
-  }, []);
+  }, [router]);
 
   const toggleTheme = () => {
     const nextTheme = !isDark;
@@ -156,7 +179,7 @@ export function LoginView() {
                 <VerifyEmailForm
                   email={pendingEmail || "courier@nexdrop.com"}
                   isDark={isDark}
-                  onSuccessRedirect="/courier/dashboard"
+                  onSuccessRedirect={returnTo}
                   onChangeEmail={() => setAuthStep("credentials")}
                 />
               ) : (
@@ -164,7 +187,7 @@ export function LoginView() {
                   isDark={isDark}
                   mode={authMode}
                   onModeChange={setAuthMode}
-                  onSuccessRedirect="/courier/dashboard"
+                  onSuccessRedirect={returnTo}
                   onRequireVerification={(email) => {
                     setPendingEmail(email);
                     setAuthStep("verify_email");
