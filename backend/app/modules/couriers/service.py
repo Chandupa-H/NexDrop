@@ -28,10 +28,10 @@ ACTIVE_DELIVERY_STATUSES = {
 }
 
 VALID_STATUS_TRANSITIONS = {
-    ParcelStatus.PENDING: {ParcelStatus.PICKED_UP},
-    ParcelStatus.PICKED_UP: {ParcelStatus.IN_TRANSIT},
-    ParcelStatus.IN_TRANSIT: {ParcelStatus.OUT_FOR_DELIVERY},
-    ParcelStatus.OUT_FOR_DELIVERY: {ParcelStatus.DELIVERED},
+    ParcelStatus.PENDING: {ParcelStatus.PICKED_UP, ParcelStatus.CANCELLED},
+    ParcelStatus.PICKED_UP: {ParcelStatus.IN_TRANSIT, ParcelStatus.CANCELLED},
+    ParcelStatus.IN_TRANSIT: {ParcelStatus.OUT_FOR_DELIVERY, ParcelStatus.CANCELLED},
+    ParcelStatus.OUT_FOR_DELIVERY: {ParcelStatus.DELIVERED, ParcelStatus.CANCELLED},
     ParcelStatus.DELIVERED: set(),
     ParcelStatus.CANCELLED: set(),
 }

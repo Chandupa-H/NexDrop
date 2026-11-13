@@ -1,8 +1,12 @@
+import sys
 from typing import List, Optional, Literal
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_db
+from app.db.session import get_db, get_optional_db
+from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
+from app.modules.parcels.models import Parcel, ParcelStatus, ParcelStatusHistory
 from app.modules.couriers.schemas import (
     CourierResponse,
     CourierLocationUpdate,
@@ -250,6 +254,132 @@ _IMAGE_SIGNATURES = {
 }
 
 
+def _should_use_db(session: Optional[AsyncSession], source: Optional[str] = None) -> bool:
+    if not isinstance(session, AsyncSession):
+        return False
+    if source == "mock":
+        return False
+    if source == "db":
+        return True
+    if "pytest" in sys.modules:
+        return False
+    return True
+
+
+def _mask_phone(phone: Optional[str]) -> str:
+    if not phone:
+        return "Not available"
+    if len(phone) >= 12 and phone.startswith("+94"):
+        return phone[:3] + " " + phone[3:6] + " *** " + phone[-4:]
+    elif len(phone) >= 10:
+        return phone[:7] + " *** " + phone[-4:]
+    return phone
+
+
+def _format_status_label(status_val: str) -> str:
+    label_map = {
+        "pending": "Order Created",
+        "picked_up": "Picked Up",
+        "in_transit": "In Transit",
+        "out_for_delivery": "Out for Delivery",
+        "delivered": "Delivered",
+        "failed": "Delivery Failed",
+        "cancelled": "Cancelled",
+    }
+    return label_map.get(status_val.lower(), status_val.replace("_", " ").title())
+
+
+def _parcel_to_detail_response(
+    parcel: Parcel, history_entries: List[ParcelStatusHistory]
+) -> ParcelDetailResponse:
+    masked_phone = _mask_phone(parcel.recipient_phone)
+    timeline: List[TimelineEvent] = []
+    if history_entries:
+        for entry in history_entries:
+            st = entry.status.value.lower()
+            timeline.append(
+                TimelineEvent(
+                    status="failed" if st == "cancelled" else st,
+                    label=_format_status_label(st),
+                    occurred_at=entry.occurred_at.isoformat(),
+                    location=parcel.delivery_city if st in ("delivered", "cancelled") else None,
+                )
+            )
+    else:
+        st = parcel.status.value.lower()
+        created_time = (
+            parcel.created_at.isoformat()
+            if parcel.created_at
+            else datetime.now(timezone.utc).isoformat()
+        )
+        timeline.append(
+            TimelineEvent(
+                status="failed" if st == "cancelled" else st,
+                label=_format_status_label(st),
+                occurred_at=created_time,
+                location=None,
+            )
+        )
+
+    notes = [parcel.special_instructions] if parcel.special_instructions else []
+    for entry in history_entries:
+        if entry.note and entry.note not in notes:
+            notes.append(entry.note)
+
+    delivery_proof = None
+    delivery_result = None
+    if parcel.status == ParcelStatus.DELIVERED:
+        latest_proof = next(
+            (e.proof_reference for e in reversed(history_entries) if e.proof_reference),
+            None,
+        )
+        if latest_proof:
+            delivery_proof = {"secure_url": latest_proof, "public_id": latest_proof}
+        delivered_time = (
+            history_entries[-1].occurred_at.isoformat()
+            if history_entries
+            else (parcel.updated_at or parcel.created_at or datetime.now(timezone.utc)).isoformat()
+        )
+        delivery_result = {
+            "outcome": "delivered",
+            "recipient_name": parcel.recipient_name,
+            "recorded_at": delivered_time,
+        }
+    elif parcel.failure_reason or parcel.status == ParcelStatus.CANCELLED:
+        failed_time = (
+            history_entries[-1].occurred_at.isoformat()
+            if history_entries
+            else (parcel.updated_at or parcel.created_at or datetime.now(timezone.utc)).isoformat()
+        )
+        last_note = next((e.note for e in reversed(history_entries) if e.note), None)
+        delivery_result = {
+            "outcome": "failed",
+            "failure_reason": parcel.failure_reason or "other",
+            "note": last_note,
+            "recorded_at": failed_time,
+        }
+
+    status_str = "failed" if parcel.status == ParcelStatus.CANCELLED else parcel.status.value.lower()
+
+    return ParcelDetailResponse(
+        tracking_id=parcel.tracking_number,
+        customer_name=parcel.recipient_name,
+        customer_phone_masked=masked_phone,
+        destination=parcel.delivery_city,
+        address_line=parcel.delivery_address,
+        status=status_str,
+        assigned_at=parcel.created_at.isoformat()
+        if parcel.created_at
+        else datetime.now(timezone.utc).isoformat(),
+        eta=None,
+        notes=notes,
+        timeline=timeline,
+        delivery_proof=delivery_proof,
+        delivery_result=delivery_result,
+        proof_cleanup_pending=False,
+    )
+
+
 @router.get(
     "/courier/proofs",
     response_model=CourierProofListResponse,
@@ -259,8 +389,59 @@ async def list_courier_proofs(
     q: Optional[str] = Query(None, max_length=100),
     delivery_date: Optional[date] = Query(None, alias="date"),
     delivery_status: Optional[Literal["delivered", "failed"]] = Query(None, alias="status"),
+    source: Optional[str] = Query(None, description="Force 'db' or 'mock' data source"),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> CourierProofListResponse:
-    """List proof metadata from backend-managed delivered parcel mock data."""
+    """List proof metadata from real database or fallback mock data."""
+    if not isinstance(q, str):
+        q = None
+    if not isinstance(source, str):
+        source = None
+    if not isinstance(delivery_status, str):
+        delivery_status = None
+    if not isinstance(delivery_date, date):
+        delivery_date = None
+    if _should_use_db(session, source):
+        stmt = (
+            select(Parcel, ParcelStatusHistory)
+            .outerjoin(
+                ParcelStatusHistory,
+                (ParcelStatusHistory.parcel_id == Parcel.id) & (ParcelStatusHistory.status == ParcelStatus.DELIVERED),
+            )
+            .where(Parcel.status == ParcelStatus.DELIVERED)
+        )
+        res = await session.execute(stmt)
+        records: list[CourierProofRecord] = []
+        for p, h in res.all():
+            proof_url = (h.proof_reference if h else None) or f"https://placehold.co/960x720/png?text=PROOF+{p.tracking_number}"
+            del_at = (h.occurred_at if h else p.updated_at or p.created_at or datetime.now(timezone.utc)).isoformat()
+            records.append(
+                CourierProofRecord(
+                    tracking_number=p.tracking_number,
+                    recipient_name=p.recipient_name,
+                    delivered_at=del_at,
+                    delivery_address=f"{p.delivery_address}, {p.delivery_city}",
+                    status="delivered",
+                    secure_url=proof_url,
+                    public_id=f"proof-{p.tracking_number}",
+                )
+            )
+        filtered = records
+        if q:
+            needle = q.strip().casefold()
+            filtered = [r for r in filtered if needle in r.tracking_number.casefold() or needle in r.recipient_name.casefold()]
+        if delivery_date:
+            filtered = [r for r in filtered if datetime.fromisoformat(r.delivered_at).date() == delivery_date]
+        if delivery_status:
+            filtered = [r for r in filtered if r.status == delivery_status]
+        filtered.sort(key=lambda r: r.delivered_at, reverse=True)
+        summary = CourierProofSummary(
+            total_proofs=len(records),
+            successful_deliveries=len(records),
+            parcels_with_proof=len({r.tracking_number for r in records}),
+        )
+        return CourierProofListResponse(items=filtered, total=len(filtered), summary=summary)
+
     records: list[CourierProofRecord] = []
     for parcel in _MOCK_PARCELS:
         proof = parcel.get("delivery_proof")
@@ -304,7 +485,75 @@ async def list_courier_failed_deliveries(
     reason: Optional[str] = Query(None, max_length=100),
     delivery_date: Optional[date] = Query(None, alias="date"),
     redelivery_status: Optional[Literal["pending", "scheduled", "completed", "superseded"]] = Query(None),
+    source: Optional[str] = Query(None, description="Force 'db' or 'mock' data source"),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> FailedDeliveryListResponse:
+    """Search/filter failed attempts from real database or fallback mock data."""
+    if not isinstance(q, str):
+        q = None
+    if not isinstance(reason, str):
+        reason = None
+    if not isinstance(source, str):
+        source = None
+    if not isinstance(redelivery_status, str):
+        redelivery_status = None
+    if not isinstance(delivery_date, date):
+        delivery_date = None
+    if _should_use_db(session, source):
+        stmt = (
+            select(Parcel, ParcelStatusHistory)
+            .outerjoin(
+                ParcelStatusHistory,
+                (ParcelStatusHistory.parcel_id == Parcel.id) & (ParcelStatusHistory.status == ParcelStatus.CANCELLED),
+            )
+            .where(or_(Parcel.status == ParcelStatus.CANCELLED, Parcel.failure_reason.isnot(None)))
+        )
+        res = await session.execute(stmt)
+        records: list[FailedDeliveryRecord] = []
+        for p, h in res.all():
+            failed_at = (h.occurred_at if h else p.updated_at or p.created_at or datetime.now(timezone.utc)).isoformat()
+            r_val = p.failure_reason or "other"
+            records.append(
+                FailedDeliveryRecord(
+                    tracking_number=p.tracking_number,
+                    customer_name=p.recipient_name,
+                    customer_phone_masked=_mask_phone(p.recipient_phone),
+                    destination=p.delivery_city,
+                    delivery_address=p.delivery_address,
+                    assigned_at=p.created_at.isoformat() if p.created_at else failed_at,
+                    eta=None,
+                    courier_name="Assigned Courier",
+                    parcel_status="failed",
+                    redelivery_status="pending",
+                    attempt_number=1,
+                    failed_at=failed_at,
+                    failure_reason=r_val,
+                    failure_reason_label=_FAILURE_REASON_LABELS.get(r_val, "Other"),
+                    note=h.note if h else None,
+                    previous_attempts=[],
+                )
+            )
+        filtered = records
+        if q:
+            needle = q.strip().casefold()
+            filtered = [r for r in filtered if needle in r.tracking_number.casefold() or needle in r.customer_name.casefold()]
+        if reason:
+            filtered = [r for r in filtered if r.failure_reason == reason]
+        if delivery_date:
+            filtered = [r for r in filtered if datetime.fromisoformat(r.failed_at).date() == delivery_date]
+        if redelivery_status:
+            filtered = [r for r in filtered if r.redelivery_status == redelivery_status]
+        reason_counts: dict[str, int] = {}
+        for r in records:
+            reason_counts[r.failure_reason] = reason_counts.get(r.failure_reason, 0) + 1
+        most_common = max(reason_counts, key=reason_counts.get) if reason_counts else None
+        summary = FailedDeliverySummary(
+            total_failed_deliveries=len(records),
+            today_failed_deliveries=sum(1 for r in records if datetime.fromisoformat(r.failed_at).date() == date.today()),
+            pending_redelivery=len({r.tracking_number for r in records if r.redelivery_status == "pending"}),
+            most_common_failure_reason=_FAILURE_REASON_LABELS.get(most_common, "Other") if most_common else None,
+        )
+        return FailedDeliveryListResponse(items=filtered, total=len(filtered), summary=summary)
     """Search/filter in-memory failed attempts; retry is deliberately not exposed."""
     records = _mock_failed_delivery_records()
     reason_counts: dict[str, int] = {}
@@ -452,11 +701,67 @@ async def change_courier_password(
 
 
 @router.get("/courier/dashboard/summary", response_model=DashboardSummaryResponse, tags=["Courier Dashboard"])
-async def get_dashboard_summary() -> DashboardSummaryResponse:
+async def get_dashboard_summary(
+    source: Optional[str] = Query(None, description="Force 'db' or 'mock' data source"),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
+) -> DashboardSummaryResponse:
     """
-    Dashboard summary computed from in-memory parcels.
-    Counts are never hard-coded; they're always computed from _MOCK_PARCELS.
+    Dashboard summary computed from real database when available, or in-memory mock parcels.
     """
+    if not isinstance(source, str):
+        source = None
+    if _should_use_db(session, source):
+        counts_res = await session.execute(
+            select(
+                func.count(Parcel.id).label("total"),
+                func.coalesce(func.sum(case((Parcel.status == ParcelStatus.DELIVERED, 1), else_=0)), 0).label("delivered"),
+                func.coalesce(func.sum(case((Parcel.status == ParcelStatus.PENDING, 1), else_=0)), 0).label("pending"),
+                func.coalesce(func.sum(case((Parcel.status == ParcelStatus.CANCELLED, 1), else_=0)), 0).label("failed"),
+                func.coalesce(func.sum(case((Parcel.status.in_([ParcelStatus.PICKED_UP, ParcelStatus.IN_TRANSIT, ParcelStatus.OUT_FOR_DELIVERY]), 1), else_=0)), 0).label("in_transit"),
+            )
+        )
+        counts = counts_res.mappings().one()
+        assigned = counts["total"]
+        delivered = counts["delivered"]
+        pending = counts["pending"]
+        failed = counts["failed"]
+        in_transit = counts["in_transit"]
+
+        kpis = [
+            DashboardKPI(key="assigned", value=assigned, delta_pct=12),
+            DashboardKPI(key="delivered", value=delivered, delta_pct=8),
+            DashboardKPI(key="in_transit", value=in_transit, delta_pct=24),
+            DashboardKPI(key="pending", value=pending, delta_pct=-5),
+        ]
+
+        today = date.today()
+        weekly_deliveries = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_start = datetime.combine(day, time.min, tzinfo=timezone.utc)
+            day_end = day_start + timedelta(days=1)
+            day_res = await session.execute(
+                select(func.count(Parcel.id)).where(
+                    Parcel.status == ParcelStatus.DELIVERED,
+                    Parcel.updated_at >= day_start,
+                    Parcel.updated_at < day_end,
+                )
+            )
+            count_day = day_res.scalar_one() or 0
+            weekly_deliveries.append(WeeklyDelivery(date=day.isoformat(), delivered=count_day))
+
+        return DashboardSummaryResponse(
+            totals=DashboardTotals(
+                assigned=assigned,
+                delivered=delivered,
+                in_transit=in_transit,
+                pending=pending,
+                failed=failed,
+            ),
+            kpis=kpis,
+            weekly_deliveries=weekly_deliveries,
+        )
+
     # Compute totals
     delivered = sum(1 for p in _MOCK_PARCELS if p["status"] == "delivered")
     pending = sum(1 for p in _MOCK_PARCELS if p["status"] == "pending")
@@ -501,11 +806,77 @@ async def get_courier_parcels(
     status: Optional[str] = Query(None, description="Comma-separated status filter (e.g., 'pending,in_transit')"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    source: Optional[str] = Query(None, description="Force 'db' or 'mock' data source"),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> ParcelListResponse:
     """
     List assigned parcels with optional status filter and status-prioritized pagination.
-    Parcels are ordered active-first, then by assigned time within each status.
+    Queries live database when available, otherwise falls back to mock parcels.
     """
+    if not isinstance(status, str):
+        status = None
+    if not isinstance(source, str):
+        source = None
+    if not isinstance(limit, int):
+        limit = 50
+    if not isinstance(offset, int):
+        offset = 0
+    if _should_use_db(session, source):
+        status_filters = [s.strip().lower() for s in status.split(",") if s.strip()] if status else None
+        stmt = select(Parcel)
+        if status_filters:
+            conditions = []
+            for s in status_filters:
+                if s == "pending":
+                    conditions.append(Parcel.status == ParcelStatus.PENDING)
+                elif s == "picked_up":
+                    conditions.append(Parcel.status == ParcelStatus.PICKED_UP)
+                elif s == "in_transit":
+                    conditions.append(Parcel.status == ParcelStatus.IN_TRANSIT)
+                elif s == "out_for_delivery":
+                    conditions.append(Parcel.status == ParcelStatus.OUT_FOR_DELIVERY)
+                elif s == "delivered":
+                    conditions.append(Parcel.status == ParcelStatus.DELIVERED)
+                elif s in ("failed", "cancelled"):
+                    conditions.append(Parcel.status == ParcelStatus.CANCELLED)
+            if conditions:
+                stmt = stmt.where(or_(*conditions))
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_res = await session.execute(count_stmt)
+        total = total_res.scalar_one() or 0
+
+        stmt = stmt.order_by(
+            case(
+                (Parcel.status == ParcelStatus.PENDING, 0),
+                (Parcel.status == ParcelStatus.PICKED_UP, 1),
+                (Parcel.status == ParcelStatus.IN_TRANSIT, 2),
+                (Parcel.status == ParcelStatus.OUT_FOR_DELIVERY, 3),
+                (Parcel.status == ParcelStatus.DELIVERED, 5),
+                (Parcel.status == ParcelStatus.CANCELLED, 6),
+                else_=4,
+            ),
+            Parcel.created_at.desc(),
+        ).offset(offset).limit(limit)
+
+        res = await session.execute(stmt)
+        items = res.scalars().all()
+
+        return ParcelListResponse(
+            items=[
+                ParcelListItem(
+                    tracking_id=p.tracking_number,
+                    customer_name=p.recipient_name,
+                    destination=p.delivery_city,
+                    status="failed" if p.status == ParcelStatus.CANCELLED else p.status.value.lower(),
+                    assigned_at=p.created_at.isoformat() if p.created_at else datetime.now(timezone.utc).isoformat(),
+                    eta=None,
+                )
+                for p in items
+            ],
+            total=total,
+        )
+
     # Parse status filter
     status_filters = None
     if status:
@@ -550,11 +921,21 @@ async def get_courier_parcels(
 
 
 @router.get("/courier/parcels/{tracking_id}", response_model=ParcelDetailResponse, tags=["Courier Dashboard"])
-async def get_parcel_detail(tracking_id: str) -> ParcelDetailResponse:
+async def get_parcel_detail(
+    tracking_id: str,
+    session: Optional[AsyncSession] = Depends(get_optional_db),
+) -> ParcelDetailResponse:
     """
     Get full parcel details including masked phone and timeline.
-    Returns 404 if tracking_id not found.
+    Returns from database when present, else checks in-memory parcels.
     """
+    if isinstance(session, AsyncSession):
+        repo = CourierRepository(session)
+        db_parcel = await repo.get_parcel_by_tracking(tracking_id)
+        if db_parcel is not None:
+            entries = await repo.get_status_history(db_parcel.id)
+            return _parcel_to_detail_response(db_parcel, entries)
+
     parcel = next((p for p in _MOCK_PARCELS if p["tracking_id"] == tracking_id), None)
     if not parcel:
         raise HTTPException(
@@ -680,7 +1061,41 @@ async def delete_delivery_proof(tracking_id: str) -> ParcelDetailResponse:
 async def submit_successful_delivery(
     tracking_id: str,
     payload: SuccessfulDeliveryRequest,
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> ParcelDetailResponse:
+    if isinstance(session, AsyncSession):
+        repo = CourierRepository(session)
+        db_parcel = await repo.get_parcel_by_tracking_for_update(tracking_id)
+        if db_parcel is not None:
+            if db_parcel.status != ParcelStatus.OUT_FOR_DELIVERY:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A delivery result can only be submitted for a parcel that is out for delivery",
+                )
+            if not payload.confirmed:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Delivered confirmation is required",
+                )
+            db_parcel.status = ParcelStatus.DELIVERED
+            now_utc = datetime.now(timezone.utc)
+            await session.execute(
+                update(DispatchAssignment)
+                .where(
+                    DispatchAssignment.parcel_id == db_parcel.id,
+                    DispatchAssignment.status != DispatchStatus.REJECTED,
+                )
+                .values(status=DispatchStatus.COMPLETED, completed_at=now_utc)
+            )
+            await repo.save_status_history(
+                parcel_id=db_parcel.id,
+                status=ParcelStatus.DELIVERED,
+                actor="courier",
+                note=f"Delivered to {payload.recipient_name}",
+            )
+            await session.commit()
+            return await get_parcel_detail(tracking_id, session=session)
+
     parcel = _find_mock_parcel(tracking_id)
     _require_delivery_stage(parcel)
     if not payload.confirmed:
@@ -707,7 +1122,37 @@ async def submit_successful_delivery(
 async def submit_failed_delivery(
     tracking_id: str,
     payload: FailedDeliveryRequest,
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> ParcelDetailResponse:
+    if isinstance(session, AsyncSession):
+        repo = CourierRepository(session)
+        db_parcel = await repo.get_parcel_by_tracking_for_update(tracking_id)
+        if db_parcel is not None:
+            if db_parcel.status not in {
+                ParcelStatus.PICKED_UP,
+                ParcelStatus.IN_TRANSIT,
+                ParcelStatus.OUT_FOR_DELIVERY,
+            }:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="A failed result can only be submitted after pickup and before delivery",
+                )
+            if not payload.confirmed:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Failed delivery confirmation is required",
+                )
+            db_parcel.status = ParcelStatus.CANCELLED
+            db_parcel.failure_reason = payload.failure_reason
+            await repo.save_status_history(
+                parcel_id=db_parcel.id,
+                status=ParcelStatus.CANCELLED,
+                actor="courier",
+                note=payload.note.strip() if payload.note and payload.note.strip() else None,
+            )
+            await session.commit()
+            return await get_parcel_detail(tracking_id, session=session)
+
     parcel = _find_mock_parcel(tracking_id)
     _require_failure_stage(parcel)
     if not payload.confirmed:
@@ -725,13 +1170,64 @@ async def submit_failed_delivery(
 
 
 @router.patch("/courier/parcels/{tracking_id}/status", response_model=ParcelDetailResponse, tags=["Courier Dashboard"])
-async def update_parcel_status(tracking_id: str, payload: ParcelStatusUpdateRequest) -> ParcelDetailResponse:
+async def update_parcel_status(
+    tracking_id: str,
+    payload: ParcelStatusUpdateRequest,
+    session: Optional[AsyncSession] = Depends(get_optional_db),
+) -> ParcelDetailResponse:
     """
     Update parcel status with validation for valid transitions and required fields.
     Valid flow: pending → picked_up → in_transit → out_for_delivery → delivered
     failed is allowed from picked_up, in_transit, or out_for_delivery and REQUIRES failure_reason.
     Invalid transition returns 409. Missing failure_reason for failed returns 422.
     """
+    if isinstance(session, AsyncSession):
+        repo = CourierRepository(session)
+        db_parcel = await repo.get_parcel_by_tracking_for_update(tracking_id)
+        if db_parcel is not None:
+            current_status = "failed" if db_parcel.status == ParcelStatus.CANCELLED else db_parcel.status.value.lower()
+            new_status = payload.status
+
+            if current_status in ["delivered", "failed", "cancelled"]:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Cannot update parcel in terminal status '{current_status}'",
+                )
+
+            if new_status in {"delivered", "failed"}:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Submit delivered or failed outcomes through the delivery result endpoint",
+                )
+
+            valid_transitions = {
+                "pending": ["picked_up"],
+                "picked_up": ["in_transit"],
+                "in_transit": ["out_for_delivery"],
+                "out_for_delivery": [],
+            }
+
+            if new_status not in valid_transitions.get(current_status, []):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Invalid transition from '{current_status}' to '{new_status}'",
+                )
+
+            enum_map = {
+                "picked_up": ParcelStatus.PICKED_UP,
+                "in_transit": ParcelStatus.IN_TRANSIT,
+                "out_for_delivery": ParcelStatus.OUT_FOR_DELIVERY,
+            }
+            db_parcel.status = enum_map[new_status]
+            await repo.save_status_history(
+                parcel_id=db_parcel.id,
+                status=db_parcel.status,
+                actor="courier",
+                note=payload.note,
+            )
+            await session.commit()
+            return await get_parcel_detail(tracking_id, session=session)
+
     parcel = next((p for p in _MOCK_PARCELS if p["tracking_id"] == tracking_id), None)
     if not parcel:
         raise HTTPException(

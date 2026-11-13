@@ -368,3 +368,15 @@ class CourierRepository:
         parcel.status = new_status
         await self.session.flush()
         return parcel
+
+    async def get_parcel_by_tracking(self, tracking_number: str) -> Optional[Parcel]:
+        result = await self.session.execute(
+            select(Parcel).where(Parcel.tracking_number == tracking_number)
+        )
+        return result.scalars().first()
+
+    async def get_parcel_by_tracking_for_update(self, tracking_number: str) -> Optional[Parcel]:
+        result = await self.session.execute(
+            select(Parcel).where(Parcel.tracking_number == tracking_number).with_for_update()
+        )
+        return result.scalars().first()
