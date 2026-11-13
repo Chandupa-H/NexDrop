@@ -82,23 +82,37 @@ from fastapi import HTTPException, status
 
 async def get_optional_db() -> AsyncGenerator[Optional[AsyncSession], None]:
     """
-    Yields AsyncSession if configured, or None if database is unconfigured.
+    Yields AsyncSession if configured, or None if database is unconfigured or offline.
     Useful for routes with offline fallbacks.
     """
-    session_factory = get_session_factory()
+    try:
+        session_factory = get_session_factory()
+    except Exception as exc:
+        logger.warning("Database unavailable, falling back to in-memory mode: %s", exc)
+        yield None
+        return
+
     if session_factory is None:
         yield None
         return
 
-    async with session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    try:
+        session = session_factory()
+    except Exception as exc:
+        logger.warning("Database session creation failed, falling back to in-memory mode: %s", exc)
+        yield None
+        return
+
+    try:
+        async with session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+    except Exception:
+        raise
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

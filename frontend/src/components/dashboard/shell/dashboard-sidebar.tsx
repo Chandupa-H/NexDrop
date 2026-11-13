@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { SidebarContent } from "./sidebar-content";
 import type { DashboardRoleConfig } from "@/lib/dashboard/types";
 
@@ -7,7 +8,9 @@ export function DashboardSidebar({ config }: { config: DashboardRoleConfig }) {
       className="dashboard-sidebar-panel"
       aria-label="Sidebar"
     >
-      <SidebarContent config={config} />
+      <Suspense fallback={null}>
+        <SidebarContent config={config} />
+      </Suspense>
     </aside>
   );
 }

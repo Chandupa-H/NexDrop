@@ -30,13 +30,22 @@ export function LoginView() {
     const viewParam = params.get("view");
     const stepParam = params.get("step");
     const emailParam = params.get("email");
+    const redirectParam = params.get("redirect");
     const themeParam = params.get("theme");
     const returnToParam = params.get("returnTo");
     const savedTheme = localStorage.getItem("nexdrop-theme");
 
     queueMicrotask(() => {
-      if (returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")) {
-        setReturnTo(returnToParam);
+      // Honor ?returnTo= (dev convention) or ?redirect= (merchant convention)
+      const preferredReturn =
+        returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")
+          ? returnToParam
+          : redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//")
+          ? redirectParam
+          : null;
+
+      if (preferredReturn) {
+        setReturnTo(preferredReturn);
       }
 
       if (viewParam === "sign_up") {
@@ -54,9 +63,7 @@ export function LoginView() {
             const target = await resolveUserDashboardPath(
               supabase,
               data.user.id,
-              returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")
-                ? returnToParam
-                : "/courier/dashboard"
+              preferredReturn ?? "/courier/dashboard"
             );
             router.replace(target);
           }

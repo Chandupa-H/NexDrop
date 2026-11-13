@@ -1,15 +1,146 @@
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Merchant Portal — NexDrop",
-  description: "NexDrop Merchant Portal",
-};
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
-export default function MerchantPage() {
-  return (
-    <main className="min-h-screen bg-[#F1F5F1]">
-      {/* Blank page for /merchant */}
-    </main>
-  );
+interface SavedApplication {
+  merchant_id: number;
+  business_name?: string;
+  email?: string;
+  approval_status?: string;
 }
 
+export default function MerchantPage() {
+  const [savedApp, setSavedApp] = useState<SavedApplication | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const item = localStorage.getItem("nexdrop_merchant_application");
+        if (item) {
+          setSavedApp(JSON.parse(item));
+        }
+      } catch {
+        // ignore storage parse errors
+      }
+    }
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[#F1F5F1] flex flex-col">
+      {/* Branded Header */}
+      <header className="bg-white border-b border-[#E5E7EB] h-16 flex items-center px-6 flex-shrink-0">
+        <Link href="/" className="flex items-center gap-2.5" aria-label="NexDrop home">
+          <div className="h-8 w-8 rounded-lg bg-[#064E3B] flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 text-[#A3E635]" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+          </div>
+          <span className="text-lg font-bold text-[#064E3B] tracking-tight">
+            Nex<span className="text-[#16A34A]">Drop</span>
+          </span>
+        </Link>
+
+        <div className="ml-auto flex items-center gap-3">
+          <Link href="/login" className="text-sm font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors">
+            Sign In
+          </Link>
+          <Link href="/merchant/register">
+            <Button variant="secondary" size="sm">
+              Register
+            </Button>
+          </Link>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-xl space-y-6">
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <h1 className="text-3xl font-extrabold text-[#064E3B] tracking-tight">
+              NexDrop Merchant Portal
+            </h1>
+            <p className="text-sm text-[#64748B] max-w-md mx-auto">
+              Shipment creation, automated courier dispatching, and high-volume delivery management.
+            </p>
+          </div>
+
+          {/* Pending Review Notice if applicant has submitted */}
+          {savedApp && (
+            <Card className="border border-amber-200 bg-amber-50/70 shadow-sm rounded-xl overflow-hidden">
+              <CardContent className="p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center text-lg flex-shrink-0">
+                    ⏳
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-[#1F2937] text-sm">
+                        {savedApp.business_name || "Your Application"}
+                      </p>
+                      <Badge variant="secondary">Under Review</Badge>
+                    </div>
+                    <p className="text-xs text-[#64748B]">
+                      Reference: <strong className="font-mono text-[#064E3B]">MER-{String(savedApp.merchant_id).padStart(6, "0")}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <Link href={`/merchant/application-status?id=${savedApp.merchant_id}`}>
+                  <Button variant="secondary" size="sm" className="whitespace-nowrap">
+                    View Review Status →
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Action Gateway Card */}
+          <Card className="border border-[#E5E7EB] bg-white shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="bg-[#F8FAF8] border-b border-[#E5E7EB] pb-4">
+              <CardTitle className="text-base text-[#064E3B]">Merchant Gateway</CardTitle>
+              <CardDescription className="text-xs">
+                Select an option below to access your account or register a new business.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <Link href="/merchant/dashboard" className="block">
+                <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                  Open Merchant Dashboard →
+                </Button>
+              </Link>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
+                <Link href="/merchant/login">
+                  <Button variant="secondary" size="sm" className="w-full">
+                    Merchant Sign In
+                  </Button>
+                </Link>
+
+                <Link href="/merchant/register">
+                  <Button variant="secondary" size="sm" className="w-full">
+                    Register Business
+                  </Button>
+                </Link>
+
+                <Link href="/merchant/application-status">
+                  <Button variant="outline" size="sm" className="w-full">
+                    Check Status
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          <p className="text-center text-xs text-[#64748B]">
+            Need help? Contact <a href="mailto:support@nexdrop.com" className="text-[#064E3B] underline font-medium">support@nexdrop.com</a>
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}

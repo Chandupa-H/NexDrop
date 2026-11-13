@@ -41,7 +41,11 @@ export type NavIconName =
   | "dollar-sign"
   | "bar-chart-3"
   | "settings"
-  | "shield";
+  | "shield"
+  | "key"
+  | "webhook"
+  | "plus-circle"
+  | "shield-check";
 
 export interface NavItem {
   id: string;

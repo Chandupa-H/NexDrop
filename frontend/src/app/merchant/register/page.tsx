@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
+import { Lock } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +14,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Modal } from "@/components/ui/modal";
 import { TermsOfServiceContent, PrivacyPolicyContent } from "@/components/legal/legal-content";
 import { useMerchantRegister } from "@/features/merchants/use-merchant-register";
+import apiClient from "@/lib/api-client";
 import type {
   AccountFormData,
   BusinessFormData,
@@ -47,59 +50,57 @@ function StepAccount() {
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <h2 className="text-xl font-bold text-[#064E3B]">Create your account</h2>
+        <h2 className="text-xl font-bold text-[#064E3B]">Account & Representative Details</h2>
         <p className="text-sm text-[#64748B]">
-          These credentials will be used to sign in to your merchant portal.
+          Provide your primary contact details to register your merchant application.
         </p>
       </div>
 
-      <Input
-        id="full-name"
-        label="Full Name"
-        placeholder="e.g. Kavindu Perera"
-        required
-        autoComplete="name"
-        value={accountData.full_name}
-        onChange={(e) => setAccountData((d) => ({ ...d, full_name: e.target.value }))}
-        error={accountErrors.full_name}
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input
+          id="full-name"
+          label="Full Name"
+          placeholder="e.g. Kavindu Perera"
+          required
+          autoComplete="name"
+          value={accountData.full_name}
+          onChange={(e) => setAccountData((d) => ({ ...d, full_name: e.target.value }))}
+          error={accountErrors.full_name}
+        />
 
-      <Input
-        id="email"
-        label="Email Address"
-        type="email"
-        placeholder="you@yourbusiness.com"
-        required
-        autoComplete="email"
-        value={accountData.email}
-        onChange={(e) => setAccountData((d) => ({ ...d, email: e.target.value }))}
-        error={accountErrors.email}
-      />
+        <Input
+          id="email"
+          label="Business Email Address"
+          type="email"
+          placeholder="you@yourbusiness.com"
+          required
+          autoComplete="email"
+          value={accountData.email}
+          onChange={(e) => setAccountData((d) => ({ ...d, email: e.target.value }))}
+          error={accountErrors.email}
+        />
+      </div>
 
-      <Input
-        id="password"
-        label="Password"
-        type="password"
-        placeholder="Min. 8 characters, include a number"
-        required
-        autoComplete="new-password"
-        value={accountData.password}
-        onChange={(e) => setAccountData((d) => ({ ...d, password: e.target.value }))}
-        error={accountErrors.password}
-        helperText="At least 8 characters with one letter and one number."
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input
+          id="direct-phone"
+          label="Direct Contact Phone"
+          placeholder="+94 77 123 4567"
+          autoComplete="tel"
+          value={accountData.direct_phone}
+          onChange={(e) => setAccountData((d) => ({ ...d, direct_phone: e.target.value }))}
+          error={accountErrors.direct_phone}
+          helperText="Used for courier alerts"
+        />
 
-      <Input
-        id="confirm-password"
-        label="Confirm Password"
-        type="password"
-        placeholder="Re-enter your password"
-        required
-        autoComplete="new-password"
-        value={accountData.confirm_password}
-        onChange={(e) => setAccountData((d) => ({ ...d, confirm_password: e.target.value }))}
-        error={accountErrors.confirm_password}
-      />
+        <Input
+          id="role-designation"
+          label="Role / Designation in Business"
+          placeholder="e.g. Managing Director, Store Owner"
+          value={accountData.role_designation}
+          onChange={(e) => setAccountData((d) => ({ ...d, role_designation: e.target.value }))}
+        />
+      </div>
     </div>
   );
 }
@@ -201,6 +202,8 @@ function StepReview() {
   const rows: { label: string; value: string }[] = [
     { label: "Full Name", value: accountData.full_name },
     { label: "Email Address", value: accountData.email },
+    ...(accountData.role_designation ? [{ label: "Role / Designation", value: accountData.role_designation }] : []),
+    ...(accountData.direct_phone && accountData.direct_phone.trim() !== "+94" && accountData.direct_phone.trim() !== "+94 " ? [{ label: "Direct Phone", value: accountData.direct_phone }] : []),
     { label: "Business Name", value: businessData.business_name },
     { label: "Registration No.", value: businessData.registration_number },
     { label: "Business Type", value: BUSINESS_TYPE_OPTIONS.find(o => o.value === businessData.business_type)?.label ?? businessData.business_type },
@@ -264,58 +267,203 @@ function StepReview() {
 }
 
 // ---------------------------------------------------------------------------
-// Success screen
+// Step 4 — Pending Approval & Review Status Screen
 // ---------------------------------------------------------------------------
 
-function SuccessScreen() {
-  const { result, accountData } = useMerchantRegisterContext();
+function PendingApprovalScreen() {
+  const { result, accountData, businessData } = useMerchantRegisterContext();
+  const [copied, setCopied] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [liveStatus, setLiveStatus] = useState<string>(result?.approval_status || "pending");
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+
+  const merchantId = result?.merchant_id;
+  const refCode = `MER-${String(merchantId ?? 0).padStart(6, "0")}`;
+
+  const copyReference = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(refCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const checkLiveStatus = async () => {
+    if (!merchantId) return;
+    setChecking(true);
+    setStatusFeedback(null);
+    try {
+      const data = await apiClient.getMerchantStatus(merchantId);
+      setLiveStatus(data.approval_status);
+      if (data.approval_status === "approved") {
+        setStatusFeedback("Great news! An administrator has approved your merchant account.");
+      } else if (data.approval_status === "rejected") {
+        setStatusFeedback(`Application update: Rejected (${data.rejection_reason || "Please reach out to support"}).`);
+      } else {
+        setStatusFeedback("Status verified: Your application is currently under admin review.");
+      }
+    } catch {
+      setStatusFeedback("Could not refresh status. Please try again shortly.");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  // If approved by admin
+  if (liveStatus === "approved") {
+    return (
+      <div className="space-y-6 py-4 text-center">
+        <div className="mx-auto h-20 w-20 rounded-full bg-emerald-50 border-4 border-emerald-200 flex items-center justify-center">
+          <svg className="h-10 w-10 text-[#16A34A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-[#064E3B] text-xs font-semibold">
+            <span>✓</span> Application Approved
+          </div>
+          <h2 className="text-2xl font-bold text-[#064E3B]">Account Approved & Activated!</h2>
+          <p className="text-sm text-[#4B5563] max-w-sm mx-auto">
+            Congratulations! Your merchant account for <strong>{businessData.business_name || "your business"}</strong> is approved. You can now access your merchant dashboard.
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <Link href="/login?redirect=/merchant/dashboard">
+            <Button variant="primary" size="lg" className="w-full sm:w-auto font-bold shadow-md">
+              Sign In to Merchant Portal →
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="text-center space-y-6 py-4">
-      {/* Animated checkmark */}
-      <div className="mx-auto h-20 w-20 rounded-full bg-green-50 border-4 border-green-200 flex items-center justify-center">
-        <svg className="h-10 w-10 text-[#16A34A]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
+    <div className="space-y-6 py-2">
+      {/* Status banner */}
+      <div className="flex flex-col items-center text-center space-y-3">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+          </span>
+          Registration Under Review
+        </div>
 
-      <div className="space-y-2">
-        <h2 className="text-2xl font-bold text-[#064E3B]">Application Submitted!</h2>
-        <p className="text-sm text-[#64748B] max-w-sm mx-auto">
-          Thank you for registering with NexDrop. We&apos;ve received your merchant application and will review it shortly.
+        <h2 className="text-2xl font-bold text-[#064E3B] tracking-tight">
+          Application Submitted & Awaiting Approval
+        </h2>
+        <p className="text-sm text-[#64748B] max-w-md">
+          Thank you for applying. Your registration has been received. Our compliance and operations team is currently reviewing your business credentials before unlocking your portal access.
         </p>
       </div>
 
-      {/* Reference card */}
-      <div className="inline-block mx-auto rounded-xl border-2 border-dashed border-[#16A34A]/40 bg-green-50 px-6 py-4 space-y-1">
-        <p className="text-xs text-[#64748B] uppercase tracking-wide font-medium">Application Reference</p>
-        <p className="text-2xl font-bold font-mono text-[#064E3B]">
-          MER-{String(result?.merchant_id ?? 0).padStart(6, "0")}
-        </p>
-        <p className="text-xs text-[#64748B]">Keep this number for your records</p>
+      {/* Reference ID card */}
+      <div className="rounded-xl border border-[#E5E7EB] bg-[#F8FAF8] p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase font-semibold tracking-wider text-[#64748B]">
+            Application Reference
+          </span>
+          <button
+            type="button"
+            onClick={copyReference}
+            className="text-xs text-[#064E3B] hover:text-[#16A34A] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+          >
+            {copied ? (
+              <span className="text-[#16A34A] font-semibold">✓ Copied</span>
+            ) : (
+              <span>Copy Reference ID</span>
+            )}
+          </button>
+        </div>
+
+        <div className="flex items-baseline justify-between">
+          <span className="font-mono text-2xl font-bold text-[#064E3B] tracking-wide">
+            {refCode}
+          </span>
+          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+            Pending Admin Review
+          </span>
+        </div>
+
+        <div className="pt-2 border-t border-[#E5E7EB] text-xs text-[#64748B] flex flex-col sm:flex-row justify-between gap-1">
+          <span><strong>Business:</strong> {businessData.business_name || "Registered Merchant"}</span>
+          <span><strong>Applicant:</strong> {accountData.email}</span>
+        </div>
       </div>
 
-      <div className="space-y-2 text-sm text-[#64748B] max-w-sm mx-auto">
-        <p>
-          An email confirmation has been sent to{" "}
-          <strong className="text-[#1F2937]">{accountData.email}</strong>.
+      {/* Review Progress Tracker */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#064E3B]">
+          Verification Milestones
         </p>
-        <p>
-          Our team will notify you within <strong className="text-[#1F2937]">1–2 business days</strong>.
-        </p>
+        <div className="space-y-2.5 text-xs">
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-emerald-50/70 border border-emerald-200/60">
+            <span className="h-5 w-5 rounded-full bg-[#16A34A] text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              ✓
+            </span>
+            <div>
+              <p className="font-semibold text-[#064E3B]">1. Registration Submitted</p>
+              <p className="text-[#4B5563]">Account details, business registration number, and addresses received.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/80 border border-amber-200">
+            <span className="h-5 w-5 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              ⏳
+            </span>
+            <div>
+              <p className="font-semibold text-amber-900">2. Admin Verification (Current Stage)</p>
+              <p className="text-amber-800/90">Our administrative compliance team is validating your credentials. Standard reviews conclude within 1–2 business days.</p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-[#F8FAF8] border border-[#E5E7EB] opacity-75">
+            <span className="h-5 w-5 rounded-full bg-[#E2E8F0] text-[#64748B] flex items-center justify-center font-bold text-[10px] flex-shrink-0 mt-0.5">
+              3
+            </span>
+            <div>
+              <p className="font-semibold text-[#64748B]">3. Portal Access & API Keys Provisioned</p>
+              <p className="text-[#64748B]">Once an administrator approves your account, your login will be unlocked and live API keys issued.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-        <Link href="/merchant/application-status">
-          <Button variant="secondary" size="md">
-            Check Application Status
-          </Button>
-        </Link>
-        <Link href="/">
-          <Button variant="outline" size="md">
-            Back to Home
-          </Button>
-        </Link>
+      {/* Live status check feedback alert */}
+      {statusFeedback && (
+        <Alert variant={liveStatus === "rejected" ? "error" : "info"} hideIcon>
+          <p className="text-xs">{statusFeedback}</p>
+        </Alert>
+      )}
+
+      {/* Action buttons */}
+      <div className="space-y-3 pt-2">
+        <Button
+          variant="primary"
+          size="md"
+          className="w-full flex items-center justify-center gap-2"
+          onClick={checkLiveStatus}
+          disabled={checking}
+          type="button"
+        >
+          {checking ? "Checking Approval Status…" : "Refresh Approval Status"}
+        </Button>
+
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <Link href={`/merchant/application-status?id=${merchantId}`} className="flex-1">
+            <Button variant="secondary" size="md" className="w-full">
+              View Status Page →
+            </Button>
+          </Link>
+          <Link href="/" className="flex-1">
+            <Button variant="outline" size="md" className="w-full">
+              Back to Home
+            </Button>
+          </Link>
+        </div>
       </div>
     </div>
   );
@@ -350,6 +498,14 @@ function useMerchantRegisterContext() {
 
 export default function MerchantRegisterPage() {
   const [activeLegalModal, setActiveLegalModal] = useState<"terms" | "privacy" | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authUser, setAuthUser] = useState<{ email: string; name?: string } | null>(null);
+  const [existingApp, setExistingApp] = useState<{
+    merchant_id: number;
+    business_name?: string;
+    email?: string;
+    approval_status?: string;
+  } | null>(null);
 
   const {
     step,
@@ -366,6 +522,155 @@ export default function MerchantRegisterPage() {
     goToPrev,
     submitRegistration,
   } = useMerchantRegister();
+
+  useEffect(() => {
+    // 1. Check existing merchant application in localStorage
+    try {
+      const stored = localStorage.getItem("nexdrop_merchant_application");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.merchant_id) {
+          setExistingApp(parsed);
+        }
+      }
+    } catch {}
+
+    // 2. Check Supabase session
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          const email = session.user.email || "";
+          const name =
+            (session.user.user_metadata?.full_name as string) ||
+            (session.user.user_metadata?.name as string) ||
+            "";
+          setAuthUser({ email, name });
+          setAccountData((prev) => ({
+            ...prev,
+            email: prev.email || email,
+            full_name: prev.full_name || name,
+          }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setAuthChecking(false);
+      });
+  }, [setAccountData]);
+
+  // If already registered, restrict to one merchant application per user
+  if (existingApp && step < 3 && !result) {
+    return (
+      <div className="w-full max-w-xl space-y-6">
+        <div className="text-center space-y-1">
+          <h1 className="text-2xl font-extrabold text-[#064E3B] tracking-tight">
+            Merchant Application Status
+          </h1>
+          <p className="text-sm text-[#64748B]">
+            Only one merchant registration is permitted per user account.
+          </p>
+        </div>
+
+        <Card className="border border-emerald-200 bg-white shadow-sm rounded-xl overflow-hidden p-6 sm:p-8 space-y-5">
+          <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-[#F0FDF4] border border-[#DCFCE7]">
+            <span className="h-10 w-10 rounded-full bg-[#16A34A] text-white flex items-center justify-center font-bold text-base flex-shrink-0">
+              ✓
+            </span>
+            <div>
+              <p className="font-bold text-[#064E3B] text-sm">
+                Application Already Submitted
+              </p>
+              <p className="text-xs text-[#4B5563]">
+                Your business <strong>{existingApp.business_name || "Registered Merchant"}</strong> is already registered under Reference ID{" "}
+                <span className="font-mono font-semibold text-[#064E3B]">
+                  MER-{String(existingApp.merchant_id).padStart(6, "0")}
+                </span>.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            <Link href="/login?redirect=/merchant/dashboard" className="block">
+              <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                Access your dashboard from here  →
+              </Button>
+            </Link>
+
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <Link href={`/merchant/application-status?id=${existingApp.merchant_id}`} className="flex-1">
+                <Button variant="secondary" size="md" className="w-full">
+                  Check Approval Status →
+                </Button>
+              </Link>
+              <Link href="/" className="flex-1">
+                <Button variant="outline" size="md" className="w-full">
+                  Back to Home
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // If unauthenticated, gate registration behind sign-in
+  if (!authUser && !authChecking && step < 3 && !result) {
+    return (
+      <div className="w-full max-w-xl space-y-6">
+        <div className="text-center space-y-1">
+          <h1 className="text-2xl font-extrabold text-[#064E3B] tracking-tight">
+            Merchant Registration
+          </h1>
+          <p className="text-sm text-[#64748B]">
+            Sign in to your NexDrop account to register as a verified merchant.
+          </p>
+        </div>
+
+        <Card className="border border-[#E5E7EB] bg-white shadow-sm rounded-xl overflow-hidden p-7 sm:p-9 text-center space-y-5">
+          <div className="h-16 w-16 rounded-2xl bg-[#F0FDF4] border border-[#DCFCE7] text-[#064E3B] flex items-center justify-center mx-auto shadow-sm">
+            <Lock className="w-7 h-7 text-[#064E3B]" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-[#064E3B] tracking-tight">
+              Sign In Required to Register
+            </h2>
+            <p className="text-sm text-[#64748B] max-w-md mx-auto leading-relaxed">
+              Merchant registration is linked directly to your user account. Please log in or create an account first to register your business on NexDrop.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <Link href="/login?redirect=/merchant/register" className="flex-1">
+              <Button variant="primary" size="md" className="w-full font-bold shadow-sm">
+                Sign In to Continue →
+              </Button>
+            </Link>
+            <Link href="/login?view=sign_up&redirect=/merchant/register" className="flex-1">
+              <Button variant="secondary" size="md" className="w-full">
+                Create New Account
+              </Button>
+            </Link>
+          </div>
+
+          <div className="pt-4 border-t border-[#E5E7EB] text-center text-xs text-[#64748B]">
+            <span>
+              Already registered?{" "}
+              <Link
+                href="/login?redirect=/merchant/dashboard"
+                className="font-semibold text-[#064E3B] hover:text-[#16A34A] transition-colors"
+                aria-label="Accesss your dashboard from here  →"
+              >
+                Access your dashboard from here  →
+              </Link>
+            </span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const contextValue: RegisterContextValue = {
     accountData,
@@ -390,6 +695,19 @@ export default function MerchantRegisterPage() {
             Join NexDrop to manage deliveries and grow your business.
           </p>
         </div>
+
+        {/* Authenticated user indicator badge */}
+        {authUser && step < 3 && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-[#F0FDF4] border border-[#DCFCE7] rounded-xl text-xs text-[#064E3B]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
+              <span>Signed in as <strong>{authUser.email}</strong></span>
+            </div>
+            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+              Single Merchant Allowed
+            </span>
+          </div>
+        )}
 
         {/* Stepper — hidden on success */}
         {step < 3 && (
@@ -417,7 +735,7 @@ export default function MerchantRegisterPage() {
             {step === 0 && <StepAccount />}
             {step === 1 && <StepBusiness />}
             {step === 2 && <StepReview />}
-            {step === 3 && <SuccessScreen />}
+            {step === 3 && <PendingApprovalScreen />}
 
             {/* Server error */}
             {serverError && step < 3 && (
@@ -480,8 +798,12 @@ export default function MerchantRegisterPage() {
         {step < 3 && (
           <p className="text-center text-sm text-[#64748B]">
             Already registered?{" "}
-            <Link href="/login" className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors">
-              Sign in to your portal →
+            <Link
+              href="/login?redirect=/merchant/dashboard"
+              className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors"
+              aria-label="Accesss your dashboard from here  →"
+            >
+              Access your dashboard from here  →
             </Link>
           </p>
         )}

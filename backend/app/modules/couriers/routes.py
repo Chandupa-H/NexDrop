@@ -1299,5 +1299,23 @@ async def update_parcel_status(
     # Append note if provided
     if payload.note:
         parcel.setdefault("notes", []).append(payload.note)
+    if new_status == "failed" and payload.failure_reason:
+        reason_text = payload.failure_reason.replace("_", " ").title()
+        parcel.setdefault("notes", []).append(f"Failure reason: {reason_text}")
+
+    # Part 5: Automatically notify merchant via webhook when parcel status changes
+    try:
+        from app.modules.webhooks.service import WebhookService
+        webhook_svc = WebhookService()
+        await webhook_svc.trigger_parcel_status_webhook(
+            tracking_number=tracking_id,
+            status=new_status,
+            merchant_id=1,
+            location=parcel.get("destination"),
+            note=payload.note,
+            failure_reason=payload.failure_reason,
+        )
+    except Exception:
+        pass
     # Return updated detail
     return await get_parcel_detail(tracking_id)
