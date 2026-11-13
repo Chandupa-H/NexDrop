@@ -6,11 +6,11 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
   merchant: "/merchant",
-  dispatcher: "/dispatcher/dashboard",
-  customer: "/courier/dashboard",
+  customer: "/",
+  dispatcher: "/courier/dashboard",
 };
 
-export const DEFAULT_AUTHENTICATED_REDIRECT = "/?onboarding=select-role";
+export const DEFAULT_AUTHENTICATED_REDIRECT = "/register";
 
 /**
  * Maps a role name (case-insensitive) to its corresponding home dashboard route.
@@ -22,9 +22,30 @@ export function getDashboardPathForRole(role?: string | null): string {
 
 /**
  * Checks whether a requested URL pathname is a protected internal route
- * that requires an authenticated session.
+ * that requires an authenticated operational session.
+ * Excludes registration/onboarding flows (/register, /customer/register, /merchant/register).
  */
 export function isProtectedRoute(pathname: string): boolean {
+  // Public merchant onboarding routes
+  if (
+    pathname === "/merchant/register" ||
+    pathname.startsWith("/merchant/register") ||
+    pathname === "/merchant/login" ||
+    pathname === "/merchant/application-status"
+  ) {
+    return false;
+  }
+
+  // Public customer onboarding & role selection routes
+  if (
+    pathname === "/customer/register" ||
+    pathname.startsWith("/customer/register") ||
+    pathname === "/register" ||
+    pathname.startsWith("/register")
+  ) {
+    return false;
+  }
+
   return (
     pathname === "/admin" ||
     pathname.startsWith("/admin/") ||
@@ -41,7 +62,7 @@ export function isProtectedRoute(pathname: string): boolean {
  * - Courier users can access `/courier/*`.
  * - Merchant users can access `/merchant/*`.
  * - Cross-role access to `/admin/*` is strictly forbidden to non-admins.
- * - Customers or unassigned users cannot access internal courier/admin/merchant dashboards.
+ * - Registration routes and public pages are open to all.
  */
 export function isRouteAllowedForRole(pathname: string, role?: string | null): boolean {
   const normalizedRole = role?.trim().toLowerCase() ?? "";
@@ -58,10 +79,19 @@ export function isRouteAllowedForRole(pathname: string, role?: string | null): b
 
   // Merchant section: merchant or admin
   if (pathname === "/merchant" || pathname.startsWith("/merchant/")) {
+    // Merchant onboarding pages are accessible to all
+    if (
+      pathname === "/merchant/register" ||
+      pathname.startsWith("/merchant/register") ||
+      pathname === "/merchant/login" ||
+      pathname === "/merchant/application-status"
+    ) {
+      return true;
+    }
     return normalizedRole === "merchant" || normalizedRole === "admin";
   }
 
-  // All other routes (e.g. public pages and home) are open
+  // All other routes (e.g. public pages, /register, /customer/register, home) are open
   return true;
 }
 
@@ -116,7 +146,7 @@ export async function resolveUserRole(
  * Safely resolves the destination route for an authenticated user based on
  * `profiles -> roles` or auth metadata. If a target `preferredPath` is supplied
  * and authorized for that role, it is preserved; otherwise falls back to the
- * user's role dashboard (or /?onboarding=select-role for new accounts).
+ * user's role dashboard (or /register for new accounts).
  */
 export async function resolveUserDashboardPath(
   supabase: SupabaseClient,

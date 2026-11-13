@@ -96,8 +96,8 @@ export function AuthForm({
           router.refresh();
         }
       } else {
-        // Sign Up Flow - brand new accounts redirect to home for role onboarding
-        const signUpDestination = "/?onboarding=select-role";
+        // Sign Up Flow - brand new accounts redirect to /register to choose Customer or Merchant
+        const signUpDestination = "/register";
         const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(signUpDestination)}`;
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,

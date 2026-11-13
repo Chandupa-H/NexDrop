@@ -148,12 +148,7 @@ export default function Home() {
       {((!authLoading && user && !role) || forceOnboarding) && (
         <section className="bg-gradient-to-b from-emerald-50/90 to-white border-b border-emerald-200/80 py-10 px-4 sm:px-6 lg:px-8">
           <div className="max-w-7xl mx-auto">
-            <OnboardingRoleSelector
-              user={user ?? ({ id: "demo-user", email: "newuser@nexdrop.lk" } as unknown as import("@supabase/supabase-js").User)}
-              onRoleAssigned={() => {
-                refresh();
-              }}
-            />
+            <OnboardingRoleSelector />
           </div>
         </section>
       )}

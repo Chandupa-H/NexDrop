@@ -1,125 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 import {
   PackageCheck,
   Store,
-  CheckCircle2,
   ArrowRight,
   ShieldCheck,
   Zap,
   Truck,
   Sparkles,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase/client";
 
-interface OnboardingRoleSelectorProps {
-  user: User;
-  onRoleAssigned?: (newRole: "customer" | "merchant") => void;
-}
-
-const CUSTOMER_ROLE_ID = "51e60818-d8c1-46e0-afc6-93d2da35ea4c";
-const MERCHANT_ROLE_ID = "77c88643-45ad-4aff-8128-f5c0e4dab972";
-
-export function OnboardingRoleSelector({
-  user,
-  onRoleAssigned,
-}: OnboardingRoleSelectorProps) {
-  const router = useRouter();
-  const [selectedRole, setSelectedRole] = useState<"customer" | "merchant" | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [completedRole, setCompletedRole] = useState<"customer" | "merchant" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleRegisterRole = async (targetRole: "customer" | "merchant") => {
-    setSelectedRole(targetRole);
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      // 1. Update user metadata in Supabase Auth
-      await supabase.auth.updateUser({
-        data: {
-          role: targetRole,
-        },
-      });
-
-      // 2. Upsert profile record with the corresponding role_id
-      const roleId = targetRole === "customer" ? CUSTOMER_ROLE_ID : MERCHANT_ROLE_ID;
-      const fullName =
-        (user.user_metadata?.full_name as string) ||
-        (user.user_metadata?.name as string) ||
-        (user.email ? user.email.split("@")[0].replace(".", " ").replace(/_/g, " ") : targetRole);
-
-      await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          role_id: roleId,
-          full_name: fullName,
-          email: user.email,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" }
-      );
-
-      setCompletedRole(targetRole);
-      onRoleAssigned?.(targetRole);
-
-      if (targetRole === "merchant") {
-        router.push("/merchant");
-        router.refresh();
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to assign account role.";
-      setError(message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (completedRole === "customer") {
-    return (
-      <Card className="border-2 border-[#16A34A] bg-emerald-50/70 p-6 sm:p-8 rounded-2xl shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#064E3B] text-white">
-              <CheckCircle2 className="h-6 w-6 text-[#A3E635]" />
-            </div>
-            <div>
-              <Badge variant="lime" className="mb-1 text-xs">Registration Completed</Badge>
-              <h3 className="text-xl font-bold text-[#064E3B]">
-                Welcome, NexDrop Customer!
-              </h3>
-              <p className="text-sm text-[#1F2937]/80 mt-1 max-w-xl">
-                Your account is now active. You can track real-time parcel deliveries, calculate shipping quotes, and manage recipient preferences right from this home page.
-              </p>
-            </div>
-          </div>
-
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => {
-              const el = document.getElementById("calculator");
-              el?.scrollIntoView({ behavior: "smooth" });
-            }}
-            className="font-bold shrink-0"
-          >
-            Calculate Shipping Rate
-            <ArrowRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-      </Card>
-    );
-  }
-
+export function OnboardingRoleSelector() {
   return (
     <div className="w-full space-y-6">
       <div className="text-center sm:text-left">
@@ -134,12 +29,6 @@ export function OnboardingRoleSelector({
           Choose your account type to configure your workspace. Whether you are sending personal packages or scaling an e-commerce business, we have got you covered.
         </p>
       </div>
-
-      {error && (
-        <div className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
-          {error}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
         {/* Option 1: Customer Account */}
@@ -180,25 +69,16 @@ export function OnboardingRoleSelector({
           </div>
 
           <div className="p-6 pt-0 sm:p-7 sm:pt-0">
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={isSubmitting}
-              onClick={() => handleRegisterRole("customer")}
-              className="w-full font-bold shadow-sm justify-center"
-            >
-              {isSubmitting && selectedRole === "customer" ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                  Setting Up...
-                </>
-              ) : (
-                <>
-                  Register as Customer
-                  <ArrowRight className="h-4 w-4 ml-1" />
-                </>
-              )}
-            </Button>
+            <Link href="/customer/register" className="w-full block">
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full font-bold shadow-sm justify-center group-hover:bg-[#043327]"
+              >
+                Register as Customer
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
           </div>
         </Card>
 
@@ -240,29 +120,19 @@ export function OnboardingRoleSelector({
           </div>
 
           <div className="p-6 pt-0 sm:p-7 sm:pt-0">
-            <Button
-              variant="lime"
-              size="lg"
-              disabled={isSubmitting}
-              onClick={() => handleRegisterRole("merchant")}
-              className="w-full font-bold shadow-sm justify-center"
-            >
-              {isSubmitting && selectedRole === "merchant" ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                  Opening Portal...
-                </>
-              ) : (
-                <>
-                  Register as Merchant
-                  <ArrowRight className="h-4 w-4 ml-1" />
-                </>
-              )}
-            </Button>
+            <Link href="/merchant/register" className="w-full block">
+              <Button
+                variant="lime"
+                size="lg"
+                className="w-full font-bold shadow-sm justify-center group-hover:brightness-95"
+              >
+                Register as Merchant
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
           </div>
         </Card>
       </div>
     </div>
   );
 }
-
