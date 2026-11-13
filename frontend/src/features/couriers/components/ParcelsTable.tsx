@@ -17,7 +17,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, ArrowRight } from "lucide-react";
+import { MoreVertical, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { getStatusLabel, getStatusTone } from "../lib/status";
 import type { ParcelListItem, TableFilter, ActionType } from "../types";
 
@@ -32,8 +32,11 @@ const filters: Array<{ key: TableFilter; label: string }> = [
 export function ParcelsTable({
   parcels,
   total,
+  page,
+  pageSize,
   filter,
   onFilterChange,
+  onPageChange,
   onOpen,
   loading,
   error,
@@ -41,17 +44,24 @@ export function ParcelsTable({
 }: {
   parcels: ParcelListItem[];
   total: number;
+  page: number;
+  pageSize: number;
   filter: TableFilter;
   onFilterChange: (filter: TableFilter) => void;
+  onPageChange: (page: number) => void;
   onOpen: (trackingId: string, action?: ActionType) => void;
   loading?: boolean;
   error?: string;
   onRetry?: () => void;
 }) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min((page - 1) * pageSize + parcels.length, total);
+
   return (
     <SectionCard
       title="Today's Assigned Parcels"
-      subtitle={`Showing ${parcels.length} of ${total}`}
+      subtitle={`Showing ${rangeStart}–${rangeEnd} of ${total}`}
       action={
         <button
           disabled
@@ -62,15 +72,15 @@ export function ParcelsTable({
       }
     >
       <div className="space-y-4" aria-busy={loading}>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)]/60 p-1.5">
           {filters.map((f) => (
             <button
               key={f.key}
               onClick={() => onFilterChange(f.key)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
                 filter === f.key
-                  ? "bg-[var(--dashboard-primary)] text-white"
-                  : "bg-[var(--dashboard-neutral-bg)] text-[var(--dashboard-text)] hover:bg-[var(--dashboard-neutral-bg)]/70"
+                  ? "bg-[var(--dashboard-primary)] text-white shadow-sm"
+                  : "text-[var(--dashboard-text)] hover:bg-white hover:text-[var(--dashboard-primary)]"
               }`}
             >
               {f.label}
@@ -106,16 +116,16 @@ export function ParcelsTable({
           />
         ) : (
           <>
-            <div className="hidden lg:block overflow-hidden rounded-xl border border-[var(--dashboard-hairline)]">
-              <Table>
-                <TableHeader>
+            <div className="hidden lg:block overflow-hidden rounded-2xl border border-[var(--dashboard-hairline)] bg-white shadow-sm">
+              <Table className="min-w-[760px]">
+                <TableHeader className="bg-slate-50/80">
                   <TableRow>
-                    <TableHead>Tracking ID</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Destination</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Assigned at</TableHead>
-                    <TableHead className="w-12"></TableHead>
+                    <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Tracking ID</TableHead>
+                    <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Customer</TableHead>
+                    <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Destination</TableHead>
+                    <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Status</TableHead>
+                    <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Assigned at</TableHead>
+                    <TableHead className="w-12 px-4 py-3 text-right"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -123,25 +133,25 @@ export function ParcelsTable({
                     <TableRow
                       key={parcel.trackingId}
                       onClick={() => onOpen(parcel.trackingId)}
-                      className="cursor-pointer h-14 hover:bg-[#e8f5ec]/50"
+                      className="group h-16 cursor-pointer border-t border-slate-100 transition-colors hover:bg-emerald-50/60"
                     >
-                      <TableCell className="font-semibold">{parcel.trackingId}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="px-4 py-3 font-semibold text-slate-900">{parcel.trackingId}</TableCell>
+                      <TableCell className="px-4 py-3">
+                        <div className="flex items-center gap-3">
                           <Avatar size="sm">
-                            <AvatarFallback className="bg-[var(--dashboard-primary)] text-white text-xs">
+                            <AvatarFallback className="bg-[var(--dashboard-primary)] text-white text-[10px] font-semibold">
                               {parcel.customerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                             </AvatarFallback>
                           </Avatar>
-                          <span>{parcel.customerName}</span>
+                          <span className="text-sm font-medium text-slate-700">{parcel.customerName}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{parcel.destination}</TableCell>
-                      <TableCell>
+                      <TableCell className="px-4 py-3 text-sm text-slate-600">{parcel.destination}</TableCell>
+                      <TableCell className="px-4 py-3">
                         <StatusBadge label={getStatusLabel(parcel.status)} tone={getStatusTone(parcel.status)} />
                       </TableCell>
-                      <TableCell className="text-[var(--dashboard-muted)]">{parcel.assignedAtDisplay}</TableCell>
-                      <TableCell>
+                      <TableCell className="px-4 py-3 text-sm text-slate-500">{parcel.assignedAtDisplay}</TableCell>
+                      <TableCell className="px-4 py-3 text-right">
                         <ActionMenu onSelect={(action) => onOpen(parcel.trackingId, action)} />
                       </TableCell>
                     </TableRow>
@@ -155,29 +165,70 @@ export function ParcelsTable({
                 <button
                   key={parcel.trackingId}
                   onClick={() => onOpen(parcel.trackingId)}
-                  className="w-full p-4 bg-white rounded-xl border border-[var(--dashboard-hairline)] text-left hover:shadow-md transition-shadow"
+                  className="w-full rounded-2xl border border-[var(--dashboard-hairline)] bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                 >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
                       <Avatar size="sm">
-                        <AvatarFallback className="bg-[var(--dashboard-primary)] text-white text-xs">
+                        <AvatarFallback className="bg-[var(--dashboard-primary)] text-white text-[10px] font-semibold">
                           {parcel.customerName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <div className="font-semibold text-sm">{parcel.trackingId}</div>
-                        <div className="text-xs text-[var(--dashboard-muted)]">{parcel.customerName}</div>
+                        <div className="text-sm font-semibold text-slate-900">{parcel.trackingId}</div>
+                        <div className="text-xs text-slate-500">{parcel.customerName}</div>
                       </div>
                     </div>
                     <StatusBadge label={getStatusLabel(parcel.status)} tone={getStatusTone(parcel.status)} />
                   </div>
-                  <div className="flex items-center justify-between text-xs text-[var(--dashboard-muted)]">
-                    <span>{parcel.destination}</span>
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                    <span className="truncate">{parcel.destination}</span>
                     <span>{parcel.assignedAtDisplay}</span>
                   </div>
                 </button>
               ))}
             </div>
+
+            {pageCount > 1 && (
+              <nav
+                aria-label="Parcel pages"
+                className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <p className="text-sm text-slate-500">
+                  Showing <span className="font-medium text-slate-700">{rangeStart}–{rangeEnd}</span> of{" "}
+                  <span className="font-medium text-slate-700">{total}</span> parcels
+                </p>
+                <div className="flex items-center justify-between gap-2 sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onPageChange(page - 1)}
+                    disabled={page <= 1 || loading}
+                    aria-label="Previous parcel page"
+                    className="gap-1 rounded-lg border-slate-200"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  <span className="min-w-20 text-center text-sm font-medium text-slate-600" aria-live="polite">
+                    Page {page} of {pageCount}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onPageChange(page + 1)}
+                    disabled={page >= pageCount || loading}
+                    aria-label="Next parcel page"
+                    className="gap-1 rounded-lg border-slate-200"
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </nav>
+            )}
           </>
         )}
       </div>
@@ -191,7 +242,6 @@ function ActionMenu({ onSelect }: { onSelect: (action: ActionType) => void }) {
   const actions: Array<{ type: ActionType; label: string }> = [
     { type: "update-status", label: "View details" },
     { type: "update-status", label: "Update status" },
-    { type: "add-note", label: "Add note" },
     { type: "upload-proof", label: "Upload proof" },
     { type: "report-failed", label: "Report failed delivery" },
   ];

@@ -62,6 +62,25 @@ async function request<T>(
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
+  const endpointPath = endpoint.split("?")[0];
+  const requiresCourierAuth =
+    endpointPath.startsWith("/courier/") ||
+    /^\/deliveries\/[^/]+\/tracking$/.test(endpointPath);
+  if (
+    requiresCourierAuth &&
+    typeof window !== "undefined" &&
+    !headers.has("Authorization")
+  ) {
+    const { supabase } = await import("@/lib/supabase/client");
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      throw new ApiError(401, error.message);
+    }
+    if (data?.session?.access_token) {
+      headers.set("Authorization", `Bearer ${data.session.access_token}`);
+    }
+  }
+
   if (
     typeof window !== "undefined" &&
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -121,6 +140,47 @@ export const apiClient = {
       ...options,
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
+    }),
+
+  postForm: <T>(
+    endpoint: string,
+    body: FormData,
+    onUploadProgress?: (percent: number) => void
+  ) =>
+    new Promise<T>((resolve, reject) => {
+      const url = `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.timeout = 120_000;
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onUploadProgress) {
+          onUploadProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+      xhr.onerror = () => reject(new ApiError(500, "Network error communicating with backend"));
+      xhr.ontimeout = () => reject(new ApiError(408, "Proof upload timed out"));
+      xhr.onload = () => {
+        let data: unknown;
+        try {
+          data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        } catch {
+          data = {};
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const errorData = data as ApiErrorResponse;
+          const detail = errorData.detail;
+          const message = typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((item) => item.msg).join("; ")
+              : errorData.message || `Request failed with status ${xhr.status}`;
+          reject(new ApiError(xhr.status, message, errorData));
+          return;
+        }
+        resolve(data as T);
+      };
+      xhr.send(body);
     }),
 
   patch: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
