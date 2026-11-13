@@ -8,6 +8,8 @@ class DispatchCreate(BaseModel):
     parcel_id: int
     courier_id: int
     notes: Optional[str] = None
+    delivery_method: Optional[str] = "DIRECT"  # "DIRECT" or "VIA_WAREHOUSE"
+    target_warehouse_id: Optional[int] = None
 
 
 class DispatchStatusUpdate(BaseModel):

@@ -41,6 +41,34 @@ export interface AssignCourierRequest {
   parcel_id: number;
   courier_id: number;
   notes?: string;
+  delivery_method?: "DIRECT" | "VIA_WAREHOUSE";
+  target_warehouse_id?: number;
+}
+
+export interface DispatchWarehouseDTO {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  contact_number: string;
+  is_active: boolean;
+}
+
+export interface WarehouseStoredParcelDTO {
+  id: number;
+  tracking_number: string;
+  recipient_name: string;
+  recipient_phone: string;
+  delivery_address: string;
+  delivery_city: string;
+  weight_kg: number;
+  dimensions?: string | null;
+  status: string;
+  delivery_method: string;
+  warehouse_id: number;
+  warehouse_name: string;
+  warehouse_city: string;
+  updated_at: string;
 }
 
 export interface ReassignCourierRequest {

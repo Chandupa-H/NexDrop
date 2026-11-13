@@ -265,6 +265,25 @@ async def reassign_courier(
     return DispatchResponse.model_validate(new_assignment)
 
 
+@router.get("/warehouses", response_model=List[Dict[str, Any]])
+async def list_dispatch_warehouses(
+    service: DispatchService = Depends(get_dispatch_service),
+) -> List[Dict[str, Any]]:
+    """List active warehouses for dispatch routing dropdowns."""
+    return await service.list_warehouses()
+
+
+@router.get("/warehouse/stored-parcels", response_model=List[Dict[str, Any]])
+async def list_warehouse_stored_parcels(
+    warehouse_id: Optional[int] = None,
+    service: DispatchService = Depends(get_dispatch_service),
+) -> List[Dict[str, Any]]:
+    """
+    List parcels currently received into warehouse hubs awaiting courier handover.
+    """
+    return await service.get_warehouse_stored_parcels(warehouse_id=warehouse_id)
+
+
 @router.post("/warehouse/receive", response_model=Dict[str, Any])
 async def warehouse_receive_parcel(
     payload: WarehouseReceiveRequest,

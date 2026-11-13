@@ -11,6 +11,8 @@ import type {
   WarehouseHandoverRequest,
   UnassignedParcelListDTO,
   UnassignedParcelDetailDTO,
+  DispatchWarehouseDTO,
+  WarehouseStoredParcelDTO,
 } from "./dispatcher.dto";
 
 /**
@@ -108,6 +110,25 @@ export async function receiveAtWarehouse(
   payload: WarehouseReceiveRequest
 ): Promise<any> {
   return apiClient.post<any>("/dispatch/warehouse/receive", payload);
+}
+
+/**
+ * Fetch list of active warehouses.
+ */
+export async function getDispatchWarehouses(): Promise<DispatchWarehouseDTO[]> {
+  return apiClient.get<DispatchWarehouseDTO[]>("/dispatch/warehouses");
+}
+
+/**
+ * Fetch parcels currently stored inside warehouses awaiting courier handover.
+ */
+export async function getWarehouseStoredParcels(
+  warehouseId?: number
+): Promise<WarehouseStoredParcelDTO[]> {
+  const query = warehouseId ? `?warehouse_id=${warehouseId}` : "";
+  return apiClient.get<WarehouseStoredParcelDTO[]>(
+    `/dispatch/warehouse/stored-parcels${query}`
+  );
 }
 
 /**

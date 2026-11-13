@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.dispatch.models import DispatchAssignment, DispatchStatus
-from app.modules.parcels.models import Parcel, ParcelStatus
+from app.modules.parcels.models import Parcel, ParcelStatus, CurrentLocationType, DeliveryMethod
 from app.modules.couriers.models import Courier
 from app.modules.warehouses.models import Warehouse
 from app.modules.users.models import User
@@ -57,6 +57,58 @@ class DispatchRepository:
             select(Warehouse).where(Warehouse.id == warehouse_id)
         )
         return result.scalars().first()
+
+    async def list_warehouses(self) -> List[Warehouse]:
+        if not self.session:
+            return []
+        result = await self.session.execute(
+            select(Warehouse).where(Warehouse.is_active == True).order_by(Warehouse.name.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_warehouse_stored_parcels(
+        self, warehouse_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List all parcels currently stored in warehouse awaiting courier handover for last-mile delivery.
+        """
+        if not self.session:
+            return []
+
+        conditions = [
+            Parcel.current_location_type == CurrentLocationType.WAREHOUSE,
+            Parcel.status.in_([ParcelStatus.IN_TRANSIT, ParcelStatus.PICKED_UP]),
+        ]
+        if warehouse_id:
+            conditions.append(Parcel.current_warehouse_id == warehouse_id)
+
+        query = (
+            select(Parcel, Warehouse)
+            .outerjoin(Warehouse, Parcel.current_warehouse_id == Warehouse.id)
+            .where(and_(*conditions))
+            .order_by(Parcel.updated_at.desc())
+        )
+
+        rows = (await self.session.execute(query)).all()
+        result = []
+        for p, wh in rows:
+            result.append({
+                "id": p.id,
+                "tracking_number": p.tracking_number,
+                "recipient_name": p.recipient_name,
+                "recipient_phone": p.recipient_phone,
+                "delivery_address": p.delivery_address,
+                "delivery_city": p.delivery_city,
+                "weight_kg": float(p.weight_kg) if p.weight_kg is not None else 0.0,
+                "dimensions": p.dimensions,
+                "status": p.status.value if hasattr(p.status, "value") else str(p.status),
+                "delivery_method": p.delivery_method.value if hasattr(p.delivery_method, "value") else str(p.delivery_method),
+                "warehouse_id": p.current_warehouse_id,
+                "warehouse_name": wh.name if wh else "Unknown Hub",
+                "warehouse_city": wh.city if wh else "N/A",
+                "updated_at": p.updated_at,
+            })
+        return result
 
     async def list_by_courier(self, courier_id: int) -> List[DispatchAssignment]:
         if not self.session:

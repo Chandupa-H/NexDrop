@@ -74,6 +74,14 @@ class DispatchService:
             parcel.status = ParcelStatus.PICKED_UP
         parcel.current_location_type = CurrentLocationType.COURIER
 
+        # Handle routing type: DIRECT vs VIA_WAREHOUSE
+        if payload.delivery_method == "VIA_WAREHOUSE":
+            parcel.delivery_method = DeliveryMethod.VIA_WAREHOUSE
+            if payload.target_warehouse_id:
+                parcel.current_warehouse_id = payload.target_warehouse_id
+        else:
+            parcel.delivery_method = DeliveryMethod.DIRECT
+
         if self.repository.session:
             await self.repository.session.flush()
 
@@ -277,6 +285,25 @@ class DispatchService:
         """
         workloads = await self.repository.get_couriers_workload()
         return [CourierWorkloadItem(**w) for w in workloads]
+
+    async def list_warehouses(self) -> List[Dict[str, Any]]:
+        warehouses = await self.repository.list_warehouses()
+        return [
+            {
+                "id": w.id,
+                "name": w.name,
+                "address": w.address,
+                "city": w.city,
+                "contact_number": w.contact_number,
+                "is_active": w.is_active,
+            }
+            for w in warehouses
+        ]
+
+    async def get_warehouse_stored_parcels(
+        self, warehouse_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        return await self.repository.get_warehouse_stored_parcels(warehouse_id=warehouse_id)
 
     async def update_status(
         self, assignment_id: int, payload: DispatchStatusUpdate

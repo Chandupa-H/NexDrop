@@ -29,6 +29,8 @@ import {
   getAssignments,
   getCourierWorkload,
   getUnassignedParcels,
+  getDispatchWarehouses,
+  getWarehouseStoredParcels,
   assignCourier,
   reassignCourier,
   receiveAtWarehouse,
@@ -38,6 +40,8 @@ import type {
   DispatchAssignmentDTO,
   CourierWorkloadDTO,
   UnassignedParcelItemDTO,
+  DispatchWarehouseDTO,
+  WarehouseStoredParcelDTO,
 } from "../api/dispatcher.dto";
 
 export function DispatchConsole() {
@@ -47,6 +51,8 @@ export function DispatchConsole() {
   const [assignments, setAssignments] = useState<DispatchAssignmentDTO[]>([]);
   const [workloads, setWorkloads] = useState<CourierWorkloadDTO[]>([]);
   const [unassignedParcels, setUnassignedParcels] = useState<UnassignedParcelItemDTO[]>([]);
+  const [warehouses, setWarehouses] = useState<DispatchWarehouseDTO[]>([]);
+  const [storedParcels, setStoredParcels] = useState<WarehouseStoredParcelDTO[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -57,24 +63,39 @@ export function DispatchConsole() {
   const [warehouseHandoverOpen, setWarehouseHandoverOpen] = useState(false);
 
   // Form states
-  const [assignForm, setAssignForm] = useState({ parcel_id: "", courier_id: "", notes: "" });
+  const [assignForm, setAssignForm] = useState({
+    parcel_id: "",
+    courier_id: "",
+    delivery_method: "DIRECT" as "DIRECT" | "VIA_WAREHOUSE",
+    target_warehouse_id: "",
+    notes: "",
+  });
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(null);
   const [reassignForm, setReassignForm] = useState({ new_courier_id: "", reason: "" });
-  const [warehouseReceiveForm, setWarehouseReceiveForm] = useState({ parcel_id: "", warehouse_id: "1", notes: "" });
-  const [warehouseHandoverForm, setWarehouseHandoverForm] = useState({ parcel_id: "", warehouse_id: "1", courier_id: "", notes: "" });
+  const [warehouseReceiveForm, setWarehouseReceiveForm] = useState({ parcel_id: "", warehouse_id: "", notes: "" });
+  const [warehouseHandoverForm, setWarehouseHandoverForm] = useState({ parcel_id: "", warehouse_id: "", courier_id: "", notes: "" });
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [assigns, fleet, parcelsRes] = await Promise.all([
+      const [assigns, fleet, parcelsRes, whList, storedList] = await Promise.all([
         getAssignments().catch(() => []),
         getCourierWorkload().catch(() => []),
         getUnassignedParcels({ limit: 100 }).catch(() => ({ items: [] })),
+        getDispatchWarehouses().catch(() => []),
+        getWarehouseStoredParcels().catch(() => []),
       ]);
       setAssignments(assigns);
       setWorkloads(fleet);
       setUnassignedParcels(parcelsRes.items || []);
+      setWarehouses(whList);
+      setStoredParcels(storedList);
+
+      if (whList.length > 0) {
+        setWarehouseReceiveForm((prev) => ({ ...prev, warehouse_id: prev.warehouse_id || String(whList[0].id) }));
+        setWarehouseHandoverForm((prev) => ({ ...prev, warehouse_id: prev.warehouse_id || String(whList[0].id) }));
+      }
     } catch {
       // Fallback empty
     } finally {
@@ -94,11 +115,22 @@ export function DispatchConsole() {
       await assignCourier({
         parcel_id: Number(assignForm.parcel_id),
         courier_id: Number(assignForm.courier_id),
+        delivery_method: assignForm.delivery_method,
+        target_warehouse_id: assignForm.delivery_method === "VIA_WAREHOUSE" && assignForm.target_warehouse_id ? Number(assignForm.target_warehouse_id) : undefined,
         notes: assignForm.notes || undefined,
       });
-      setMessage({ text: `Parcel #${assignForm.parcel_id} assigned successfully! Event 'CourierAssigned' published.`, type: "success" });
+      setMessage({
+        text: `Parcel #${assignForm.parcel_id} assigned successfully (${assignForm.delivery_method === "VIA_WAREHOUSE" ? "Transit via Warehouse Hub" : "Direct Door-to-Door Delivery"})! Event 'CourierAssigned' published.`,
+        type: "success",
+      });
       setAssignOpen(false);
-      setAssignForm({ parcel_id: "", courier_id: "", notes: "" });
+      setAssignForm({
+        parcel_id: "",
+        courier_id: "",
+        delivery_method: "DIRECT",
+        target_warehouse_id: "",
+        notes: "",
+      });
       fetchData();
     } catch (err: any) {
       setMessage({ text: err?.message || "Failed to assign courier. Check courier availability.", type: "error" });
@@ -357,30 +389,139 @@ export function DispatchConsole() {
 
       {/* Tab 3: Warehouse Dispatch */}
       {tab === "warehouse" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <SectionCard title="Warehouse Inbound Receipt" subtitle="Scan parcels entering a sorting hub and publish WarehouseParcelReceived event">
-            <p className="text-xs text-[var(--dashboard-muted)] mb-4">
-              Receiving a parcel at a warehouse sets its routing method to VIA_WAREHOUSE and updates its current location type to WAREHOUSE.
-            </p>
-            <Button
-              onClick={() => setWarehouseReceiveOpen(true)}
-              className="w-full gap-2 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white"
-            >
-              <WarehouseIcon className="w-4 h-4" /> Scan Parcel Into Hub
-            </Button>
-          </SectionCard>
+        <div className="space-y-6">
+          {/* Quick Hub Statistics & Routing Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl border border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
+                  <WarehouseIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-[var(--dashboard-text)]">Active Sorting Hubs</h4>
+                  <p className="text-xs text-[var(--dashboard-muted)]">{warehouses.length} facility hubs operational</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setWarehouseReceiveOpen(true)}
+                className="gap-1.5 text-xs bg-[#16a34a] hover:bg-[#15803d] text-white"
+              >
+                <WarehouseIcon className="w-3.5 h-3.5" /> Inbound Scan
+              </Button>
+            </div>
 
-          <SectionCard title="Warehouse Last-Mile Handover" subtitle="Dispatch stored parcels from warehouse to a delivery courier">
-            <p className="text-xs text-[var(--dashboard-muted)] mb-4">
-              Hands over the parcel from the warehouse facility to an active courier, setting parcel status to OUT_FOR_DELIVERY.
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => setWarehouseHandoverOpen(true)}
-              className="w-full gap-2 text-xs border-[#16a34a] text-[#16a34a] hover:bg-emerald-50"
-            >
-              <Truck className="w-4 h-4" /> Handover to Courier
-            </Button>
+            <div className="p-4 rounded-xl border border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 flex items-center justify-center">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-[var(--dashboard-text)]">Parcels at Warehouse</h4>
+                  <p className="text-xs text-[var(--dashboard-muted)]">
+                    {storedParcels.length} parcel{storedParcels.length === 1 ? "" : "s"} awaiting last-mile handover
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (storedParcels.length > 0) {
+                    setWarehouseHandoverForm((prev) => ({
+                      ...prev,
+                      parcel_id: String(storedParcels[0].id),
+                      warehouse_id: String(storedParcels[0].warehouse_id),
+                    }));
+                  }
+                  setWarehouseHandoverOpen(true);
+                }}
+                className="gap-1.5 text-xs border-[#16a34a] text-[#16a34a] hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+              >
+                <Truck className="w-3.5 h-3.5" /> Handover to Courier
+              </Button>
+            </div>
+          </div>
+
+          {/* Stored Parcels Table: Parcels in Warehouse awaiting delivery courier */}
+          <SectionCard
+            title={`Warehouse Stored Parcels (${storedParcels.length})`}
+            subtitle="Parcels currently checked into sorting hubs waiting for last-mile delivery courier assignment"
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--dashboard-border)] text-[var(--dashboard-muted)] font-semibold">
+                    <th className="py-3 px-3">Parcel</th>
+                    <th className="py-3 px-3">Current Warehouse Hub</th>
+                    <th className="py-3 px-3">Final Destination</th>
+                    <th className="py-3 px-3">Weight</th>
+                    <th className="py-3 px-3">Recipient</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--dashboard-border)] text-[var(--dashboard-text)]">
+                  {storedParcels.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-[var(--dashboard-muted)]">
+                        No parcels currently stored in warehouse. When couriers drop parcels at a hub, scan them using &quot;Inbound Scan&quot;.
+                      </td>
+                    </tr>
+                  ) : (
+                    storedParcels.map((p) => (
+                      <tr key={p.id} className="hover:bg-[var(--dashboard-surface)] transition-colors">
+                        <td className="py-3 px-3">
+                          <span className="font-mono font-semibold text-emerald-600">#{p.id}</span>
+                          <span className="text-[11px] text-[var(--dashboard-muted)] block">{p.tracking_number}</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-medium text-[var(--dashboard-text)] flex items-center gap-1.5">
+                            <WarehouseIcon className="w-3.5 h-3.5 text-emerald-600" />
+                            {p.warehouse_name}
+                          </span>
+                          <span className="text-[10px] text-[var(--dashboard-muted)]">{p.warehouse_city}</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-medium flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-emerald-600" />
+                            {p.delivery_city}
+                          </span>
+                          <span className="text-[10px] text-[var(--dashboard-muted)] block truncate max-w-[150px]">
+                            {p.delivery_address}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 font-medium">{p.weight_kg} kg</td>
+                        <td className="py-3 px-3">
+                          <span className="block font-medium">{p.recipient_name}</span>
+                          <span className="text-[10px] text-[var(--dashboard-muted)]">{p.recipient_phone}</span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <StatusBadge label={p.status} tone="warning" />
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setWarehouseHandoverForm({
+                                parcel_id: String(p.id),
+                                warehouse_id: String(p.warehouse_id),
+                                courier_id: "",
+                                notes: "",
+                              });
+                              setWarehouseHandoverOpen(true);
+                            }}
+                            className="text-xs bg-[#16a34a] hover:bg-[#15803d] text-white gap-1"
+                          >
+                            <Truck className="w-3.5 h-3.5" /> Handover
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </SectionCard>
         </div>
       )}
@@ -471,12 +612,104 @@ export function DispatchConsole() {
             )}
           </div>
 
-          {/* Step 2: Select Courier */}
+          {/* Step 2: Delivery Method (Direct vs Via Warehouse Hub) */}
+          <div className="space-y-2 p-3 rounded-xl border border-[var(--dashboard-border)] bg-[var(--dashboard-surface)]">
+            <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <RotateCcw className="w-4 h-4 text-[#16a34a]" />
+                2. Choose Delivery Method
+              </span>
+              <span className="text-[10px] text-[var(--dashboard-muted)]">
+                Direct (same-city) or Via Warehouse Hub (cross-city)
+              </span>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div
+                onClick={() => setAssignForm({ ...assignForm, delivery_method: "DIRECT", target_warehouse_id: "" })}
+                className={`cursor-pointer p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                  assignForm.delivery_method === "DIRECT"
+                    ? "border-[#16a34a] bg-emerald-50/70 dark:bg-emerald-950/20 shadow-xs"
+                    : "border-[var(--dashboard-border)] bg-transparent hover:border-emerald-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center gap-1">
+                    <Truck className="w-3.5 h-3.5 text-emerald-600" /> Direct Delivery
+                  </span>
+                  {assignForm.delivery_method === "DIRECT" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                </div>
+                <p className="text-[11px] text-[var(--dashboard-muted)] mt-1">
+                  Courier picks up from sender and delivers straight to recipient doorstep.
+                </p>
+              </div>
+
+              <div
+                onClick={() =>
+                  setAssignForm({
+                    ...assignForm,
+                    delivery_method: "VIA_WAREHOUSE",
+                    target_warehouse_id: assignForm.target_warehouse_id || (warehouses[0]?.id ? String(warehouses[0].id) : "1"),
+                  })
+                }
+                className={`cursor-pointer p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                  assignForm.delivery_method === "VIA_WAREHOUSE"
+                    ? "border-[#16a34a] bg-emerald-50/70 dark:bg-emerald-950/20 shadow-xs"
+                    : "border-[var(--dashboard-border)] bg-transparent hover:border-emerald-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center gap-1">
+                    <WarehouseIcon className="w-3.5 h-3.5 text-emerald-600" /> Via Warehouse Hub
+                  </span>
+                  {assignForm.delivery_method === "VIA_WAREHOUSE" && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                </div>
+                <p className="text-[11px] text-[var(--dashboard-muted)] mt-1">
+                  Courier delivers to sorting warehouse first for regional routing / last-mile handover.
+                </p>
+              </div>
+            </div>
+
+            {/* Warehouse Hub Selection if VIA_WAREHOUSE */}
+            {assignForm.delivery_method === "VIA_WAREHOUSE" && (
+              <div className="mt-3 pt-3 border-t border-[var(--dashboard-border)] space-y-1.5">
+                <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center gap-1.5">
+                  <WarehouseIcon className="w-3.5 h-3.5 text-emerald-600" />
+                  Select Inbound Destination Warehouse
+                  <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {warehouses.map((wh) => {
+                    const isWhSelected = assignForm.target_warehouse_id === String(wh.id);
+                    return (
+                      <div
+                        key={wh.id}
+                        onClick={() => setAssignForm({ ...assignForm, target_warehouse_id: String(wh.id) })}
+                        className={`cursor-pointer p-2.5 rounded-lg border text-xs transition-all flex items-center justify-between ${
+                          isWhSelected
+                            ? "border-[#16a34a] bg-emerald-100/50 dark:bg-emerald-900/30 font-semibold"
+                            : "border-[var(--dashboard-border)] hover:border-emerald-300"
+                        }`}
+                      >
+                        <div>
+                          <div className="text-[var(--dashboard-text)]">{wh.name}</div>
+                          <div className="text-[10px] text-[var(--dashboard-muted)]">{wh.city} · Hub #{wh.id}</div>
+                        </div>
+                        {isWhSelected && <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Step 3: Select Courier */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-[#16a34a]" />
-                <span>2. Select Available Courier</span>
+                <span>3. Select {assignForm.delivery_method === "VIA_WAREHOUSE" ? "Pickup Courier to Warehouse" : "Delivery Courier"}</span>
                 <span className="text-red-500">*</span>
               </label>
               <span className="text-[11px] text-[var(--dashboard-muted)]">
@@ -730,87 +963,250 @@ export function DispatchConsole() {
       </Modal>
 
       {/* Modal 3: Warehouse Receive */}
-      <Modal isOpen={warehouseReceiveOpen} onClose={() => setWarehouseReceiveOpen(false)} title="Receive Parcel into Warehouse">
+      <Modal
+        isOpen={warehouseReceiveOpen}
+        onClose={() => setWarehouseReceiveOpen(false)}
+        title="Warehouse Inbound Receipt"
+        description="Check a courier's collected parcel into a regional sorting warehouse."
+        maxWidth="2xl"
+      >
         <form onSubmit={handleWarehouseReceive} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Parcel ID</label>
+            <label className="text-xs font-semibold text-[var(--dashboard-text)]">
+              Parcel ID to Receive
+            </label>
             <Input
               type="number"
               required
-              placeholder="e.g. 1"
+              placeholder="e.g. 5"
               value={warehouseReceiveForm.parcel_id}
               onChange={(e) => setWarehouseReceiveForm({ ...warehouseReceiveForm, parcel_id: e.target.value })}
             />
           </div>
+
           <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Warehouse ID</label>
-            <Input
-              type="number"
-              required
-              placeholder="e.g. 1"
-              value={warehouseReceiveForm.warehouse_id}
-              onChange={(e) => setWarehouseReceiveForm({ ...warehouseReceiveForm, warehouse_id: e.target.value })}
-            />
+            <label className="text-xs font-semibold text-[var(--dashboard-text)] mb-1 block">
+              Receiving Warehouse Facility
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {warehouses.map((wh) => {
+                const isSelected = warehouseReceiveForm.warehouse_id === String(wh.id);
+                return (
+                  <div
+                    key={wh.id}
+                    onClick={() => setWarehouseReceiveForm({ ...warehouseReceiveForm, warehouse_id: String(wh.id) })}
+                    className={`cursor-pointer p-3 rounded-xl border text-xs transition-all flex items-center justify-between ${
+                      isSelected
+                        ? "border-[#16a34a] bg-emerald-50 dark:bg-emerald-950/20 font-semibold"
+                        : "border-[var(--dashboard-border)] hover:border-emerald-300"
+                    }`}
+                  >
+                    <div>
+                      <div className="text-[var(--dashboard-text)]">{wh.name}</div>
+                      <div className="text-[10px] text-[var(--dashboard-muted)]">{wh.city}</div>
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 text-emerald-600" />}
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
           <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Notes</label>
+            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Notes (e.g., Storage Bay / Bin)</label>
             <Input
-              placeholder="Bay / Bin location..."
+              placeholder="e.g. Inbound Bay B-04, inspected and scanned"
               value={warehouseReceiveForm.notes}
               onChange={(e) => setWarehouseReceiveForm({ ...warehouseReceiveForm, notes: e.target.value })}
             />
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-[var(--dashboard-border)]">
             <Button type="button" variant="outline" size="sm" onClick={() => setWarehouseReceiveOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={submitting} className="bg-[#16a34a] hover:bg-[#15803d] text-white">
-              {submitting ? "Processing..." : "Record Inbound"}
+            <Button type="submit" size="sm" disabled={submitting || !warehouseReceiveForm.parcel_id} className="bg-[#16a34a] hover:bg-[#15803d] text-white">
+              {submitting ? "Processing..." : "Confirm Inbound Scan"}
             </Button>
           </div>
         </form>
       </Modal>
 
       {/* Modal 4: Warehouse Handover */}
-      <Modal isOpen={warehouseHandoverOpen} onClose={() => setWarehouseHandoverOpen(false)} title="Warehouse Handover to Courier">
+      <Modal
+        isOpen={warehouseHandoverOpen}
+        onClose={() => setWarehouseHandoverOpen(false)}
+        title="Warehouse Last-Mile Handover"
+        description="Select a stored parcel in the warehouse and assign an available courier for last-mile delivery to the recipient doorstep."
+        maxWidth="3xl"
+      >
         <form onSubmit={handleWarehouseHandover} className="space-y-4">
+          {/* Step 1: Select Stored Parcel */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-[#16a34a]" />
+                1. Select Parcel Stored in Warehouse
+              </span>
+              <span className="text-[11px] text-[var(--dashboard-muted)]">
+                {storedParcels.length} stored parcel{storedParcels.length === 1 ? "" : "s"}
+              </span>
+            </label>
+
+            {storedParcels.length === 0 ? (
+              <div className="p-4 rounded-xl border border-dashed border-[var(--dashboard-border)] text-center text-xs text-[var(--dashboard-muted)]">
+                No parcels stored in warehouse. You can manually enter Parcel ID and Warehouse ID below.
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <Input
+                    type="number"
+                    placeholder="Parcel ID"
+                    value={warehouseHandoverForm.parcel_id}
+                    onChange={(e) => setWarehouseHandoverForm({ ...warehouseHandoverForm, parcel_id: e.target.value })}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Warehouse ID"
+                    value={warehouseHandoverForm.warehouse_id}
+                    onChange={(e) => setWarehouseHandoverForm({ ...warehouseHandoverForm, warehouse_id: e.target.value })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+                {storedParcels.map((p) => {
+                  const isSelected = warehouseHandoverForm.parcel_id === String(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() =>
+                        setWarehouseHandoverForm({
+                          ...warehouseHandoverForm,
+                          parcel_id: String(p.id),
+                          warehouse_id: String(p.warehouse_id),
+                        })
+                      }
+                      className={`cursor-pointer p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                        isSelected
+                          ? "border-[#16a34a] bg-emerald-50/70 dark:bg-emerald-950/20 shadow-xs"
+                          : "border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] hover:border-emerald-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1 mb-1">
+                        <span className="font-mono font-semibold text-xs text-[var(--dashboard-text)]">
+                          #{p.id} · {p.tracking_number}
+                        </span>
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          {p.weight_kg} kg
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[var(--dashboard-muted)]">
+                        <div>At: <strong className="text-[var(--dashboard-text)]">{p.warehouse_name}</strong></div>
+                        <div>To: <strong className="text-[var(--dashboard-text)]">{p.delivery_city}</strong> ({p.recipient_name})</div>
+                      </div>
+                      {isSelected && (
+                        <div className="mt-1 pt-1 border-t border-emerald-200 text-right text-[10px] font-bold text-emerald-700 flex items-center justify-end gap-1">
+                          <Check className="w-3 h-3" /> Selected
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Step 2: Select Last-Mile Delivery Courier */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-[var(--dashboard-text)] flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-[#16a34a]" />
+                2. Select Last-Mile Courier for Doorstep Delivery
+              </span>
+              <span className="text-[11px] text-[var(--dashboard-muted)]">
+                {workloads.filter((w) => w.is_available).length} couriers available
+              </span>
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+              {workloads.map((courier) => {
+                const isSelected = warehouseHandoverForm.courier_id === String(courier.courier_id);
+                const isAvailable = courier.is_available;
+                return (
+                  <div
+                    key={courier.courier_id}
+                    onClick={() => {
+                      if (isAvailable) {
+                        setWarehouseHandoverForm({ ...warehouseHandoverForm, courier_id: String(courier.courier_id) });
+                      }
+                    }}
+                    className={`p-3 rounded-xl border transition-all text-left flex flex-col justify-between ${
+                      !isAvailable
+                        ? "opacity-50 cursor-not-allowed bg-[var(--dashboard-surface)]/50"
+                        : isSelected
+                        ? "cursor-pointer border-[#16a34a] bg-emerald-50/70 dark:bg-emerald-950/20 shadow-xs"
+                        : "cursor-pointer border-[var(--dashboard-border)] bg-[var(--dashboard-surface)] hover:border-emerald-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <span className="font-semibold text-xs text-[var(--dashboard-text)] truncate">
+                        {courier.full_name}
+                      </span>
+                      <span className="text-[10px] font-semibold uppercase">{courier.workload_status}</span>
+                    </div>
+                    <div className="text-[11px] text-[var(--dashboard-muted)] flex justify-between">
+                      <span className="capitalize">{courier.vehicle_type}</span>
+                      <span>{courier.active_assignments} active</span>
+                    </div>
+                    <div className="mt-1.5 pt-1 border-t border-[var(--dashboard-border)] text-[10px] flex justify-between items-center">
+                      <span>ID #{courier.courier_id}</span>
+                      {isSelected ? (
+                        <span className="font-semibold text-emerald-700 flex items-center gap-1">
+                          <Check className="w-3 h-3" /> Selected
+                        </span>
+                      ) : isAvailable ? (
+                        <span className="text-[#16a34a]">Click to select</span>
+                      ) : (
+                        <span className="text-rose-500">Unavailable</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Parcel ID</label>
+            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Handover Notes (optional)</label>
             <Input
-              type="number"
-              required
-              placeholder="e.g. 1"
-              value={warehouseHandoverForm.parcel_id}
-              onChange={(e) => setWarehouseHandoverForm({ ...warehouseHandoverForm, parcel_id: e.target.value })}
+              placeholder="e.g. Out for final delivery, call customer before arrival"
+              value={warehouseHandoverForm.notes}
+              onChange={(e) => setWarehouseHandoverForm({ ...warehouseHandoverForm, notes: e.target.value })}
             />
           </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Warehouse ID</label>
-            <Input
-              type="number"
-              required
-              placeholder="e.g. 1"
-              value={warehouseHandoverForm.warehouse_id}
-              onChange={(e) => setWarehouseHandoverForm({ ...warehouseHandoverForm, warehouse_id: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-[var(--dashboard-text)]">Delivery Courier ID</label>
-            <Input
-              type="number"
-              required
-              placeholder="e.g. 2"
-              value={warehouseHandoverForm.courier_id}
-              onChange={(e) => setWarehouseHandoverForm({ ...warehouseHandoverForm, courier_id: e.target.value })}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => setWarehouseHandoverOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={submitting} className="bg-[#16a34a] hover:bg-[#15803d] text-white">
-              {submitting ? "Handing over..." : "Handover & Dispatch"}
-            </Button>
+
+          <div className="flex items-center justify-between pt-2 border-t border-[var(--dashboard-border)]">
+            <span className="text-xs text-[var(--dashboard-muted)]">
+              {warehouseHandoverForm.parcel_id && warehouseHandoverForm.courier_id ? (
+                <span className="text-emerald-600 font-medium flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Parcel #{warehouseHandoverForm.parcel_id} &rarr; Courier #{warehouseHandoverForm.courier_id}
+                </span>
+              ) : (
+                "Please select both a stored parcel and a courier."
+              )}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setWarehouseHandoverOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={submitting || !warehouseHandoverForm.parcel_id || !warehouseHandoverForm.courier_id}
+                className="bg-[#16a34a] hover:bg-[#15803d] text-white"
+              >
+                {submitting ? "Handing over..." : "Handover & Dispatch"}
+              </Button>
+            </div>
           </div>
         </form>
       </Modal>
