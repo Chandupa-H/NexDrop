@@ -696,19 +696,6 @@ export default function MerchantRegisterPage() {
           </p>
         </div>
 
-        {/* Authenticated user indicator badge */}
-        {authUser && step < 3 && (
-          <div className="flex items-center justify-between px-4 py-2.5 bg-[#F0FDF4] border border-[#DCFCE7] rounded-xl text-xs text-[#064E3B]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
-              <span>Signed in as <strong>{authUser.email}</strong></span>
-            </div>
-            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
-              Single Merchant Allowed
-            </span>
-          </div>
-        )}
-
         {/* Stepper — hidden on success */}
         {step < 3 && (
           <Stepper steps={STEPS} currentStep={step} />

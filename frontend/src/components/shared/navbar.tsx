@@ -11,7 +11,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ backendHealthy }: NavbarProps) {
-  const { user, dashboardHref, isLoading, signOut } = useAuthUser();
+  const { user, dashboardHref, isDashboardAccessible = true, isLoading, signOut } = useAuthUser();
 
   const displayName =
     (user?.user_metadata?.full_name as string | undefined) ||
@@ -79,12 +79,25 @@ export function Navbar({ backendHealthy }: NavbarProps) {
                 <span className="max-w-[140px] truncate">{displayName}</span>
               </div>
 
-              <Link href={dashboardHref}>
-                <Button variant="primary" size="sm" className="font-bold shadow-sm">
+              {isDashboardAccessible ? (
+                <Link href={dashboardHref}>
+                  <Button variant="primary" size="sm" className="font-bold shadow-sm">
+                    <LayoutDashboard className="h-3.5 w-3.5" />
+                    Dashboard
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled
+                  className="font-bold shadow-sm opacity-50 cursor-not-allowed"
+                  title="Dashboard accessible after registration and admin approval"
+                >
                   <LayoutDashboard className="h-3.5 w-3.5" />
                   Dashboard
                 </Button>
-              </Link>
+              )}
 
               <Button
                 variant="ghost"

@@ -13,9 +13,46 @@ export interface AuthUserState {
   user: User | null;
   role: string | null;
   dashboardHref: string;
+  isDashboardAccessible: boolean;
   isLoading: boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
+}
+
+function checkDashboardAccessible(userRole: string | null, user: User | null): boolean {
+  if (!user) return false;
+
+  const role = userRole?.toLowerCase();
+  // Admin, courier, dispatcher always have accessible operational dashboards
+  if (role === "admin" || role === "courier" || role === "dispatcher") {
+    return true;
+  }
+
+  // Admin user metadata check
+  if (
+    user.app_metadata?.role === "admin" ||
+    user.user_metadata?.role === "admin"
+  ) {
+    return true;
+  }
+
+  // For merchant: must have an application that is explicitly approved
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("nexdrop_merchant_application");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.approval_status === "approved") {
+          return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // Not yet registered or pending approval -> unclickable
+  return false;
 }
 
 export function useAuthUser(): AuthUserState {
@@ -24,6 +61,7 @@ export function useAuthUser(): AuthUserState {
   const [dashboardHref, setDashboardHref] = useState<string>(
     DEFAULT_AUTHENTICATED_REDIRECT
   );
+  const [isDashboardAccessible, setIsDashboardAccessible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const syncUser = useCallback(async () => {
@@ -39,9 +77,11 @@ export function useAuthUser(): AuthUserState {
         const target = getDashboardPathForRole(resolvedRole);
         setRole(resolvedRole);
         setDashboardHref(target);
+        setIsDashboardAccessible(checkDashboardAccessible(resolvedRole, currentUser));
       } else {
         setRole(null);
         setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+        setIsDashboardAccessible(false);
       }
     } finally {
       setIsLoading(false);
@@ -66,11 +106,13 @@ export function useAuthUser(): AuthUserState {
           if (active) {
             setRole(resolvedRole);
             setDashboardHref(target);
+            setIsDashboardAccessible(checkDashboardAccessible(resolvedRole, currentUser));
           }
         } else {
           if (active) {
             setRole(null);
             setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+            setIsDashboardAccessible(false);
           }
         }
       } finally {
@@ -94,10 +136,12 @@ export function useAuthUser(): AuthUserState {
         if (active) {
           setRole(resolvedRole);
           setDashboardHref(target);
+          setIsDashboardAccessible(checkDashboardAccessible(resolvedRole, nextUser));
         }
       } else {
         setRole(null);
         setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+        setIsDashboardAccessible(false);
       }
     });
 
@@ -112,7 +156,8 @@ export function useAuthUser(): AuthUserState {
     setUser(null);
     setRole(null);
     setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+    setIsDashboardAccessible(false);
   }, []);
 
-  return { user, role, dashboardHref, isLoading, signOut, refresh: syncUser };
+  return { user, role, dashboardHref, isDashboardAccessible, isLoading, signOut, refresh: syncUser };
 }

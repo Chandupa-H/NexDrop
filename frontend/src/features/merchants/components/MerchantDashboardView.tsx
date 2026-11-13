@@ -65,10 +65,20 @@ export function MerchantDashboardView() {
 
   useEffect(() => {
     let merchantIdToFetch = "me";
-    try {
-      const stored = localStorage.getItem("nexdrop_merchant_application");
-      if (stored) {
+
+    // Only registered and admin-approved merchants can access dashboard
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("nexdrop_merchant_application");
+        if (!stored) {
+          router.replace("/merchant/register");
+          return;
+        }
         const parsed = JSON.parse(stored);
+        if (parsed.approval_status !== "approved") {
+          router.replace(`/merchant/application-status?id=${parsed.merchant_id || ""}`);
+          return;
+        }
         if (parsed.business_name) {
           setMerchantProfile({
             businessName: parsed.business_name,
@@ -78,9 +88,10 @@ export function MerchantDashboardView() {
         if (parsed.merchant_id) {
           merchantIdToFetch = String(parsed.merchant_id);
         }
+      } catch {
+        router.replace("/merchant/register");
+        return;
       }
-    } catch {
-      // Ignore localStorage parse errors
     }
 
     let isMounted = true;
