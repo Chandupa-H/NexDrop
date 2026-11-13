@@ -7,10 +7,15 @@ import type {
   MerchantRegisterRequest,
   MerchantRegistrationResponse,
   MerchantStatusResponse,
+  MerchantOrder,
+  MerchantKpis,
+  ApiCredentials,
+  WebhookConfig,
+  WebhookDeliveryLog,
 } from "@/features/merchants";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8000/api/v1";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000/api/v1";
 
 export interface ApiErrorResponse {
   detail?: string | Array<{ msg: string; loc: string[] }>;
@@ -111,9 +116,24 @@ async function request<T>(
 
     const rawMsg = (error as Error).message || "";
     if (rawMsg === "Failed to fetch" || rawMsg.includes("Failed to fetch")) {
+      // Auto-retry with 127.0.0.1 if localhost failed due to Windows IPv6 resolution
+      if (url.includes("localhost:8000")) {
+        try {
+          const fallbackUrl = url.replace("localhost:8000", "127.0.0.1:8000");
+          const retryRes = await fetch(fallbackUrl, {
+            ...options,
+            headers,
+            signal: options.signal,
+            cache: options.cache || "no-store",
+          });
+          if (retryRes.ok) return (await retryRes.json()) as T;
+        } catch {
+          // continue to throw standard ApiError
+        }
+      }
       throw new ApiError(
         503,
-        "Cannot connect to the NexDrop backend server. Please verify the backend is running on http://localhost:8000."
+        "Cannot connect to the NexDrop backend server. Please verify the backend is running on http://127.0.0.1:8000."
       );
     }
 
@@ -139,6 +159,13 @@ export const apiClient = {
       body: body ? JSON.stringify(body) : undefined,
     }),
 
+  put: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
+    request<T>(endpoint, {
+      ...options,
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+
   delete: <T>(endpoint: string, options?: RequestInit) =>
     request<T>(endpoint, { ...options, method: "DELETE" }),
 
@@ -158,56 +185,106 @@ export const apiClient = {
     apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
 
   /** Check an applicant's approval status by their merchant ID. */
-  getMerchantStatus: (merchantId: number) =>
+  getMerchantStatus: (merchantId: number | string) =>
     apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
 
+  /** List all registered merchants (Admin review). */
+  listAdminMerchants: (params?: { skip?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.skip) q.set("skip", String(params.skip));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return apiClient.get<any[]>(`/merchants${qs ? `?${qs}` : ""}`);
+  },
+
+  /** List pending merchant applications requiring review (Admin). */
+  listAdminPendingMerchants: () =>
+    apiClient.get<any[]>("/merchants/pending"),
+
+  /** Approve or reject a merchant registration application (Admin). */
+  updateMerchantApproval: (
+    merchantId: number | string,
+    payload: { status: "approved" | "rejected"; rejection_reason?: string }
+  ) => apiClient.patch<any>(`/merchants/${merchantId}/approval`, payload),
+
   // ---------------------------------------------------------------------------
-  // Part 4: Merchant API Authentication & Security
+  // Merchant — Dashboard, Orders, Keys, Webhooks
   // ---------------------------------------------------------------------------
 
-  /** Fetch live & test API keys, client ID, secret, and rate limits. */
-  getMerchantCredentials: (merchantId: number = 1) =>
-    apiClient.get<any>(`/merchants/${merchantId}/credentials`),
+  /** Fetch complete merchant dashboard summary (KPIs, recent orders, credentials, webhooks). */
+  getMerchantSummary: (merchantId: number | string = "me") =>
+    apiClient.get<{
+      merchantId: string;
+      businessName: string;
+      kpis: MerchantKpis;
+      recentOrders: MerchantOrder[];
+      credentials: ApiCredentials;
+      webhookConfig: WebhookConfig;
+    }>(`/merchants/${merchantId}/dashboard/summary`),
 
-  /** Rotate/regenerate an API key or client secret. */
-  regenerateApiKey: (merchantId: number = 1, keyType: "live" | "test" | "secret" = "live") =>
-    apiClient.post<any>(`/merchants/${merchantId}/credentials/regenerate`, { key_type: keyType }),
+  /** Fetch merchant delivery KPIs. */
+  getMerchantKpis: (merchantId: number | string = "me") =>
+    apiClient.get<MerchantKpis>(`/merchants/${merchantId}/kpis`),
 
-  /** Verify whether an API key is valid and authorized. */
-  verifyApiKey: (apiKey: string) =>
-    apiClient.post<any>("/merchants/verify-key", { api_key: apiKey }),
+  /** List merchant shipment orders with status or search filter. */
+  getMerchantOrders: (
+    merchantId: number | string = "me",
+    params?: { status?: string; search?: string; skip?: number; limit?: number }
+  ) => {
+    const q = new URLSearchParams();
+    if (params?.status && params.status !== "all") q.set("status", params.status);
+    if (params?.search) q.set("search", params.search);
+    if (params?.skip) q.set("skip", String(params.skip));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return apiClient.get<MerchantOrder[]>(`/merchants/${merchantId}/orders${qs ? `?${qs}` : ""}`);
+  },
 
-  /** Create a delivery order using merchant API key authentication. */
-  createDeliveryViaApi: (data: any, apiKey: string) =>
-    apiClient.post<any>("/merchants/deliveries", data, {
-      headers: { "X-API-Key": apiKey },
+  /** Get single order details by order ID or tracking number. */
+  getMerchantOrder: (merchantId: number | string = "me", orderId: string) =>
+    apiClient.get<MerchantOrder>(`/merchants/${merchantId}/orders/${orderId}`),
+
+  /** Create a new shipment order. */
+  createMerchantOrder: (
+    merchantId: number | string = "me",
+    data: {
+      recipient_name: string;
+      recipient_phone: string;
+      delivery_address: string;
+      delivery_city: string;
+      weight_kg: number;
+      dimensions?: string;
+      cod_amount?: number;
+      is_prepaid?: boolean;
+      special_instructions?: string;
+    }
+  ) => apiClient.post<MerchantOrder>(`/merchants/${merchantId}/orders`, data),
+
+  /** Get merchant API credentials & rate limits. */
+  getMerchantCredentials: (merchantId: number | string = "me") =>
+    apiClient.get<ApiCredentials>(`/merchants/${merchantId}/credentials`),
+
+  /** Regenerate merchant production or test API key. */
+  regenerateApiKey: (merchantId: number | string = "me", keyType: "live" | "test" = "live") =>
+    apiClient.post<ApiCredentials>(`/merchants/${merchantId}/credentials/regenerate`, { key_type: keyType }),
+
+  /** Get merchant webhook configuration. */
+  getMerchantWebhooks: (merchantId: number | string = "me") =>
+    apiClient.get<WebhookConfig>(`/merchants/${merchantId}/webhooks`),
+
+  /** Update merchant webhook configuration. */
+  updateMerchantWebhooks: (merchantId: number | string = "me", config: Partial<WebhookConfig>) =>
+    apiClient.put<WebhookConfig>(`/merchants/${merchantId}/webhooks`, config),
+
+  /** Send test webhook ping event. */
+  testMerchantWebhook: (merchantId: number | string = "me", eventType: string = "order.in_transit") =>
+    apiClient.post<{ log: WebhookDeliveryLog; message: string }>(`/merchants/${merchantId}/webhooks/test`, {
+      event_type: eventType,
     }),
 
-  /** List deliveries belonging to the authenticated merchant. */
-  getMerchantDeliveries: (apiKey: string) =>
-    apiClient.get<any[]>("/merchants/deliveries", {
-      headers: { "X-API-Key": apiKey },
-    }),
-
-  // ---------------------------------------------------------------------------
-  // Part 5: Merchant Webhooks
-  // ---------------------------------------------------------------------------
-
-  /** Fetch current webhook URL, secret token, and subscribed events. */
-  getMerchantWebhookConfig: (merchantId: number = 1) =>
-    apiClient.get<any>(`/webhooks/merchant/${merchantId}/config`),
-
-  /** Save webhook endpoint URL and event subscriptions. */
-  saveMerchantWebhookConfig: (merchantId: number = 1, data: any) =>
-    apiClient.post<any>(`/webhooks/merchant/${merchantId}/config`, data),
-
-  /** Retrieve recent webhook dispatch logs with latency & status codes. */
-  getMerchantWebhookLogs: (merchantId: number = 1) =>
-    apiClient.get<any[]>(`/webhooks/merchant/${merchantId}/logs`),
-
-  /** Trigger an instantaneous test ping with HMAC-SHA256 signature to target URL. */
-  sendTestWebhookPing: (data: { target_url: string; secret_key?: string; event?: string; tracking_number?: string }) =>
-    apiClient.post<any>("/webhooks/test-ping", data),
+  /** Get recent webhook delivery logs. */
+  getMerchantWebhookLogs: (merchantId: number | string = "me", limit: number = 50) =>
+    apiClient.get<WebhookDeliveryLog[]>(`/merchants/${merchantId}/webhooks/logs?limit=${limit}`),
 };
 
 export default apiClient;
