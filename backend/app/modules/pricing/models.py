@@ -4,6 +4,9 @@ from app.db.base import Base, TimestampMixin
 
 
 class PricingTier(Base, TimestampMixin):
+    """
+    Pricing tier configuration model (default rates in Sri Lankan Rupees - Rs.).
+    """
     __tablename__ = "pricing_tiers"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Any
 from pydantic import BaseModel, ConfigDict
 
 
@@ -7,7 +7,7 @@ class DeliveryZoneBase(BaseModel):
     name: str
     code: str
     description: Optional[str] = None
-    postcodes: Optional[Union[str, List[str]]] = None
+    postcodes: Optional[Union[List[str], str, Any]] = None
     hub_name: Optional[str] = None
     base_fee: Optional[float] = 350.0
     currency: Optional[str] = "Rs."
@@ -26,7 +26,7 @@ class DeliveryZoneUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
     description: Optional[str] = None
-    postcodes: Optional[Union[str, List[str]]] = None
+    postcodes: Optional[Union[List[str], str, Any]] = None
     hub_name: Optional[str] = None
     base_fee: Optional[float] = None
     currency: Optional[str] = None
