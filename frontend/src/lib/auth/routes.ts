@@ -4,9 +4,8 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
   merchant: "/merchant",
-  // Customer and dispatcher dedicated shells are pending registration in registry.ts
+  dispatcher: "/dispatcher/dashboard",
   customer: "/courier/dashboard",
-  dispatcher: "/courier/dashboard",
 };
 
 export const DEFAULT_AUTHENTICATED_REDIRECT = "/courier/dashboard";
