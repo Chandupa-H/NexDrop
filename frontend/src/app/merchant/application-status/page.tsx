@@ -8,6 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Navbar } from "@/components/shared/navbar";
+import { Footer } from "@/components/shared/footer";
+import { useBackendHealth } from "@/hooks/use-health";
 import apiClient, { ApiError } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import type { MerchantStatusResponse, ApprovalStatus } from "@/features/merchants";
@@ -358,32 +361,12 @@ function ApplicationStatusContent() {
 // ---------------------------------------------------------------------------
 
 export default function ApplicationStatusPage() {
+  const { isHealthy } = useBackendHealth();
+
   return (
     <div className="min-h-screen bg-[#F1F5F1] flex flex-col">
-      {/* Minimal Header */}
-      <header className="bg-white border-b border-[#E5E7EB] h-16 flex items-center px-6 flex-shrink-0">
-        <Link href="/" className="flex items-center gap-2.5" aria-label="NexDrop home">
-          <div className="h-8 w-8 rounded-lg bg-[#064E3B] flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 text-[#A3E635]" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          </div>
-          <span className="text-lg font-bold text-[#064E3B] tracking-tight">
-            Nex<span className="text-[#16A34A]">Drop</span>
-          </span>
-        </Link>
-
-        <div className="ml-auto flex items-center gap-3">
-          <Link href="/login" className="text-sm font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors">
-            Sign In
-          </Link>
-          <Link href="/merchant/register">
-            <Button variant="secondary" size="sm">
-              Register
-            </Button>
-          </Link>
-        </div>
-      </header>
+      {/* Home Navbar replacing the previous minimal header */}
+      <Navbar backendHealthy={isHealthy} />
 
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <Suspense
@@ -396,6 +379,9 @@ export default function ApplicationStatusPage() {
           <ApplicationStatusContent />
         </Suspense>
       </main>
+
+      {/* Footer matching Home */}
+      <Footer />
     </div>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { iconMap } from "./icon-map";
 import type { DashboardRoleConfig } from "@/lib/dashboard/types";
 
-export function SidebarNav({
+function SidebarNavContent({
   config,
   onNavigate,
 }: {
@@ -27,12 +28,12 @@ export function SidebarNav({
     if (itemQuery) {
       const itemParams = new URLSearchParams(itemQuery);
       const itemTab = itemParams.get("tab");
-      const currentTab = searchParams.get("tab") || "orders";
+      const currentTab = searchParams?.get("tab") || "orders";
       return itemTab === currentTab;
     }
 
     // Default when no tab param is specified
-    const currentTab = searchParams.get("tab");
+    const currentTab = searchParams?.get("tab");
     return !currentTab;
   };
 
@@ -88,5 +89,16 @@ export function SidebarNav({
         </div>
       ))}
     </nav>
+  );
+}
+
+export function SidebarNav(props: {
+  config: DashboardRoleConfig;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Suspense fallback={<nav className="dashboard-sidebar-navigation" aria-label="Main navigation" />}>
+      <SidebarNavContent {...props} />
+    </Suspense>
   );
 }

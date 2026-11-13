@@ -143,7 +143,22 @@ export async function resolveUserRole(
       metaRole.toLowerCase() !== "authenticated" &&
       metaRole.toLowerCase() !== "anon"
     ) {
-      return metaRole.trim().toLowerCase();
+      const normalizedMeta = metaRole.trim().toLowerCase();
+      if (normalizedMeta === "merchant") {
+        if (typeof window !== "undefined") {
+          try {
+            const stored = localStorage.getItem("nexdrop_merchant_application");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed?.approval_status === "approved") {
+                return "merchant";
+              }
+            }
+          } catch {}
+          return "unassigned";
+        }
+      }
+      return normalizedMeta;
     }
   } catch {
     // Continue to database profiles fallback
@@ -170,8 +185,19 @@ export async function resolveUserRole(
     // 3. Browser-stored active role (e.g. merchant application submitted/approved)
     if (typeof window !== "undefined") {
       const localRole = localStorage.getItem("nexdrop_user_role");
-      if (localRole && ["merchant", "admin", "courier", "dispatcher", "customer"].includes(localRole.toLowerCase())) {
+      if (localRole && ["admin", "courier", "dispatcher", "customer"].includes(localRole.toLowerCase())) {
         return localRole.trim().toLowerCase();
+      }
+      if (localRole && localRole.toLowerCase() === "merchant") {
+        try {
+          const stored = localStorage.getItem("nexdrop_merchant_application");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.approval_status === "approved") {
+              return "merchant";
+            }
+          }
+        } catch { }
       }
     }
   } catch {
