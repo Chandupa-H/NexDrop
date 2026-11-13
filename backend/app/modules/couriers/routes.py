@@ -940,7 +940,7 @@ async def get_parcel_detail(
     Get full parcel details including masked phone and timeline.
     Returns from database when present, else checks in-memory parcels.
     """
-    if isinstance(session, AsyncSession):
+    if _should_use_db(session):
         repo = CourierRepository(session)
         db_parcel = await repo.get_parcel_by_tracking(tracking_id)
         if db_parcel is not None:
@@ -1074,7 +1074,7 @@ async def submit_successful_delivery(
     payload: SuccessfulDeliveryRequest,
     session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> ParcelDetailResponse:
-    if isinstance(session, AsyncSession):
+    if _should_use_db(session):
         repo = CourierRepository(session)
         db_parcel = await repo.get_parcel_by_tracking_for_update(tracking_id)
         if db_parcel is not None:
@@ -1135,7 +1135,7 @@ async def submit_failed_delivery(
     payload: FailedDeliveryRequest,
     session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> ParcelDetailResponse:
-    if isinstance(session, AsyncSession):
+    if _should_use_db(session):
         repo = CourierRepository(session)
         db_parcel = await repo.get_parcel_by_tracking_for_update(tracking_id)
         if db_parcel is not None:
@@ -1192,7 +1192,7 @@ async def update_parcel_status(
     failed is allowed from picked_up, in_transit, or out_for_delivery and REQUIRES failure_reason.
     Invalid transition returns 409. Missing failure_reason for failed returns 422.
     """
-    if isinstance(session, AsyncSession):
+    if _should_use_db(session):
         repo = CourierRepository(session)
         db_parcel = await repo.get_parcel_by_tracking_for_update(tracking_id)
         if db_parcel is not None:

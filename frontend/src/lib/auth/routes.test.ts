@@ -7,9 +7,34 @@ import {
   isRouteAllowedForRole,
   resolveUserRole,
   resolveUserDashboardPath,
+  hasAssignedRole,
+  isRegistrationRoute,
 } from "./routes";
 
 describe("auth routes", () => {
+  it.each(["admin", "courier", "merchant", "dispatcher", "customer"])(
+    "redirects assigned %s users away from registration destinations",
+    async (role) => {
+      const client = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { app_metadata: { role } } } }) } } as unknown as SupabaseClient;
+      for (const path of ["/register", "/register?next=home", "/customer/register", "/merchant/register"]) {
+        expect(await resolveUserDashboardPath(client, "assigned-user", path)).toBe(getDashboardPathForRole(role));
+      }
+    }
+  );
+
+  it.each([null, "unassigned", "unknown"])("keeps onboarding available for %s roles", async (role) => {
+    const client = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { app_metadata: { role } } } }) } } as unknown as SupabaseClient;
+    expect(hasAssignedRole(role)).toBe(false);
+    expect(await resolveUserDashboardPath(client, "new-user", "/register")).toBe("/register");
+    expect(isRouteAllowedForRole("/merchant/register", role)).toBe(true);
+  });
+
+  it("matches registration route boundaries and normalizes assigned roles", () => {
+    expect(isRegistrationRoute("/register/details")).toBe(true);
+    expect(isRegistrationRoute("/register-other")).toBe(false);
+    expect(hasAssignedRole(" Admin ")).toBe(true);
+    expect(getDashboardPathForRole(" Admin ")).toBe("/admin/dashboard");
+  });
   it("maps known roles to their dashboard paths", () => {
     expect(getDashboardPathForRole("admin")).toBe("/admin/dashboard");
     expect(getDashboardPathForRole("courier")).toBe("/courier/dashboard");

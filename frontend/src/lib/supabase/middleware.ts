@@ -5,6 +5,8 @@ import {
   isProtectedRoute,
   isRouteAllowedForRole,
   resolveUserRole,
+  isRegistrationRoute,
+  hasAssignedRole,
 } from "@/lib/auth/routes";
 
 export async function updateSession(request: NextRequest) {
@@ -41,6 +43,16 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname, searchParams } = request.nextUrl;
+
+  // Assigned users have completed onboarding, including direct visits to registration.
+  if (user && isRegistrationRoute(pathname)) {
+    const role = await resolveUserRole(supabase, user.id);
+    if (hasAssignedRole(role)) {
+      const response = NextResponse.redirect(new URL(getDashboardPathForRole(role), request.url));
+      supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+      return response;
+    }
+  }
 
   // 1. Keep already-authenticated users from re-visiting /login (unless verifying email)
   if (

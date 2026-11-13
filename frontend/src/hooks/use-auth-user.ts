@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase/client";
 import {
   DEFAULT_AUTHENTICATED_REDIRECT,
   resolveUserRole,
-  resolveUserDashboardPath,
+  getDashboardPathForRole,
 } from "@/lib/auth/routes";
 
 export interface AuthUserState {
@@ -36,11 +36,7 @@ export function useAuthUser(): AuthUserState {
 
       if (currentUser) {
         const resolvedRole = await resolveUserRole(supabase, currentUser.id);
-        const target = await resolveUserDashboardPath(
-          supabase,
-          currentUser.id,
-          DEFAULT_AUTHENTICATED_REDIRECT
-        );
+        const target = getDashboardPathForRole(resolvedRole);
         setRole(resolvedRole);
         setDashboardHref(target);
       } else {
@@ -66,11 +62,7 @@ export function useAuthUser(): AuthUserState {
 
         if (currentUser) {
           const resolvedRole = await resolveUserRole(supabase, currentUser.id);
-          const target = await resolveUserDashboardPath(
-            supabase,
-            currentUser.id,
-            DEFAULT_AUTHENTICATED_REDIRECT
-          );
+          const target = getDashboardPathForRole(resolvedRole);
           if (active) {
             setRole(resolvedRole);
             setDashboardHref(target);
@@ -98,11 +90,7 @@ export function useAuthUser(): AuthUserState {
 
       if (nextUser) {
         const resolvedRole = await resolveUserRole(supabase, nextUser.id);
-        const target = await resolveUserDashboardPath(
-          supabase,
-          nextUser.id,
-          DEFAULT_AUTHENTICATED_REDIRECT
-        );
+        const target = getDashboardPathForRole(resolvedRole);
         if (active) {
           setRole(resolvedRole);
           setDashboardHref(target);
