@@ -10,12 +10,13 @@ export const courierDashboardConfig: DashboardRoleConfig = {
   roleLabel: "Courier",
   basePath: "/courier",
   homeHref: "/courier/dashboard",
+  topbarTitle: "Courier Dashboard",
   profileHref: "/courier/profile",
   searchPlaceholder: "Search parcels, customers...",
   nav: [
     {
-      id: "operations",
-      label: "Operations",
+      id: "overview",
+      label: "Overview",
       items: [
         {
           id: "dashboard",
@@ -25,40 +26,63 @@ export const courierDashboardConfig: DashboardRoleConfig = {
           availability: "live",
           match: "exact",
         },
+      ],
+    },
+    {
+      id: "delivery-operations",
+      label: "Deliveries",
+      items: [
         {
-          id: "parcels",
-          label: "Assigned Parcels",
-          href: "/courier/parcels",
+          id: "deliveries",
+          label: "Assigned Deliveries",
+          href: "/courier/deliveries",
           icon: "package",
-          availability: "planned",
-        },
-        {
-          id: "status",
-          label: "Update Status",
-          href: "/courier/status",
-          icon: "refresh-cw",
-          availability: "planned",
+          availability: "live",
+          match: "exact",
         },
         {
           id: "proof",
           label: "Proof of Delivery",
           href: "/courier/proof",
           icon: "camera",
-          availability: "planned",
+          availability: "live",
+          match: "exact",
         },
         {
           id: "failed",
           label: "Failed Deliveries",
           href: "/courier/failed",
           icon: "alert-triangle",
-          availability: "planned",
+          availability: "live",
+          match: "exact",
         },
+      ],
+    },
+    {
+      id: "activity",
+      label: "Activity",
+      items: [
         {
           id: "history",
           label: "Delivery History",
           href: "/courier/history",
           icon: "history",
-          availability: "planned",
+          availability: "live",
+          match: "prefix",
+        },
+      ],
+    },
+    {
+      id: "administration",
+      label: "Administration",
+      items: [
+        {
+          id: "profile",
+          label: "My Profile",
+          href: "/courier/profile",
+          icon: "user",
+          availability: "live",
+          match: "prefix",
         },
       ],
     },

@@ -6,8 +6,8 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
   merchant: "/merchant",
-  customer: "/",
-  dispatcher: "/courier/dashboard",
+  dispatcher: "/dispatcher/dashboard",
+  customer: "/courier/dashboard",
 };
 
 export const DEFAULT_AUTHENTICATED_REDIRECT = "/?onboarding=select-role";

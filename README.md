@@ -102,6 +102,16 @@ cp .env.example .env
 
 Default settings are pre-configured to allow the application to start in offline mode without requiring live database credentials.
 
+#### Maps
+
+The courier delivery details map uses Leaflet with OpenStreetMap tiles and OSRM routing. No API key or billing setup is required. Set the optional `NEXT_PUBLIC_ROUTING_BASE_URL` in `frontend/.env.local` and restart the dev server to use another OSRM-compatible routing service; otherwise the app uses `https://router.project-osrm.org`.
+
+OpenStreetMap's public tile servers and the public OSRM demo server are intended for light development/demo use and are subject to their usage policies. Production deployments should use a self-hosted or commercial tile and routing provider.
+
+Courier delivery mock data and simulated GPS are development-only. `NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES=true` enables the mock fallback during local development; set it to `false` to disable the mock fallback and use authenticated API requests. The production frontend never switches to mock data.
+
+Courier delivery mock data and simulated GPS are development-only. `NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES=true` enables the mock fallback during local development; set it to `false` to disable the mock fallback and use authenticated API requests. The production frontend never switches to mock data.
+
 ---
 
 ### 2. Backend Setup (FastAPI)
