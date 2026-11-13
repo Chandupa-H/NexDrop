@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   Package,
@@ -26,13 +26,21 @@ import { Footer } from "@/components/shared/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { OnboardingRoleSelector } from "@/components/home/onboarding-role-selector";
 import { useBackendHealth } from "@/hooks/use-health";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import apiClient, { PriceEstimateResponse } from "@/lib/api-client";
 
 export default function Home() {
   const { health, isHealthy, isLoading, error, refetch } = useBackendHealth();
-  const { user, dashboardHref, isLoading: authLoading } = useAuthUser();
+  const { user, role, dashboardHref, isLoading: authLoading, refresh } = useAuthUser();
+  const forceOnboarding = useSyncExternalStore(
+    () => () => {},
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("onboarding") === "select-role",
+    () => false
+  );
 
   // Interactive Pricing Calculator State
   const [distanceKm, setDistanceKm] = useState<number>(12);
@@ -136,6 +144,20 @@ export default function Home() {
     <div className="min-h-screen flex flex-col bg-[#F1F5F1] text-[#1F2937]">
       <Navbar backendHealthy={isHealthy} />
 
+      {/* Onboarding Section for New Users without an Assigned Operational Role */}
+      {((!authLoading && user && !role) || forceOnboarding) && (
+        <section className="bg-gradient-to-b from-emerald-50/90 to-white border-b border-emerald-200/80 py-10 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            <OnboardingRoleSelector
+              user={user ?? ({ id: "demo-user", email: "newuser@nexdrop.lk" } as unknown as import("@supabase/supabase-js").User)}
+              onRoleAssigned={() => {
+                refresh();
+              }}
+            />
+          </div>
+        </section>
+      )}
+
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-12 pb-16 md:pt-20 md:pb-24 border-b border-[#E5E7EB] bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -158,13 +180,29 @@ export default function Home() {
 
               <div className="flex flex-wrap items-center gap-3.5 pt-2">
                 {!authLoading && user ? (
-                  <Link href={dashboardHref}>
-                    <Button variant="primary" size="lg" className="shadow-sm font-bold">
-                      <LayoutDashboard className="h-4 w-4" />
-                      Open Dashboard
+                  role && role !== "customer" ? (
+                    <Link href={dashboardHref}>
+                      <Button variant="primary" size="lg" className="shadow-sm font-bold">
+                        <LayoutDashboard className="h-4 w-4" />
+                        Open Dashboard
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="shadow-sm font-bold"
+                      onClick={() => {
+                        const el = document.getElementById("calculator");
+                        el?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                    >
+                      <Calculator className="h-4 w-4" />
+                      Calculate Shipping Rate
                       <ArrowRight className="h-4 w-4" />
                     </Button>
-                  </Link>
+                  )
                 ) : (
                   <>
                     <Link href="/login">

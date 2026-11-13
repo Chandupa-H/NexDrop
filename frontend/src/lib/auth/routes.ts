@@ -6,12 +6,11 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
   merchant: "/merchant",
-  // Customer and dispatcher dedicated shells are pending registration in registry.ts
-  customer: "/courier/dashboard",
+  customer: "/",
   dispatcher: "/courier/dashboard",
 };
 
-export const DEFAULT_AUTHENTICATED_REDIRECT = "/courier/dashboard";
+export const DEFAULT_AUTHENTICATED_REDIRECT = "/?onboarding=select-role";
 
 /**
  * Maps a role name (case-insensitive) to its corresponding home dashboard route.
@@ -42,6 +41,7 @@ export function isProtectedRoute(pathname: string): boolean {
  * - Courier users can access `/courier/*`.
  * - Merchant users can access `/merchant/*`.
  * - Cross-role access to `/admin/*` is strictly forbidden to non-admins.
+ * - Customers or unassigned users cannot access internal courier/admin/merchant dashboards.
  */
 export function isRouteAllowedForRole(pathname: string, role?: string | null): boolean {
   const normalizedRole = role?.trim().toLowerCase() ?? "";
@@ -61,12 +61,13 @@ export function isRouteAllowedForRole(pathname: string, role?: string | null): b
     return normalizedRole === "merchant" || normalizedRole === "admin";
   }
 
-  // All other routes (e.g. public pages) are open
+  // All other routes (e.g. public pages and home) are open
   return true;
 }
 
 /**
- * Safely resolves the user's role name from `profiles -> roles(name)`.
+ * Safely resolves the user's role name from Supabase auth metadata first,
+ * then falls back to `profiles -> roles(name)`.
  */
 export async function resolveUserRole(
   supabase: SupabaseClient,
@@ -75,6 +76,25 @@ export async function resolveUserRole(
   if (!userId) return null;
 
   try {
+    // 1. Check direct auth metadata (fastest & works with or without RLS)
+    const { data: authData } = await supabase.auth.getUser();
+    const metaRole =
+      (authData?.user?.app_metadata?.role as string) ||
+      (authData?.user?.user_metadata?.role as string);
+
+    if (
+      metaRole &&
+      metaRole.toLowerCase() !== "authenticated" &&
+      metaRole.toLowerCase() !== "anon"
+    ) {
+      return metaRole.trim().toLowerCase();
+    }
+  } catch {
+    // Continue to database profiles fallback
+  }
+
+  try {
+    // 2. Query profiles table joined with roles
     const { data, error } = await supabase
       .from("profiles")
       .select("roles(name)")
@@ -94,8 +114,9 @@ export async function resolveUserRole(
 
 /**
  * Safely resolves the destination route for an authenticated user based on
- * `profiles -> roles`. If a target `preferredPath` is supplied and authorized
- * for that role, it is preserved; otherwise falls back to the user's role dashboard.
+ * `profiles -> roles` or auth metadata. If a target `preferredPath` is supplied
+ * and authorized for that role, it is preserved; otherwise falls back to the
+ * user's role dashboard (or /?onboarding=select-role for new accounts).
  */
 export async function resolveUserDashboardPath(
   supabase: SupabaseClient,

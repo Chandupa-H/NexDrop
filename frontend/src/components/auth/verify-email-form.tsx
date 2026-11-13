@@ -16,7 +16,7 @@ interface VerifyEmailFormProps {
 export function VerifyEmailForm({
   email,
   isDark = false,
-  onSuccessRedirect = "/courier/dashboard",
+  onSuccessRedirect = "/?onboarding=select-role",
   onChangeEmail,
 }: VerifyEmailFormProps) {
   const router = useRouter();
