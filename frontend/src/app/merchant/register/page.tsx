@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
+import { Lock } from "lucide-react";
+import { supabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,59 +50,57 @@ function StepAccount() {
   return (
     <div className="space-y-5">
       <div className="space-y-1">
-        <h2 className="text-xl font-bold text-[#064E3B]">Create your account</h2>
+        <h2 className="text-xl font-bold text-[#064E3B]">Account & Representative Details</h2>
         <p className="text-sm text-[#64748B]">
-          These credentials will be used to sign in to your merchant portal.
+          Provide your primary contact details to register your merchant application.
         </p>
       </div>
 
-      <Input
-        id="full-name"
-        label="Full Name"
-        placeholder="e.g. Kavindu Perera"
-        required
-        autoComplete="name"
-        value={accountData.full_name}
-        onChange={(e) => setAccountData((d) => ({ ...d, full_name: e.target.value }))}
-        error={accountErrors.full_name}
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input
+          id="full-name"
+          label="Full Name"
+          placeholder="e.g. Kavindu Perera"
+          required
+          autoComplete="name"
+          value={accountData.full_name}
+          onChange={(e) => setAccountData((d) => ({ ...d, full_name: e.target.value }))}
+          error={accountErrors.full_name}
+        />
 
-      <Input
-        id="email"
-        label="Email Address"
-        type="email"
-        placeholder="you@yourbusiness.com"
-        required
-        autoComplete="email"
-        value={accountData.email}
-        onChange={(e) => setAccountData((d) => ({ ...d, email: e.target.value }))}
-        error={accountErrors.email}
-      />
+        <Input
+          id="email"
+          label="Business Email Address"
+          type="email"
+          placeholder="you@yourbusiness.com"
+          required
+          autoComplete="email"
+          value={accountData.email}
+          onChange={(e) => setAccountData((d) => ({ ...d, email: e.target.value }))}
+          error={accountErrors.email}
+        />
+      </div>
 
-      <Input
-        id="password"
-        label="Password"
-        type="password"
-        placeholder="Min. 8 characters, include a number"
-        required
-        autoComplete="new-password"
-        value={accountData.password}
-        onChange={(e) => setAccountData((d) => ({ ...d, password: e.target.value }))}
-        error={accountErrors.password}
-        helperText="At least 8 characters with one letter and one number."
-      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Input
+          id="direct-phone"
+          label="Direct Contact Phone"
+          placeholder="+94 77 123 4567"
+          autoComplete="tel"
+          value={accountData.direct_phone}
+          onChange={(e) => setAccountData((d) => ({ ...d, direct_phone: e.target.value }))}
+          error={accountErrors.direct_phone}
+          helperText="Used for courier alerts"
+        />
 
-      <Input
-        id="confirm-password"
-        label="Confirm Password"
-        type="password"
-        placeholder="Re-enter your password"
-        required
-        autoComplete="new-password"
-        value={accountData.confirm_password}
-        onChange={(e) => setAccountData((d) => ({ ...d, confirm_password: e.target.value }))}
-        error={accountErrors.confirm_password}
-      />
+        <Input
+          id="role-designation"
+          label="Role / Designation in Business"
+          placeholder="e.g. Managing Director, Store Owner"
+          value={accountData.role_designation}
+          onChange={(e) => setAccountData((d) => ({ ...d, role_designation: e.target.value }))}
+        />
+      </div>
     </div>
   );
 }
@@ -202,6 +202,8 @@ function StepReview() {
   const rows: { label: string; value: string }[] = [
     { label: "Full Name", value: accountData.full_name },
     { label: "Email Address", value: accountData.email },
+    ...(accountData.role_designation ? [{ label: "Role / Designation", value: accountData.role_designation }] : []),
+    ...(accountData.direct_phone && accountData.direct_phone.trim() !== "+94" && accountData.direct_phone.trim() !== "+94 " ? [{ label: "Direct Phone", value: accountData.direct_phone }] : []),
     { label: "Business Name", value: businessData.business_name },
     { label: "Registration No.", value: businessData.registration_number },
     { label: "Business Type", value: BUSINESS_TYPE_OPTIONS.find(o => o.value === businessData.business_type)?.label ?? businessData.business_type },
@@ -328,7 +330,7 @@ function PendingApprovalScreen() {
         </div>
 
         <div className="pt-2">
-          <Link href="/login">
+          <Link href="/login?redirect=/merchant/dashboard">
             <Button variant="primary" size="lg" className="w-full sm:w-auto font-bold shadow-md">
               Sign In to Merchant Portal →
             </Button>
@@ -496,6 +498,14 @@ function useMerchantRegisterContext() {
 
 export default function MerchantRegisterPage() {
   const [activeLegalModal, setActiveLegalModal] = useState<"terms" | "privacy" | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authUser, setAuthUser] = useState<{ email: string; name?: string } | null>(null);
+  const [existingApp, setExistingApp] = useState<{
+    merchant_id: number;
+    business_name?: string;
+    email?: string;
+    approval_status?: string;
+  } | null>(null);
 
   const {
     step,
@@ -512,6 +522,155 @@ export default function MerchantRegisterPage() {
     goToPrev,
     submitRegistration,
   } = useMerchantRegister();
+
+  useEffect(() => {
+    // 1. Check existing merchant application in localStorage
+    try {
+      const stored = localStorage.getItem("nexdrop_merchant_application");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.merchant_id) {
+          setExistingApp(parsed);
+        }
+      }
+    } catch {}
+
+    // 2. Check Supabase session
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        if (session?.user) {
+          const email = session.user.email || "";
+          const name =
+            (session.user.user_metadata?.full_name as string) ||
+            (session.user.user_metadata?.name as string) ||
+            "";
+          setAuthUser({ email, name });
+          setAccountData((prev) => ({
+            ...prev,
+            email: prev.email || email,
+            full_name: prev.full_name || name,
+          }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setAuthChecking(false);
+      });
+  }, [setAccountData]);
+
+  // If already registered, restrict to one merchant application per user
+  if (existingApp && step < 3 && !result) {
+    return (
+      <div className="w-full max-w-xl space-y-6">
+        <div className="text-center space-y-1">
+          <h1 className="text-2xl font-extrabold text-[#064E3B] tracking-tight">
+            Merchant Application Status
+          </h1>
+          <p className="text-sm text-[#64748B]">
+            Only one merchant registration is permitted per user account.
+          </p>
+        </div>
+
+        <Card className="border border-emerald-200 bg-white shadow-sm rounded-xl overflow-hidden p-6 sm:p-8 space-y-5">
+          <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-[#F0FDF4] border border-[#DCFCE7]">
+            <span className="h-10 w-10 rounded-full bg-[#16A34A] text-white flex items-center justify-center font-bold text-base flex-shrink-0">
+              ✓
+            </span>
+            <div>
+              <p className="font-bold text-[#064E3B] text-sm">
+                Application Already Submitted
+              </p>
+              <p className="text-xs text-[#4B5563]">
+                Your business <strong>{existingApp.business_name || "Registered Merchant"}</strong> is already registered under Reference ID{" "}
+                <span className="font-mono font-semibold text-[#064E3B]">
+                  MER-{String(existingApp.merchant_id).padStart(6, "0")}
+                </span>.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            <Link href="/login?redirect=/merchant/dashboard" className="block">
+              <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                Access your dashboard from here  →
+              </Button>
+            </Link>
+
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <Link href={`/merchant/application-status?id=${existingApp.merchant_id}`} className="flex-1">
+                <Button variant="secondary" size="md" className="w-full">
+                  Check Approval Status →
+                </Button>
+              </Link>
+              <Link href="/" className="flex-1">
+                <Button variant="outline" size="md" className="w-full">
+                  Back to Home
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // If unauthenticated, gate registration behind sign-in
+  if (!authUser && !authChecking && step < 3 && !result) {
+    return (
+      <div className="w-full max-w-xl space-y-6">
+        <div className="text-center space-y-1">
+          <h1 className="text-2xl font-extrabold text-[#064E3B] tracking-tight">
+            Merchant Registration
+          </h1>
+          <p className="text-sm text-[#64748B]">
+            Sign in to your NexDrop account to register as a verified merchant.
+          </p>
+        </div>
+
+        <Card className="border border-[#E5E7EB] bg-white shadow-sm rounded-xl overflow-hidden p-7 sm:p-9 text-center space-y-5">
+          <div className="h-16 w-16 rounded-2xl bg-[#F0FDF4] border border-[#DCFCE7] text-[#064E3B] flex items-center justify-center mx-auto shadow-sm">
+            <Lock className="w-7 h-7 text-[#064E3B]" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-[#064E3B] tracking-tight">
+              Sign In Required to Register
+            </h2>
+            <p className="text-sm text-[#64748B] max-w-md mx-auto leading-relaxed">
+              Merchant registration is linked directly to your user account. Please log in or create an account first to register your business on NexDrop.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <Link href="/login?redirect=/merchant/register" className="flex-1">
+              <Button variant="primary" size="md" className="w-full font-bold shadow-sm">
+                Sign In to Continue →
+              </Button>
+            </Link>
+            <Link href="/login?view=sign_up&redirect=/merchant/register" className="flex-1">
+              <Button variant="secondary" size="md" className="w-full">
+                Create New Account
+              </Button>
+            </Link>
+          </div>
+
+          <div className="pt-4 border-t border-[#E5E7EB] text-center text-xs text-[#64748B]">
+            <span>
+              Already registered?{" "}
+              <Link
+                href="/login?redirect=/merchant/dashboard"
+                className="font-semibold text-[#064E3B] hover:text-[#16A34A] transition-colors"
+                aria-label="Accesss your dashboard from here  →"
+              >
+                Access your dashboard from here  →
+              </Link>
+            </span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const contextValue: RegisterContextValue = {
     accountData,
@@ -536,6 +695,19 @@ export default function MerchantRegisterPage() {
             Join NexDrop to manage deliveries and grow your business.
           </p>
         </div>
+
+        {/* Authenticated user indicator badge */}
+        {authUser && step < 3 && (
+          <div className="flex items-center justify-between px-4 py-2.5 bg-[#F0FDF4] border border-[#DCFCE7] rounded-xl text-xs text-[#064E3B]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#16A34A]" />
+              <span>Signed in as <strong>{authUser.email}</strong></span>
+            </div>
+            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+              Single Merchant Allowed
+            </span>
+          </div>
+        )}
 
         {/* Stepper — hidden on success */}
         {step < 3 && (
@@ -626,8 +798,12 @@ export default function MerchantRegisterPage() {
         {step < 3 && (
           <p className="text-center text-sm text-[#64748B]">
             Already registered?{" "}
-            <Link href="/login" className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors">
-              Sign in to your portal →
+            <Link
+              href="/login?redirect=/merchant/dashboard"
+              className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors"
+              aria-label="Accesss your dashboard from here  →"
+            >
+              Access your dashboard from here  →
             </Link>
           </p>
         )}

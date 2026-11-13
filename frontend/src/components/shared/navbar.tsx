@@ -16,18 +16,18 @@ export function Navbar({ backendHealthy }: NavbarProps) {
         </Link>
 
         <nav className="hidden lg:flex items-center gap-7 text-sm font-semibold text-[#1F2937]/80">
-          <a href="#modules" className="hover:text-[#16A34A] transition-colors">
+          <Link href="/#modules" className="hover:text-[#16A34A] transition-colors">
             Modules
-          </a>
-          <a href="#calculator" className="hover:text-[#16A34A] transition-colors">
+          </Link>
+          <Link href="/#calculator" className="hover:text-[#16A34A] transition-colors">
             Pricing
-          </a>
-          <a href="#architecture" className="hover:text-[#16A34A] transition-colors">
+          </Link>
+          <Link href="/#architecture" className="hover:text-[#16A34A] transition-colors">
             Architecture
-          </a>
-          <a href="#team" className="hover:text-[#16A34A] transition-colors">
+          </Link>
+          <Link href="/#team" className="hover:text-[#16A34A] transition-colors">
             Squads
-          </a>
+          </Link>
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">

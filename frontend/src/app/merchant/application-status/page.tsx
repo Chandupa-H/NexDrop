@@ -283,7 +283,7 @@ function ApplicationStatusContent() {
                     Your merchant account is active! You can now log in using your registered credentials.
                   </p>
                 </Alert>
-                <Link href="/login" className="block">
+                <Link href="/login?redirect=/merchant/dashboard" className="block">
                   <Button variant="primary" size="lg" className="w-full font-bold shadow-md">
                     Sign In to Merchant Portal →
                   </Button>
