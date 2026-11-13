@@ -591,11 +591,19 @@ export default function MerchantRegisterPage() {
           </div>
 
           <div className="space-y-3 pt-1">
-            <Link href="/merchant/dashboard" className="block">
-              <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
-                Access your dashboard from here →
-              </Button>
-            </Link>
+            {existingApp.approval_status === "approved" ? (
+              <Link href="/merchant/dashboard" className="block">
+                <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                  Access your dashboard from here →
+                </Button>
+              </Link>
+            ) : (
+              <Link href={`/merchant/application-status?id=${existingApp.merchant_id}`} className="block">
+                <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                  Access your dashboard from here →
+                </Button>
+              </Link>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-2.5">
               <Link href={`/merchant/application-status?id=${existingApp.merchant_id}`} className="flex-1">
@@ -659,7 +667,13 @@ export default function MerchantRegisterPage() {
             <span>
               Already registered?{" "}
               <Link
-                href="/merchant/dashboard"
+                href={
+                  existingApp?.approval_status === "approved"
+                    ? "/merchant/dashboard"
+                    : existingApp?.merchant_id
+                    ? `/merchant/application-status?id=${existingApp.merchant_id}`
+                    : "/merchant/application-status"
+                }
                 className="font-semibold text-[#064E3B] hover:text-[#16A34A] transition-colors"
                 aria-label="Access your dashboard from here →"
               >

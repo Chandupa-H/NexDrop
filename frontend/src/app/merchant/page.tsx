@@ -90,31 +90,35 @@ export default function MerchantPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
-              <Link href="/merchant/dashboard" className="block">
-                <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
-                  Open Merchant Dashboard →
-                </Button>
-              </Link>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
-                <Link href="/merchant/login">
-                  <Button variant="secondary" size="sm" className="w-full">
-                    Merchant Sign In
+              {savedApp?.approval_status === "approved" ? (
+                <Link href="/merchant/dashboard" className="block">
+                  <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                    Open Merchant Dashboard →
                   </Button>
                 </Link>
-
-                <Link href="/merchant/register">
-                  <Button variant="secondary" size="sm" className="w-full">
-                    Register Business
+              ) : savedApp?.merchant_id ? (
+                <Link href={`/merchant/application-status?id=${savedApp.merchant_id}`} className="block">
+                  <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                    Open Merchant Dashboard →
                   </Button>
                 </Link>
-
-                <Link href="/merchant/application-status">
-                  <Button variant="outline" size="sm" className="w-full">
-                    Check Status
+              ) : (
+                <Link href="/merchant/register" className="block">
+                  <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
+                    Open Merchant Dashboard →
                   </Button>
                 </Link>
-              </div>
+              )}
+
+              {!savedApp && (
+                <div className="pt-2">
+                  <Link href="/merchant/register" className="block">
+                    <Button variant="secondary" size="md" className="w-full">
+                      Register Business
+                    </Button>
+                  </Link>
+                </div>
+              )}
             </CardContent>
           </Card>
 

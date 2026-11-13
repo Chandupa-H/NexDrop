@@ -5,6 +5,7 @@ import {
   MerchantTopbarUser,
   MerchantTopbarUserSkeleton,
 } from "@/features/merchants/components/MerchantTopbarUser";
+import { MerchantAccessGuard } from "@/features/merchants/components/MerchantAccessGuard";
 
 export const metadata = {
   title: "Merchant Dashboard — NexDrop",
@@ -19,16 +20,18 @@ export default function MerchantDashboardLayout({
   const config = getDashboardConfig("merchant");
 
   return (
-    <DashboardShell
-      config={config}
-      userSlot={
-        <Suspense fallback={<MerchantTopbarUserSkeleton />}>
-          <MerchantTopbarUser profileHref={config.profileHref ?? `${config.basePath}/dashboard?tab=api`} />
-        </Suspense>
-      }
-    >
-      {children}
-    </DashboardShell>
+    <MerchantAccessGuard>
+      <DashboardShell
+        config={config}
+        userSlot={
+          <Suspense fallback={<MerchantTopbarUserSkeleton />}>
+            <MerchantTopbarUser profileHref={config.profileHref ?? `${config.basePath}/dashboard?tab=api`} />
+          </Suspense>
+        }
+      >
+        {children}
+      </DashboardShell>
+    </MerchantAccessGuard>
   );
 }
 
