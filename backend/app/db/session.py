@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 _engine: Optional[AsyncEngine] = None
 _sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
+_engine_loop = None
 
 
 def get_async_database_url(url: Optional[str]) -> Optional[str]:
@@ -32,7 +33,19 @@ def get_async_database_url(url: Optional[str]) -> Optional[str]:
 
 
 def get_engine() -> Optional[AsyncEngine]:
-    global _engine
+    global _engine, _sessionmaker, _engine_loop
+    try:
+        import asyncio
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+
+    if _engine is not None and _engine_loop is not None:
+        if _engine_loop != current_loop:
+            _engine = None
+            _sessionmaker = None
+            _engine_loop = None
+
     if _engine is None and settings.DATABASE_URL:
         db_url = get_async_database_url(settings.DATABASE_URL)
         if db_url:
@@ -47,6 +60,7 @@ def get_engine() -> Optional[AsyncEngine]:
                 pool_pre_ping=True,
                 connect_args=connect_args,
             )
+            _engine_loop = current_loop
             logger.info("SQLAlchemy async engine initialized.")
     return _engine
 

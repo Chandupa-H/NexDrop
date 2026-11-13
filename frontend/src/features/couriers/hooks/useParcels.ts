@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { mapParcelListItem } from "../api/courier.mappers";
 import { fetchParcelsAction } from "../actions/parcels";
+import { sortCourierParcelsByStatus } from "../lib/status";
+import { COURIER_PARCEL_PAGE_SIZE } from "../types";
 import type { ParcelListItem, TableFilter } from "../types";
 
 interface ParcelsState {
@@ -14,11 +16,12 @@ interface ParcelsState {
 
 export function useParcels(
   filter: TableFilter,
+  page: number,
   initialParcels: ParcelListItem[],
   initialTotal: number
 ) {
   const [state, setState] = useState<ParcelsState>({
-    parcels: initialParcels,
+    parcels: sortCourierParcelsByStatus(initialParcels),
     total: initialTotal,
     loading: false,
     error: null,
@@ -30,10 +33,10 @@ export function useParcels(
   }, []);
 
   useEffect(() => {
-    if (filter === "all") {
+    if (filter === "all" && page === 1 && requestVersion === 0) {
       queueMicrotask(() => {
         setState({
-          parcels: initialParcels,
+          parcels: sortCourierParcelsByStatus(initialParcels),
           total: initialTotal,
           loading: false,
           error: null,
@@ -48,11 +51,15 @@ export function useParcels(
       setState((current) => ({ ...current, loading: true, error: null }));
     });
 
-    fetchParcelsAction(filter)
+    fetchParcelsAction(filter, page, COURIER_PARCEL_PAGE_SIZE)
       .then((response) => {
         if (controller.signal.aborted) return;
+        const sortedParcels = sortCourierParcelsByStatus(
+          response.items.map(mapParcelListItem)
+        );
+
         setState({
-          parcels: response.items.map(mapParcelListItem),
+          parcels: sortedParcels,
           total: response.total,
           loading: false,
           error: null,
@@ -70,7 +77,7 @@ export function useParcels(
     return () => {
       controller.abort();
     };
-  }, [filter, initialParcels, initialTotal, requestVersion]);
+  }, [filter, page, initialParcels, initialTotal, requestVersion]);
 
   return {
     parcels: state.parcels,
@@ -78,5 +85,6 @@ export function useParcels(
     loading: state.loading,
     error: state.error,
     refetch,
+    pageSize: COURIER_PARCEL_PAGE_SIZE,
   };
 }

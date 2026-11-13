@@ -7,13 +7,14 @@ import { notFound } from "next/navigation";
 import type { DashboardRole, DashboardRoleConfig } from "./types";
 import { courierDashboardConfig } from "@/features/couriers/config/dashboard.config";
 import { adminDashboardConfig } from "@/features/admin/config/dashboard.config";
+import { dispatcherDashboardConfig } from "@/features/dispatcher/config/dashboard.config";
 
 const ROLE_CONFIGS: Partial<Record<DashboardRole, DashboardRoleConfig>> = {
   courier: courierDashboardConfig,
   admin: adminDashboardConfig,
+  dispatcher: dispatcherDashboardConfig,
   // TODO(customer): import and register customer config
   // TODO(merchant): import and register merchant config
-  // TODO(dispatcher): import and register dispatcher config
 };
 
 export function getDashboardConfig(role: DashboardRole): DashboardRoleConfig {

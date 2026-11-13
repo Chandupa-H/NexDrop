@@ -2,6 +2,7 @@ import { getCourierProfile, getDashboardSummary, getAssignedParcels } from "../a
 import { mapCourierProfile, mapDashboardSummary, mapParcelListItem, computeDonutSegments } from "../api/courier.mappers";
 import { getGreeting, getTodayDateInTimeZone } from "@/lib/dashboard/format";
 import { DashboardView } from "./DashboardView";
+import { COURIER_PARCEL_PAGE_SIZE } from "../types";
 
 /**
  * Async server component that fetches all dashboard data and renders DashboardView.
@@ -11,7 +12,7 @@ export async function DashboardData() {
   const [profileDto, summaryDto, parcelsDto] = await Promise.all([
     getCourierProfile(),
     getDashboardSummary(),
-    getAssignedParcels({ limit: 6 }),
+    getAssignedParcels({ limit: COURIER_PARCEL_PAGE_SIZE }),
   ]);
 
   const profile = mapCourierProfile(profileDto);

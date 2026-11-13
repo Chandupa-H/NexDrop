@@ -14,6 +14,7 @@ describe("auth routes", () => {
     expect(getDashboardPathForRole("admin")).toBe("/admin/dashboard");
     expect(getDashboardPathForRole("courier")).toBe("/courier/dashboard");
     expect(getDashboardPathForRole("merchant")).toBe("/merchant");
+    expect(getDashboardPathForRole("dispatcher")).toBe("/dispatcher/dashboard");
     expect(getDashboardPathForRole(null)).toBe(DEFAULT_AUTHENTICATED_REDIRECT);
   });
 

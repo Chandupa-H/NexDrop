@@ -15,19 +15,16 @@ const API_BASE_URL =
 export interface ApiErrorResponse {
   detail?: string | Array<{ msg: string; loc: string[] }>;
   message?: string;
-  code?: string;
 }
 
 export class ApiError extends Error {
   status: number;
-  code?: string;
   data: ApiErrorResponse;
 
   constructor(status: number, message: string, data: ApiErrorResponse = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
-    this.code = data.code;
     this.data = data;
   }
 }
@@ -65,6 +62,25 @@ async function request<T>(
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
+  const endpointPath = endpoint.split("?")[0];
+  const requiresCourierAuth =
+    endpointPath.startsWith("/courier/") ||
+    /^\/deliveries\/[^/]+\/tracking$/.test(endpointPath);
+  if (
+    requiresCourierAuth &&
+    typeof window !== "undefined" &&
+    !headers.has("Authorization")
+  ) {
+    const { supabase } = await import("@/lib/supabase/client");
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      throw new ApiError(401, error.message);
+    }
+    if (data?.session?.access_token) {
+      headers.set("Authorization", `Bearer ${data.session.access_token}`);
+    }
+  }
+
   if (
     typeof window !== "undefined" &&
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -84,19 +100,11 @@ async function request<T>(
     }
   }
 
-  // Add 8-second timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-  
   try {
     const response = await fetch(url, {
       ...options,
       headers,
-      signal: options.signal || controller.signal,
-      cache: options.cache || "no-store",
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       let errorData: ApiErrorResponse = {};
@@ -116,17 +124,9 @@ async function request<T>(
 
     return (await response.json()) as T;
   } catch (error) {
-    clearTimeout(timeoutId);
-    
     if (error instanceof ApiError) {
       throw error;
     }
-    
-    // Handle abort/timeout
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
-    }
-    
     throw new ApiError(500, (error as Error).message || "Network error communicating with backend");
   }
 }
@@ -147,6 +147,47 @@ export const apiClient = {
       ...options,
       method: "PUT",
       body: body ? JSON.stringify(body) : undefined,
+    }),
+
+  postForm: <T>(
+    endpoint: string,
+    body: FormData,
+    onUploadProgress?: (percent: number) => void
+  ) =>
+    new Promise<T>((resolve, reject) => {
+      const url = `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.timeout = 120_000;
+      xhr.setRequestHeader("Accept", "application/json");
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && onUploadProgress) {
+          onUploadProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+      xhr.onerror = () => reject(new ApiError(500, "Network error communicating with backend"));
+      xhr.ontimeout = () => reject(new ApiError(408, "Proof upload timed out"));
+      xhr.onload = () => {
+        let data: unknown;
+        try {
+          data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        } catch {
+          data = {};
+        }
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const errorData = data as ApiErrorResponse;
+          const detail = errorData.detail;
+          const message = typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((item) => item.msg).join("; ")
+              : errorData.message || `Request failed with status ${xhr.status}`;
+          reject(new ApiError(xhr.status, message, errorData));
+          return;
+        }
+        resolve(data as T);
+      };
+      xhr.send(body);
     }),
 
   patch: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>

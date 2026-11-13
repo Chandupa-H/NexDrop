@@ -42,7 +42,7 @@ export function DashboardTopbar({
   }, []);
 
   return (
-    <header className="dashboard-topbar">
+    <header className="dashboard-topbar" data-role={config.role}>
       <div className="dashboard-topbar-content">
         <div className="dashboard-topbar-leading">
           <button
@@ -56,7 +56,10 @@ export function DashboardTopbar({
             <Menu aria-hidden="true" />
           </button>
 
-          <div className="dashboard-page-title" aria-live="polite">
+          <div
+            className="dashboard-page-title"
+            aria-live={config.topbarTitle ? undefined : "polite"}
+          >
             {getTopbarTitle(config, pathname)}
           </div>
         </div>
