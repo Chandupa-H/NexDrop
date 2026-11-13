@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type UserRole = "admin" | "courier" | "merchant" | "customer" | "dispatcher";
+export type UserRole = "admin" | "courier" | "merchant" | "customer" | "dispatcher" | "unassigned";
 
 const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
@@ -12,12 +12,24 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
 
 export const DEFAULT_AUTHENTICATED_REDIRECT = "/register";
 
+export function hasAssignedRole(role?: string | null): boolean {
+  return Object.hasOwn(ROLE_DASHBOARD_MAP, role?.trim().toLowerCase() ?? "");
+}
+
+export function isRegistrationRoute(pathname: string): boolean {
+  return ["/register", "/customer/register", "/merchant/register"].some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
+
 /**
  * Maps a role name (case-insensitive) to its corresponding home dashboard route.
  */
 export function getDashboardPathForRole(role?: string | null): string {
   if (!role) return DEFAULT_AUTHENTICATED_REDIRECT;
-  return ROLE_DASHBOARD_MAP[role.toLowerCase()] ?? DEFAULT_AUTHENTICATED_REDIRECT;
+  return hasAssignedRole(role)
+    ? ROLE_DASHBOARD_MAP[role.trim().toLowerCase()]
+    : DEFAULT_AUTHENTICATED_REDIRECT;
 }
 
 /**
@@ -65,10 +77,14 @@ export function isProtectedRoute(pathname: string): boolean {
  * - Merchant users can access `/merchant/*`.
  * - Dispatcher users can access `/dispatcher/*`.
  * - Cross-role access to `/admin/*` is strictly forbidden to non-admins.
- * - Registration routes and public pages are open to all.
+ * - Registration routes are available until a role is assigned.
  */
 export function isRouteAllowedForRole(pathname: string, role?: string | null): boolean {
   const normalizedRole = role?.trim().toLowerCase() ?? "";
+
+  if (isRegistrationRoute(pathname)) {
+    return !hasAssignedRole(normalizedRole);
+  }
 
   // Admin section: strictly admin only
   if (pathname === "/admin" || pathname.startsWith("/admin/")) {
