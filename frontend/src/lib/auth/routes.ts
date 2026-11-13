@@ -6,11 +6,11 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
   merchant: "/merchant",
+  customer: "/",
   dispatcher: "/dispatcher/dashboard",
-  customer: "/courier/dashboard",
 };
 
-export const DEFAULT_AUTHENTICATED_REDIRECT = "/courier/dashboard";
+export const DEFAULT_AUTHENTICATED_REDIRECT = "/register";
 
 /**
  * Maps a role name (case-insensitive) to its corresponding home dashboard route.
@@ -22,16 +22,39 @@ export function getDashboardPathForRole(role?: string | null): string {
 
 /**
  * Checks whether a requested URL pathname is a protected internal route
- * that requires an authenticated session.
+ * that requires an authenticated operational session.
+ * Excludes registration/onboarding flows (/register, /customer/register, /merchant/register).
  */
 export function isProtectedRoute(pathname: string): boolean {
+  // Public merchant onboarding routes
+  if (
+    pathname === "/merchant/register" ||
+    pathname.startsWith("/merchant/register") ||
+    pathname === "/merchant/login" ||
+    pathname === "/merchant/application-status"
+  ) {
+    return false;
+  }
+
+  // Public customer onboarding & role selection routes
+  if (
+    pathname === "/customer/register" ||
+    pathname.startsWith("/customer/register") ||
+    pathname === "/register" ||
+    pathname.startsWith("/register")
+  ) {
+    return false;
+  }
+
   return (
     pathname === "/admin" ||
     pathname.startsWith("/admin/") ||
     pathname === "/courier" ||
     pathname.startsWith("/courier/") ||
     pathname === "/merchant" ||
-    pathname.startsWith("/merchant/")
+    pathname.startsWith("/merchant/") ||
+    pathname === "/dispatcher" ||
+    pathname.startsWith("/dispatcher/")
   );
 }
 
@@ -40,7 +63,9 @@ export function isProtectedRoute(pathname: string): boolean {
  * - Admin users have universal access across operational dashboards.
  * - Courier users can access `/courier/*`.
  * - Merchant users can access `/merchant/*`.
+ * - Dispatcher users can access `/dispatcher/*`.
  * - Cross-role access to `/admin/*` is strictly forbidden to non-admins.
+ * - Registration routes and public pages are open to all.
  */
 export function isRouteAllowedForRole(pathname: string, role?: string | null): boolean {
   const normalizedRole = role?.trim().toLowerCase() ?? "";
@@ -55,17 +80,32 @@ export function isRouteAllowedForRole(pathname: string, role?: string | null): b
     return normalizedRole === "courier" || normalizedRole === "admin";
   }
 
+  // Dispatcher section: dispatcher or admin
+  if (pathname === "/dispatcher" || pathname.startsWith("/dispatcher/")) {
+    return normalizedRole === "dispatcher" || normalizedRole === "admin";
+  }
+
   // Merchant section: merchant or admin
   if (pathname === "/merchant" || pathname.startsWith("/merchant/")) {
+    // Merchant onboarding pages are accessible to all
+    if (
+      pathname === "/merchant/register" ||
+      pathname.startsWith("/merchant/register") ||
+      pathname === "/merchant/login" ||
+      pathname === "/merchant/application-status"
+    ) {
+      return true;
+    }
     return normalizedRole === "merchant" || normalizedRole === "admin";
   }
 
-  // All other routes (e.g. public pages) are open
+  // All other routes (e.g. public pages, /register, /customer/register, home) are open
   return true;
 }
 
 /**
- * Safely resolves the user's role name from `profiles -> roles(name)`.
+ * Safely resolves the user's role name from Supabase auth metadata first,
+ * then falls back to `profiles -> roles(name)`.
  */
 export async function resolveUserRole(
   supabase: SupabaseClient,
@@ -74,6 +114,25 @@ export async function resolveUserRole(
   if (!userId) return null;
 
   try {
+    // 1. Check direct auth metadata (fastest & works with or without RLS)
+    const { data: authData } = await supabase.auth.getUser();
+    const metaRole =
+      (authData?.user?.app_metadata?.role as string) ||
+      (authData?.user?.user_metadata?.role as string);
+
+    if (
+      metaRole &&
+      metaRole.toLowerCase() !== "authenticated" &&
+      metaRole.toLowerCase() !== "anon"
+    ) {
+      return metaRole.trim().toLowerCase();
+    }
+  } catch {
+    // Continue to database profiles fallback
+  }
+
+  try {
+    // 2. Query profiles table joined with roles
     const { data, error } = await supabase
       .from("profiles")
       .select("roles(name)")
@@ -93,8 +152,9 @@ export async function resolveUserRole(
 
 /**
  * Safely resolves the destination route for an authenticated user based on
- * `profiles -> roles`. If a target `preferredPath` is supplied and authorized
- * for that role, it is preserved; otherwise falls back to the user's role dashboard.
+ * `profiles -> roles` or auth metadata. If a target `preferredPath` is supplied
+ * and authorized for that role, it is preserved; otherwise falls back to the
+ * user's role dashboard (or /register for new accounts).
  */
 export async function resolveUserDashboardPath(
   supabase: SupabaseClient,

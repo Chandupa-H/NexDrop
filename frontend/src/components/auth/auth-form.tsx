@@ -96,8 +96,9 @@ export function AuthForm({
           router.refresh();
         }
       } else {
-        // Sign Up Flow
-        const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(onSuccessRedirect)}`;
+        // Sign Up Flow - brand new accounts redirect to /register to choose Customer or Merchant
+        const signUpDestination = "/register";
+        const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(signUpDestination)}`;
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -120,12 +121,7 @@ export function AuthForm({
 
         // If session is returned immediately (email confirmation disabled in Supabase)
         if (data.session) {
-          const target = await resolveUserDashboardPath(
-            supabase,
-            data.user?.id,
-            onSuccessRedirect
-          );
-          router.replace(target);
+          router.replace(signUpDestination);
           router.refresh();
           return;
         }
