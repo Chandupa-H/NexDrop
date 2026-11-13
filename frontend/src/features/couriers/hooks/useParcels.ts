@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { mapParcelListItem } from "../api/courier.mappers";
 import { fetchParcelsAction } from "../actions/parcels";
+import { sortCourierParcelsByStatus } from "../lib/status";
+import { COURIER_PARCEL_PAGE_SIZE } from "../types";
 import type { ParcelListItem, TableFilter } from "../types";
 
 interface ParcelsState {
@@ -14,11 +16,12 @@ interface ParcelsState {
 
 export function useParcels(
   filter: TableFilter,
+  page: number,
   initialParcels: ParcelListItem[],
   initialTotal: number
 ) {
   const [state, setState] = useState<ParcelsState>({
-    parcels: initialParcels,
+    parcels: sortCourierParcelsByStatus(initialParcels),
     total: initialTotal,
     loading: false,
     error: null,
@@ -30,24 +33,33 @@ export function useParcels(
   }, []);
 
   useEffect(() => {
-    if (filter === "all") {
-      setState({
-        parcels: initialParcels,
-        total: initialTotal,
-        loading: false,
-        error: null,
+    if (filter === "all" && page === 1 && requestVersion === 0) {
+      queueMicrotask(() => {
+        setState({
+          parcels: sortCourierParcelsByStatus(initialParcels),
+          total: initialTotal,
+          loading: false,
+          error: null,
+        });
       });
       return;
     }
 
     const controller = new AbortController();
 
-    setState((current) => ({ ...current, loading: true, error: null }));
-    fetchParcelsAction(filter)
+    queueMicrotask(() => {
+      setState((current) => ({ ...current, loading: true, error: null }));
+    });
+
+    fetchParcelsAction(filter, page, COURIER_PARCEL_PAGE_SIZE)
       .then((response) => {
         if (controller.signal.aborted) return;
+        const sortedParcels = sortCourierParcelsByStatus(
+          response.items.map(mapParcelListItem)
+        );
+
         setState({
-          parcels: response.items.map(mapParcelListItem),
+          parcels: sortedParcels,
           total: response.total,
           loading: false,
           error: null,
@@ -58,15 +70,21 @@ export function useParcels(
         setState((current) => ({
           ...current,
           loading: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : "Unable to load parcels. Please try again.",
+          error: error instanceof Error ? error.message : "Failed to load parcels",
         }));
       });
 
-    return () => controller.abort();
-  }, [filter, initialParcels, initialTotal, requestVersion]);
+    return () => {
+      controller.abort();
+    };
+  }, [filter, page, initialParcels, initialTotal, requestVersion]);
 
-  return { ...state, refetch };
+  return {
+    parcels: state.parcels,
+    total: state.total,
+    loading: state.loading,
+    error: state.error,
+    refetch,
+    pageSize: COURIER_PARCEL_PAGE_SIZE,
+  };
 }

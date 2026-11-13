@@ -34,7 +34,14 @@ export type NavIconName =
   | "bell"
   | "search"
   | "menu"
-  | "x";
+  | "x"
+  | "users"
+  | "store"
+  | "radio"
+  | "dollar-sign"
+  | "bar-chart-3"
+  | "settings"
+  | "shield";
 
 export interface NavItem {
   id: string;
@@ -58,6 +65,7 @@ export interface DashboardRoleConfig {
   roleLabel: string;
   basePath: string;
   homeHref: string;
+  topbarTitle?: string;
   profileHref?: string;
   searchPlaceholder: string;
   nav: NavSection[];

@@ -15,7 +15,13 @@ export type ParcelStatus =
   | "in_transit"
   | "out_for_delivery"
   | "delivered"
-  | "failed";
+  | "cancelled";
+
+/** Legacy in-memory dashboard parcels can also end in the delivery-result status. */
+export type CourierParcelStatus = ParcelStatus | "failed";
+
+/** Status values from the authenticated courier deliveries endpoint. */
+export type DeliveryStatus = ParcelStatus;
 
 /** Filter applied to the parcels table (and driven by KPI cards). */
 export type TableFilter =
@@ -25,10 +31,11 @@ export type TableFilter =
   | "delivered"
   | "failed";
 
+export const COURIER_PARCEL_PAGE_SIZE = 6;
+
 /** Action panels that can be pre-expanded when the drawer opens. */
 export type ActionType =
   | "update-status"
-  | "add-note"
   | "upload-proof"
   | "report-failed";
 
@@ -78,7 +85,7 @@ export interface ParcelListItem {
   trackingId: string;
   customerName: string;
   destination: string;
-  status: ParcelStatus;
+  status: CourierParcelStatus;
   assignedAt: string; // ISO 8601
   assignedAtDisplay: string; // Pre-formatted time
   eta: string | null;
@@ -98,10 +105,19 @@ export interface ParcelDetail {
   customerPhoneMasked: string;
   destination: string;
   addressLine: string;
-  status: ParcelStatus;
+  status: CourierParcelStatus;
   assignedAt: string;
   assignedAtDisplay: string;
   eta: string | null;
   notes: string[];
   timeline: TimelineEvent[];
+  deliveryProof: { secureUrl: string; publicId: string } | null;
+  deliveryResult: {
+    outcome: "delivered" | "failed";
+    recordedAt: string;
+    recipientName?: string | null;
+    failureReason?: string | null;
+    note?: string | null;
+  } | null;
+  proofCleanupPending: boolean;
 }

@@ -13,3 +13,11 @@ export interface DispatchAssignment {
   completed_at?: string;
   notes?: string;
 }
+
+export interface DispatcherDashboardStats {
+  total_parcels: number;
+  unassigned_parcels: number;
+  active_deliveries: number;
+  completed_deliveries: number;
+  failed_deliveries: number;
+}

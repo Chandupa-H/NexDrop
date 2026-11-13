@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, createContext, useContext } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,7 +9,15 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert } from "@/components/ui/alert";
 import { Stepper } from "@/components/ui/stepper";
+import { Modal } from "@/components/ui/modal";
+import { TermsOfServiceContent, PrivacyPolicyContent } from "@/components/legal/legal-content";
 import { useMerchantRegister } from "@/features/merchants/use-merchant-register";
+import type {
+  AccountFormData,
+  BusinessFormData,
+  FormErrors,
+} from "@/features/merchants/use-merchant-register";
+import type { MerchantRegistrationResponse } from "@/features/merchants";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -187,7 +196,7 @@ function StepBusiness() {
 // ---------------------------------------------------------------------------
 
 function StepReview() {
-  const { accountData, businessData } = useMerchantRegisterContext();
+  const { accountData, businessData, openLegalModal } = useMerchantRegisterContext();
 
   const rows: { label: string; value: string }[] = [
     { label: "Full Name", value: accountData.full_name },
@@ -220,20 +229,34 @@ function StepReview() {
         ))}
       </div>
 
-      <Alert variant="info" title="What happens next?">
-        <p>
+      {/* Styled theme alert: no raw ℹ icon, clean forest green / subtle mint palette */}
+      <Alert variant="info" title="What happens next?" hideIcon>
+        <p className="text-sm text-[#374151] leading-relaxed">
           After submission, our team will review your business details within{" "}
-          <strong>1–2 business days</strong>. You&apos;ll receive an email at{" "}
-          <strong>{accountData.email}</strong> once your account is approved or if we need more information.
+          <strong className="text-[#064E3B] font-semibold">1–2 business days</strong>. You&apos;ll receive an email at{" "}
+          <strong className="text-[#064E3B] font-semibold">{accountData.email}</strong> once your account is approved or if we need more information.
         </p>
       </Alert>
 
-      <Alert variant="warning">
-        <p className="text-xs">
+      {/* Terms & Privacy agreement alert: no ⚠ hazard icon, popup modal triggers on click */}
+      <Alert variant="warning" hideIcon>
+        <p className="text-xs text-[#4B5563] leading-relaxed">
           By submitting, you agree to NexDrop&apos;s{" "}
-          <Link href="/terms" className="underline font-medium hover:text-[#064E3B]">Terms of Service</Link>{" "}
+          <button
+            type="button"
+            onClick={() => openLegalModal("terms")}
+            className="underline font-semibold text-[#064E3B] hover:text-[#16A34A] transition-colors cursor-pointer"
+          >
+            Terms of Service
+          </button>{" "}
           and{" "}
-          <Link href="/privacy" className="underline font-medium hover:text-[#064E3B]">Privacy Policy</Link>.
+          <button
+            type="button"
+            onClick={() => openLegalModal("privacy")}
+            className="underline font-semibold text-[#064E3B] hover:text-[#16A34A] transition-colors cursor-pointer"
+          >
+            Privacy Policy
+          </button>.
         </p>
       </Alert>
     </div>
@@ -302,14 +325,6 @@ function SuccessScreen() {
 // Context bridge (avoids prop drilling in a self-contained page)
 // ---------------------------------------------------------------------------
 
-import { createContext, useContext } from "react";
-import type {
-  AccountFormData,
-  BusinessFormData,
-  FormErrors,
-} from "@/features/merchants/use-merchant-register";
-import type { MerchantRegistrationResponse } from "@/features/merchants";
-
 interface RegisterContextValue {
   accountData: AccountFormData;
   setAccountData: React.Dispatch<React.SetStateAction<AccountFormData>>;
@@ -318,6 +333,7 @@ interface RegisterContextValue {
   accountErrors: FormErrors<AccountFormData>;
   businessErrors: FormErrors<BusinessFormData>;
   result: MerchantRegistrationResponse | null;
+  openLegalModal: (type: "terms" | "privacy") => void;
 }
 
 const RegisterContext = createContext<RegisterContextValue | null>(null);
@@ -333,6 +349,8 @@ function useMerchantRegisterContext() {
 // ---------------------------------------------------------------------------
 
 export default function MerchantRegisterPage() {
+  const [activeLegalModal, setActiveLegalModal] = useState<"terms" | "privacy" | null>(null);
+
   const {
     step,
     isSubmitting,
@@ -357,6 +375,7 @@ export default function MerchantRegisterPage() {
     accountErrors,
     businessErrors,
     result,
+    openLegalModal: (type: "terms" | "privacy") => setActiveLegalModal(type),
   };
 
   return (
@@ -461,11 +480,39 @@ export default function MerchantRegisterPage() {
         {step < 3 && (
           <p className="text-center text-sm text-[#64748B]">
             Already registered?{" "}
-            <Link href="/merchant/login" className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors">
+            <Link href="/login" className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors">
               Sign in to your portal →
             </Link>
           </p>
         )}
+
+        {/* Legal Modal Popup for Terms of Service and Privacy Policy */}
+        <Modal
+          isOpen={activeLegalModal !== null}
+          onClose={() => setActiveLegalModal(null)}
+          title={activeLegalModal === "terms" ? "Terms of Service" : "Privacy Policy"}
+          description={
+            activeLegalModal === "terms"
+              ? "Effective for all registered merchants • Last updated October 2026"
+              : "Data governance and privacy standards • Last updated October 2026"
+          }
+          maxWidth="2xl"
+          footer={
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => setActiveLegalModal(null)}
+            >
+              Close
+            </Button>
+          }
+        >
+          {activeLegalModal === "terms" ? (
+            <TermsOfServiceContent />
+          ) : (
+            <PrivacyPolicyContent />
+          )}
+        </Modal>
       </div>
     </RegisterContext.Provider>
   );
