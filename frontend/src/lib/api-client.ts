@@ -15,19 +15,16 @@ const API_BASE_URL =
 export interface ApiErrorResponse {
   detail?: string | Array<{ msg: string; loc: string[] }>;
   message?: string;
-  code?: string;
 }
 
 export class ApiError extends Error {
   status: number;
-  code?: string;
   data: ApiErrorResponse;
 
   constructor(status: number, message: string, data: ApiErrorResponse = {}) {
     super(message);
     this.name = "ApiError";
     this.status = status;
-    this.code = data.code;
     this.data = data;
   }
 }
@@ -65,7 +62,6 @@ async function request<T>(
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-
   const endpointPath = endpoint.split("?")[0];
   const requiresCourierAuth =
     endpointPath.startsWith("/courier/") ||
@@ -80,24 +76,35 @@ async function request<T>(
     if (error) {
       throw new ApiError(401, error.message);
     }
-    if (data.session?.access_token) {
+    if (data?.session?.access_token) {
       headers.set("Authorization", `Bearer ${data.session.access_token}`);
     }
   }
 
-  // Add 8-second timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-  
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+    !headers.has("Authorization")
+  ) {
+    try {
+      const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
+      const {
+        data: { session },
+      } = await createSupabaseBrowserClient().auth.getSession();
+      if (session?.access_token) {
+        headers.set("Authorization", `Bearer ${session.access_token}`);
+      }
+    } catch {
+      // Proceed unauthenticated if no browser session is available.
+    }
+  }
+
   try {
     const response = await fetch(url, {
       ...options,
       headers,
-      signal: options.signal || controller.signal,
-      cache: options.cache || "no-store",
     });
-
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       let errorData: ApiErrorResponse = {};
@@ -117,17 +124,9 @@ async function request<T>(
 
     return (await response.json()) as T;
   } catch (error) {
-    clearTimeout(timeoutId);
-    
     if (error instanceof ApiError) {
       throw error;
     }
-    
-    // Handle abort/timeout
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
-    }
-    
     throw new ApiError(500, (error as Error).message || "Network error communicating with backend");
   }
 }

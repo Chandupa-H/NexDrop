@@ -1,33 +1,71 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/dashboard";
-import { 
-  Check, 
-  DollarSign, 
-  HelpCircle, 
-  Percent, 
-  Save, 
-  Sliders, 
-  Truck, 
-  Zap 
+import { adminApi, type PricingTierDTO } from "@/features/admin/api/admin.api";
+import {
+  Check,
+  Loader2,
+  RefreshCw,
+  Save,
+  Zap,
 } from "lucide-react";
 
 export default function AdminPricingPage() {
-  const [baseFare, setBaseFare] = useState("3.50");
-  const [perKmRate, setPerKmRate] = useState("1.20");
-  const [expressSurcharge, setExpressSurcharge] = useState("2.50");
-  const [peakSurgeMax, setPeakSurgeMax] = useState("1.50");
-  const [rainSurge, setRainSurge] = useState("1.30");
-  const [saved, setSaved] = useState(false);
+  const [tiers, setTiers] = useState<PricingTierDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
+  const [savedId, setSavedId] = useState<number | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+  const loadTiers = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await adminApi.getPricingTiers();
+      setTiers(data);
+    } catch (err) {
+      setError((err as Error).message || "Failed to load pricing tiers from database");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    loadTiers();
+  }, []);
+
+  const updateLocalField = (
+    id: number,
+    field: "base_rate" | "per_km_rate" | "per_kg_rate" | "is_active",
+    value: number | boolean
+  ) => {
+    setTiers((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+    );
+  };
+
+  const handleSaveTier = async (tier: PricingTierDTO) => {
+    setSavingId(tier.id);
+    try {
+      await adminApi.updatePricingTier(tier.id, {
+        base_rate: tier.base_rate,
+        per_km_rate: tier.per_km_rate,
+        per_kg_rate: tier.per_kg_rate,
+        is_active: tier.is_active,
+      });
+      setSavedId(tier.id);
+      setTimeout(() => setSavedId(null), 2500);
+    } catch (err) {
+      alert((err as Error).message || "Failed to update pricing tier");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const standardTier = tiers[0];
 
   return (
     <div className="space-y-6">
@@ -36,167 +74,169 @@ export default function AdminPricingPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#0f2a1d]">Pricing Management</h1>
           <p className="text-sm text-[#5b7266] mt-0.5">
-            Configure system delivery fees, distance-based tariffs, parcel size surcharges, and dynamic surge algorithms.
+            Configure system delivery fees, distance-based tariffs, and weight-based pricing tiers stored in PostgreSQL.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSave}
-            className="gap-1.5 bg-[#0b3d2a] hover:bg-[#124d35]"
-          >
-            {saved ? (
-              <>
-                <Check className="w-4 h-4 text-[#b6f36b]" /> Rates Updated
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" /> Save Pricing Rules
-              </>
-            )}
+          <Button variant="outline" size="sm" onClick={loadTiers} disabled={loading} className="gap-1.5">
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh
           </Button>
         </div>
       </div>
 
+      {error && (
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl bg-white border border-[#e5eee8]">
-          <p className="text-xs text-[#5b7266] font-medium">Platform Base Fare</p>
-          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">${baseFare}</p>
-          <p className="text-xs text-[#5b7266] mt-1">First 2.0 km included</p>
+          <p className="text-xs text-[#5b7266] font-medium">Configured Tiers</p>
+          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">{loading ? "..." : tiers.length}</p>
+          <p className="text-xs text-[#5b7266] mt-1">Database pricing rules</p>
+        </div>
+        <div className="p-4 rounded-xl bg-white border border-[#e5eee8]">
+          <p className="text-xs text-[#5b7266] font-medium">Standard Base Fare</p>
+          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">
+            {loading || !standardTier ? "..." : `Rs. ${standardTier.base_rate}`}
+          </p>
+          <p className="text-xs text-[#16a34a] mt-1">{standardTier?.name || "Primary tier"}</p>
         </div>
         <div className="p-4 rounded-xl bg-white border border-[#e5eee8]">
           <p className="text-xs text-[#5b7266] font-medium">Standard Per-Km Rate</p>
-          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">${perKmRate} / km</p>
-          <p className="text-xs text-[#16a34a] mt-1">Applied after base distance</p>
+          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">
+            {loading || !standardTier ? "..." : `Rs. ${standardTier.per_km_rate} / km`}
+          </p>
+          <p className="text-xs text-[#5b7266] mt-1">Distance multiplier</p>
         </div>
         <div className="p-4 rounded-xl bg-white border border-[#e5eee8]">
-          <p className="text-xs text-[#5b7266] font-medium">Express Priority Addon</p>
-          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">+${expressSurcharge}</p>
-          <p className="text-xs text-[#5b7266] mt-1">&lt;30 minute SLA guarantee</p>
-        </div>
-        <div className="p-4 rounded-xl bg-white border border-[#e5eee8]">
-          <p className="text-xs text-[#5b7266] font-medium">Max Dynamic Surge</p>
-          <p className="text-2xl font-bold text-amber-600 mt-1">{peakSurgeMax}x</p>
-          <p className="text-xs text-[#5b7266] mt-1">Platform protective cap</p>
+          <p className="text-xs text-[#5b7266] font-medium">Standard Per-Kg Rate</p>
+          <p className="text-2xl font-bold text-[#0f2a1d] mt-1">
+            {loading || !standardTier ? "..." : `Rs. ${standardTier.per_kg_rate} / kg`}
+          </p>
+          <p className="text-xs text-[#5b7266] mt-1">Weight surcharge</p>
         </div>
       </div>
 
-      {/* Pricing Form Configuration */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column: Base & Distance Rates */}
-        <SectionCard
-          title="Base Tariffs & Distance Tiers"
-          subtitle="Configure default consumer & merchant courier rate matrix"
-        >
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
-                Base Delivery Fee (USD)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5b7266]">$</span>
-                <input
-                  type="number"
-                  step="0.10"
-                  value={baseFare}
-                  onChange={(e) => setBaseFare(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
-                />
-              </div>
-              <p className="text-[11px] text-[#5b7266] mt-1">Covers parcel pickup and initial 2.0 kilometers.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
-                Per-Kilometer Distance Rate (USD/km)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5b7266]">$</span>
-                <input
-                  type="number"
-                  step="0.05"
-                  value={perKmRate}
-                  onChange={(e) => setPerKmRate(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
-                />
-              </div>
-              <p className="text-[11px] text-[#5b7266] mt-1">Computed using the shortest OSRM road route.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
-                Express Priority Surcharge (USD)
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#5b7266]">$</span>
-                <input
-                  type="number"
-                  step="0.50"
-                  value={expressSurcharge}
-                  onChange={(e) => setExpressSurcharge(e.target.value)}
-                  className="w-full pl-7 pr-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
-                />
-              </div>
-              <p className="text-[11px] text-[#5b7266] mt-1">Direct point-to-point dispatch without batching.</p>
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* Right Column: Surge & Dynamic Multipliers */}
-        <SectionCard
-          title="Dynamic Surge & Weather Triggers"
-          subtitle="Automatic multipliers based on demand imbalance and weather"
-        >
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
-                Peak Demand Max Multiplier
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.05"
-                  value={peakSurgeMax}
-                  onChange={(e) => setPeakSurgeMax(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#5b7266]">x</span>
-              </div>
-              <p className="text-[11px] text-[#5b7266] mt-1">Triggers when active parcel queue exceeds courier capacity by 3x.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
-                Inclement Weather / Rain Multiplier
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.05"
-                  value={rainSurge}
-                  onChange={(e) => setRainSurge(e.target.value)}
-                  className="w-full pl-3 pr-8 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#5b7266]">x</span>
-              </div>
-              <p className="text-[11px] text-[#5b7266] mt-1">Compensates couriers during heavy tropical downpours.</p>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60">
-              <div className="flex items-start gap-2 text-xs text-[#0b3d2a]">
-                <Zap className="w-4 h-4 text-[#16a34a] shrink-0 mt-0.5" />
+      {/* Pricing Tiers List */}
+      {loading ? (
+        <div className="py-12 flex items-center justify-center text-[#5b7266] gap-2 text-sm">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading pricing tiers...
+        </div>
+      ) : tiers.length === 0 ? (
+        <div className="py-12 text-center text-sm text-[#5b7266] bg-white rounded-2xl border border-[#e5eee8]">
+          No pricing tiers found in database.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {tiers.map((tier) => (
+            <SectionCard
+              key={tier.id}
+              title={tier.name}
+              subtitle={`Tier ID #${tier.id}`}
+              action={
+                <Badge variant={tier.is_active ? "success" : "secondary"}>
+                  {tier.is_active ? "Active" : "Inactive"}
+                </Badge>
+              }
+            >
+              <div className="space-y-4">
                 <div>
-                  <p className="font-bold">Algorithmic Surge Protection Active</p>
-                  <p className="text-[#5b7266] mt-0.5">
-                    Surge prices adjust gradually at max 0.1x steps per 10-minute interval to prevent sudden checkout price jumps.
-                  </p>
+                  <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
+                    Base Delivery Fee (Rs.)
+                  </label>
+                  <input
+                    type="number"
+                    step="10"
+                    value={tier.base_rate}
+                    onChange={(e) =>
+                      updateLocalField(tier.id, "base_rate", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
+                    Per-Kilometer Rate (Rs. / km)
+                  </label>
+                  <input
+                    type="number"
+                    step="5"
+                    value={tier.per_km_rate}
+                    onChange={(e) =>
+                      updateLocalField(tier.id, "per_km_rate", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#0f2a1d] mb-1">
+                    Per-Kilogram Rate (Rs. / kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="5"
+                    value={tier.per_kg_rate}
+                    onChange={(e) =>
+                      updateLocalField(tier.id, "per_kg_rate", parseFloat(e.target.value) || 0)
+                    }
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[#e5eee8] bg-[#f9fbf9] focus:outline-none focus:ring-2 focus:ring-[#16a34a]"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <label className="flex items-center gap-2 text-xs font-medium text-[#0f2a1d] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tier.is_active}
+                      onChange={(e) =>
+                        updateLocalField(tier.id, "is_active", e.target.checked)
+                      }
+                      className="rounded border-[#e5eee8] text-[#16a34a] focus:ring-[#16a34a]"
+                    />
+                    Tier Enabled
+                  </label>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    disabled={savingId === tier.id}
+                    onClick={() => handleSaveTier(tier)}
+                    className="gap-1.5 bg-[#0b3d2a] hover:bg-[#124d35]"
+                  >
+                    {savedId === tier.id ? (
+                      <>
+                        <Check className="w-4 h-4 text-[#b6f36b]" /> Saved
+                      </>
+                    ) : savingId === tier.id ? (
+                      "Saving..."
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" /> Save Tier
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
-            </div>
+            </SectionCard>
+          ))}
+        </div>
+      )}
+
+      <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60">
+        <div className="flex items-start gap-2.5 text-xs text-[#0b3d2a]">
+          <Zap className="w-4 h-4 text-[#16a34a] shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Live Pricing Engine Connected</p>
+            <p className="text-[#5b7266] mt-0.5">
+              Changes saved here immediately update the backend pricing estimator (`POST /api/v1/pricing/estimate`) stored in the `pricing_tiers` database table.
+            </p>
           </div>
-        </SectionCard>
+        </div>
       </div>
     </div>
   );
