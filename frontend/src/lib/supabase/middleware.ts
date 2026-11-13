@@ -96,7 +96,13 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Authenticated user: verify role authorization
-    const role = await resolveUserRole(supabase, user.id);
+    let role = await resolveUserRole(supabase, user.id);
+    if (!role) {
+      const cookieRole = request.cookies.get("nexdrop_user_role")?.value?.trim().toLowerCase();
+      if (cookieRole && ["merchant", "admin", "courier", "dispatcher", "customer"].includes(cookieRole)) {
+        role = cookieRole;
+      }
+    }
     if (!isRouteAllowedForRole(pathname, role)) {
       // Forbidden for this role -> bounce to the user's assigned dashboard
       const authorizedDashboard = getDashboardPathForRole(role);

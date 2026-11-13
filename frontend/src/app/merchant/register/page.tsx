@@ -330,9 +330,9 @@ function PendingApprovalScreen() {
         </div>
 
         <div className="pt-2">
-          <Link href="/login?redirect=/merchant/dashboard">
+          <Link href="/merchant/dashboard">
             <Button variant="primary" size="lg" className="w-full sm:w-auto font-bold shadow-md">
-              Sign In to Merchant Portal →
+              Access your dashboard from here →
             </Button>
           </Link>
         </div>
@@ -591,9 +591,9 @@ export default function MerchantRegisterPage() {
           </div>
 
           <div className="space-y-3 pt-1">
-            <Link href="/login?redirect=/merchant/dashboard" className="block">
+            <Link href="/merchant/dashboard" className="block">
               <Button variant="primary" size="lg" className="w-full font-bold shadow-sm">
-                Access your dashboard from here  →
+                Access your dashboard from here →
               </Button>
             </Link>
 
@@ -659,11 +659,11 @@ export default function MerchantRegisterPage() {
             <span>
               Already registered?{" "}
               <Link
-                href="/login?redirect=/merchant/dashboard"
+                href="/merchant/dashboard"
                 className="font-semibold text-[#064E3B] hover:text-[#16A34A] transition-colors"
-                aria-label="Accesss your dashboard from here  →"
+                aria-label="Access your dashboard from here →"
               >
-                Access your dashboard from here  →
+                Access your dashboard from here →
               </Link>
             </span>
           </div>
@@ -799,11 +799,11 @@ export default function MerchantRegisterPage() {
           <p className="text-center text-sm text-[#64748B]">
             Already registered?{" "}
             <Link
-              href="/login?redirect=/merchant/dashboard"
+              href="/merchant/dashboard"
               className="font-medium text-[#064E3B] hover:text-[#16A34A] transition-colors"
-              aria-label="Accesss your dashboard from here  →"
+              aria-label="Access your dashboard from here →"
             >
-              Access your dashboard from here  →
+              Access your dashboard from here →
             </Link>
           </p>
         )}

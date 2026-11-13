@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import apiClient, { ApiError } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase/client";
 import type { MerchantStatusResponse, ApprovalStatus } from "@/features/merchants";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,28 @@ function ApplicationStatusContent() {
     try {
       const data = await apiClient.getMerchantStatus(targetId);
       setStatusData(data);
+      if (data && typeof window !== "undefined") {
+        try {
+          const current = localStorage.getItem("nexdrop_merchant_application");
+          const parsed = current ? JSON.parse(current) : {};
+          localStorage.setItem(
+            "nexdrop_merchant_application",
+            JSON.stringify({
+              ...parsed,
+              merchant_id: data.merchant_id,
+              business_name: data.business_name,
+              approval_status: data.approval_status,
+            })
+          );
+          if (data.approval_status === "approved") {
+            localStorage.setItem("nexdrop_user_role", "merchant");
+            document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+            supabase.auth.updateUser({
+              data: { role: "merchant" },
+            }).catch(() => {});
+          }
+        } catch {}
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
         setServerError(`No application found with ID ${targetId}. Please double-check your reference number.`);
@@ -275,17 +298,17 @@ function ApplicationStatusContent() {
               </div>
             )}
 
-            {/* Approved: Direct CTA to Login */}
+            {/* Approved: Direct CTA to Dashboard */}
             {statusData.approval_status === "approved" && (
               <div className="pt-2 space-y-3">
                 <Alert variant="success" hideIcon>
                   <p className="text-xs font-medium">
-                    Your merchant account is active! You can now log in using your registered credentials.
+                    Your merchant account is active! You can now access your merchant dashboard.
                   </p>
                 </Alert>
-                <Link href="/login?redirect=/merchant/dashboard" className="block">
+                <Link href="/merchant/dashboard" className="block">
                   <Button variant="primary" size="lg" className="w-full font-bold shadow-md">
-                    Sign In to Merchant Portal →
+                    Access your dashboard from here →
                   </Button>
                 </Link>
               </div>

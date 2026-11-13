@@ -172,7 +172,6 @@ async function request<T>(
 
     throw new ApiError(500, rawMsg || "Network error communicating with backend");
   }
-  }
 }
 
 export const apiClient = {
@@ -238,13 +237,6 @@ export const apiClient = {
     request<T>(endpoint, {
       ...options,
       method: "PATCH",
-      body: body ? JSON.stringify(body) : undefined,
-    }),
-
-  put: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
-    request<T>(endpoint, {
-      ...options,
-      method: "PUT",
       body: body ? JSON.stringify(body) : undefined,
     }),
 

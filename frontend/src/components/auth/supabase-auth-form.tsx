@@ -4,9 +4,8 @@ import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa, type ViewType } from "@supabase/auth-ui-shared";
-import type { Provider, User } from "@supabase/supabase-js";
+import type { Provider } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
-import apiClient from "@/lib/api-client";
 
 interface SupabaseAuthFormProps {
   view?: ViewType;
@@ -14,79 +13,6 @@ interface SupabaseAuthFormProps {
   onSuccessRedirect?: string;
   providers?: Provider[];
   isDark?: boolean;
-}
-
-async function resolveDestination(user: User | null, fallbackRedirect: string): Promise<string> {
-  // 1. Honor explicit redirect query if not the default courier dashboard fallback
-  if (fallbackRedirect && fallbackRedirect !== "/courier/dashboard") {
-    return fallbackRedirect;
-  }
-
-  const metaRole = user?.user_metadata?.role;
-  let localRole: string | null = null;
-  let localMerchantApp: { merchant_id?: number; email?: string; approval_status?: string } | null = null;
-
-  if (typeof window !== "undefined") {
-    try {
-      localRole = localStorage.getItem("nexdrop_user_role");
-      const saved = localStorage.getItem("nexdrop_merchant_application");
-      if (saved) localMerchantApp = JSON.parse(saved);
-    } catch {}
-  }
-
-  // 2. Administrator role detection
-  if (metaRole === "admin" || localRole === "admin" || user?.email?.toLowerCase().includes("admin")) {
-    return "/admin/merchants";
-  }
-
-  // 3. Merchant application detection & live approval status check
-  const isMerchantCandidate =
-    metaRole === "merchant" ||
-    localRole === "merchant" ||
-    !!localMerchantApp?.merchant_id;
-
-  const emailToQuery = user?.email || localMerchantApp?.email;
-
-  if (emailToQuery) {
-    try {
-      const identifier = localMerchantApp?.merchant_id
-        ? String(localMerchantApp.merchant_id)
-        : emailToQuery;
-      const statusData = await apiClient.getMerchantStatus(identifier);
-      if (statusData) {
-        if (typeof window !== "undefined") {
-          try {
-            localStorage.setItem("nexdrop_user_role", "merchant");
-            localStorage.setItem(
-              "nexdrop_merchant_application",
-              JSON.stringify({
-                merchant_id: statusData.merchant_id,
-                business_name: statusData.business_name,
-                email: emailToQuery,
-                approval_status: statusData.approval_status,
-              })
-            );
-          } catch {}
-        }
-        if (statusData.approval_status === "approved") {
-          return "/merchant/dashboard";
-        }
-        return `/merchant/application-status?id=${statusData.merchant_id}`;
-      }
-    } catch {
-      // Backend check unreachable or 404, fallback to local application cache
-      if (isMerchantCandidate) {
-        if (localMerchantApp?.approval_status === "approved") {
-          return "/merchant/dashboard";
-        }
-        return "/merchant/application-status";
-      }
-    }
-  } else if (isMerchantCandidate) {
-    return "/merchant/dashboard";
-  }
-
-  return "/courier/dashboard";
 }
 
 export function SupabaseAuthForm({
@@ -109,10 +35,9 @@ export function SupabaseAuthForm({
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (session && (event === "SIGNED_IN" || event === "USER_UPDATED")) {
-        const dest = await resolveDestination(session.user, onSuccessRedirect);
-        router.push(dest);
+        router.push(onSuccessRedirect);
       }
     });
 

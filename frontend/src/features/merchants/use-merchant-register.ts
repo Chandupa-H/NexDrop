@@ -173,6 +173,7 @@ export function useMerchantRegister() {
             })
           );
           localStorage.setItem("nexdrop_user_role", "merchant");
+          document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
         } catch {
           // ignore localstorage quota errors
         }

@@ -5,7 +5,7 @@ export type UserRole = "admin" | "courier" | "merchant" | "customer" | "dispatch
 const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
-  merchant: "/merchant",
+  merchant: "/merchant/dashboard",
   customer: "/",
   dispatcher: "/dispatcher/dashboard",
 };
@@ -38,8 +38,9 @@ export function getDashboardPathForRole(role?: string | null): string {
  * Excludes registration/onboarding flows (/register, /customer/register, /merchant/register).
  */
 export function isProtectedRoute(pathname: string): boolean {
-  // Public merchant onboarding routes
+  // Public merchant onboarding & gateway routes
   if (
+    pathname === "/merchant" ||
     pathname === "/merchant/register" ||
     pathname.startsWith("/merchant/register") ||
     pathname === "/merchant/login" ||
@@ -63,8 +64,8 @@ export function isProtectedRoute(pathname: string): boolean {
     pathname.startsWith("/admin/") ||
     pathname === "/courier" ||
     pathname.startsWith("/courier/") ||
-    pathname === "/merchant" ||
-    pathname.startsWith("/merchant/") ||
+    pathname === "/merchant/dashboard" ||
+    pathname.startsWith("/merchant/dashboard") ||
     pathname === "/dispatcher" ||
     pathname.startsWith("/dispatcher/")
   );
@@ -103,8 +104,9 @@ export function isRouteAllowedForRole(pathname: string, role?: string | null): b
 
   // Merchant section: merchant or admin
   if (pathname === "/merchant" || pathname.startsWith("/merchant/")) {
-    // Merchant onboarding pages are accessible to all
+    // Merchant onboarding pages and public portal landing are accessible to all
     if (
+      pathname === "/merchant" ||
       pathname === "/merchant/register" ||
       pathname.startsWith("/merchant/register") ||
       pathname === "/merchant/login" ||
@@ -155,15 +157,28 @@ export async function resolveUserRole(
       .eq("id", userId)
       .maybeSingle();
 
-    if (error || !data) return null;
-
-    const rolesValue = (data as { roles?: { name?: string } | Array<{ name?: string }> | null }).roles;
-    const roleName = Array.isArray(rolesValue) ? rolesValue[0]?.name : rolesValue?.name;
-
-    return roleName ? roleName.trim().toLowerCase() : null;
+    if (!error && data) {
+      const rolesValue = (data as { roles?: { name?: string } | Array<{ name?: string }> | null }).roles;
+      const roleName = Array.isArray(rolesValue) ? rolesValue[0]?.name : rolesValue?.name;
+      if (roleName) return roleName.trim().toLowerCase();
+    }
   } catch {
-    return null;
+    // Continue to browser fallback
   }
+
+  try {
+    // 3. Browser-stored active role (e.g. merchant application submitted/approved)
+    if (typeof window !== "undefined") {
+      const localRole = localStorage.getItem("nexdrop_user_role");
+      if (localRole && ["merchant", "admin", "courier", "dispatcher", "customer"].includes(localRole.toLowerCase())) {
+        return localRole.trim().toLowerCase();
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+
+  return null;
 }
 
 /**
