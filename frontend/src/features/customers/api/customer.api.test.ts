@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import apiClient from "@/lib/api-client";
-import { getCustomerParcels, getCustomerParcelDetail } from "./customer.api";
+import { getCustomerParcels, getCustomerParcelDetail, cancelCustomerParcel } from "./customer.api";
 
-vi.mock("@/lib/api-client", () => ({ default: { get: vi.fn() } }));
+vi.mock("@/lib/api-client", () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 
 describe("customer parcel list API", () => {
   beforeEach(() => vi.resetAllMocks());
+  it("propagates strict cancellation errors without a mock success", async () => {
+    const conflict = new Error("Conflict");
+    vi.mocked(apiClient.post).mockRejectedValue(conflict);
+    await expect(cancelCustomerParcel("ND/TEST", { reason: "Changed plans" }, false)).rejects.toBe(conflict);
+    expect(apiClient.post).toHaveBeenCalledWith("/customers/customer/parcels/ND%2FTEST/cancel", { reason: "Changed plans" });
+  });
   it.each([undefined, "all"])("omits a restrictive status query for All Orders (%s)", async (status) => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({ items: [], total: 25 });
     await expect(getCustomerParcels({ status, limit: 10, offset: 10 }, false))

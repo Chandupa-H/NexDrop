@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import { CustomerParcelsTable } from "./CustomerParcelsTable";
@@ -20,6 +20,12 @@ export function CustomerHistoryView() {
   });
   const start = data.parcels.length ? (page - 1) * PAGE_SIZE + 1 : 0;
   const end = data.parcels.length ? (page - 1) * PAGE_SIZE + data.parcels.length : 0;
+  useEffect(() => {
+    if (!data.loading && !data.error) {
+      const lastPage = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+      if (page > lastPage) setPage(lastPage);
+    }
+  }, [data.loading, data.error, data.total, page]);
 
   return (
     <div className="min-w-0 space-y-6">
@@ -45,7 +51,7 @@ export function CustomerHistoryView() {
           <Button variant="outline" className="min-h-11" disabled={data.loading || !!data.error || page * PAGE_SIZE >= data.total} onClick={() => setPage((value) => value + 1)}>Next</Button>
         </div>
       </nav>
-      {trackingId && <CustomerParcelDrawer key={trackingId} trackingId={trackingId} readOnly onClose={() => setTrackingId(null)} onParcelUpdated={data.refetch} />}
+      {trackingId && <CustomerParcelDrawer key={trackingId} trackingId={trackingId} readOnly historyCancellation onClose={() => setTrackingId(null)} onParcelUpdated={data.refetch} />}
     </div>
   );
 }

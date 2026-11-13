@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CustomerParcelDetail } from "../types";
 import { getCustomerParcelDetail } from "../api/customer.api";
 import { mapCustomerParcelDetail } from "../api/customer.mappers";
 import { cancelCustomerParcelAction } from "../actions/parcels";
+import { cancelCustomerHistoryParcelAction } from "../actions/history-cancellation";
+import { historyCancellationPolicy } from "../config/history-cancellation";
 import { getCustomerStatusLabel, getCustomerStatusTone, getRemainingDeliverySteps } from "../lib/status";
 import { StatusBadge } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,8 @@ interface CustomerParcelDrawerProps {
   onClose: () => void;
   onParcelUpdated: () => void;
   readOnly?: boolean;
+  /** Reuse pending confirmation in history; live submission also requires the server gate. */
+  historyCancellation?: boolean;
 }
 
 export function CustomerParcelDrawer({
@@ -30,6 +34,7 @@ export function CustomerParcelDrawer({
   onClose,
   onParcelUpdated,
   readOnly = false,
+  historyCancellation = false,
 }: CustomerParcelDrawerProps) {
   const [parcel, setParcel] = useState<CustomerParcelDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,6 +45,9 @@ export function CustomerParcelDrawer({
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
+  const cancellationInFlight = useRef(false);
+  const reasonId = `cancel-reason-${trackingId}`;
 
   useEffect(() => {
     let active = true;
@@ -47,7 +55,7 @@ export function CustomerParcelDrawer({
       try {
         setLoading(true);
         setError(null);
-        const dto = await getCustomerParcelDetail(trackingId);
+        const dto = await getCustomerParcelDetail(trackingId, !historyCancellation);
         if (active) {
           setParcel(mapCustomerParcelDetail(dto));
         }
@@ -63,29 +71,41 @@ export function CustomerParcelDrawer({
     return () => {
       active = false;
     };
-  }, [trackingId]);
+  }, [trackingId, historyCancellation]);
 
   const handlePrintReceipt = () => {
     window.print();
   };
 
   const handleCancelDelivery = async () => {
-    if (!parcel || readOnly) return;
+    if (!parcel || parcel.status !== "pending" || cancellationInFlight.current || (readOnly && !historyCancellation)) return;
+    if (historyCancellation && !historyCancellationPolicy.enabled) return;
+    cancellationInFlight.current = true;
     try {
       setCancelling(true);
       setCancelError(null);
-      const updatedDto = await cancelCustomerParcelAction(
-        trackingId,
-        cancelReason || "Cancelled by customer via dashboard"
-      );
+      let updatedDto;
+      if (historyCancellation) {
+        const result = await cancelCustomerHistoryParcelAction(trackingId, cancelReason.trim() || undefined);
+        if (!result.ok) {
+          setCancelError(result.message);
+          if (result.conflict) onParcelUpdated();
+          return;
+        }
+        updatedDto = result.parcel;
+      } else {
+        updatedDto = await cancelCustomerParcelAction(trackingId, cancelReason || "Cancelled by customer via dashboard");
+      }
       setParcel(mapCustomerParcelDetail(updatedDto));
       setShowCancelPrompt(false);
+      if (historyCancellation) setCancelSuccess(true);
       onParcelUpdated();
     } catch (err) {
       setCancelError(
         err instanceof Error ? err.message : "Failed to cancel delivery"
       );
     } finally {
+      cancellationInFlight.current = false;
       setCancelling(false);
     }
   };
@@ -302,8 +322,12 @@ export function CustomerParcelDrawer({
               </div>
 
               {/* Cancellation Option (FR-CUS-05) */}
-              {!readOnly && parcel.status === "pending" && (
+              {cancelSuccess && <p role="status" className="text-sm text-primary">Delivery cancelled.</p>}
+              {(!readOnly || historyCancellation) && parcel.status === "pending" && (
                 <div className="p-4 rounded-xl border border-[var(--dashboard-warning-bg)] bg-[var(--dashboard-warning-bg)]/20">
+                  {historyCancellation && !historyCancellationPolicy.enabled && (
+                    <p className="mb-3 text-sm text-muted-foreground">{historyCancellationPolicy.message}</p>
+                  )}
                   {!showCancelPrompt ? (
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -324,19 +348,22 @@ export function CustomerParcelDrawer({
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <p className="text-sm font-semibold text-[var(--dashboard-text)]">
+                    <div role="group" aria-labelledby={`cancel-title-${trackingId}`} className="space-y-3">
+                      <p id={`cancel-title-${trackingId}`} className="text-sm font-semibold text-[var(--dashboard-text)]">
                         Confirm Cancellation
                       </p>
+                      <label htmlFor={reasonId} className="block text-sm">Reason for cancellation (optional)</label>
                       <input
+                        id={reasonId}
                         type="text"
+                        disabled={cancelling}
                         placeholder="Reason for cancellation (optional)"
                         value={cancelReason}
                         onChange={(e) => setCancelReason(e.target.value)}
                         className="w-full text-sm p-2 rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)]"
                       />
                       {cancelError && (
-                        <p className="text-sm text-[var(--dashboard-danger-text)]">
+                        <p role="alert" className="text-sm text-[var(--dashboard-danger-text)]">
                           {cancelError}
                         </p>
                       )}
@@ -354,7 +381,7 @@ export function CustomerParcelDrawer({
                           variant="outline"
                           size="sm"
                           onClick={handleCancelDelivery}
-                          disabled={cancelling}
+                          disabled={cancelling || (historyCancellation && !historyCancellationPolicy.enabled)}
                           className="text-sm h-8 bg-[var(--dashboard-danger-bg)] text-[var(--dashboard-danger-text)] border-[var(--dashboard-danger-text)]/40 hover:bg-[var(--dashboard-danger-bg)]/80"
                         >
                           {cancelling ? "Cancelling..." : "Confirm Cancel"}

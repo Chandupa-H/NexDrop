@@ -17,7 +17,8 @@ export async function fetchCustomerParcelsAction(
 
 export async function cancelCustomerParcelAction(
   trackingId: string,
-  reason?: string
+  reason?: string,
+  allowMockFallback = true
 ): Promise<CustomerParcelDetailDTO> {
-  return cancelCustomerParcel(trackingId, { reason });
+  return cancelCustomerParcel(trackingId, { reason }, allowMockFallback);
 }

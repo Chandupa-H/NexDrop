@@ -151,14 +151,16 @@ export async function getCustomerParcelDetail(
  */
 export async function cancelCustomerParcel(
   trackingId: string,
-  payload: CustomerCancelParcelRequestDTO = {}
+  payload: CustomerCancelParcelRequestDTO = {},
+  allowMockFallback = true
 ): Promise<CustomerParcelDetailDTO> {
   try {
     return await apiClient.post<CustomerParcelDetailDTO>(
-      `/customers/customer/parcels/${trackingId}/cancel`,
+      `/customers/customer/parcels/${encodeURIComponent(trackingId)}/cancel`,
       payload
     );
   } catch (err) {
+    if (!allowMockFallback) throw err;
     console.warn(`[CustomerAPI] Backend unreachable, falling back to mock cancellation for ${trackingId}:`, err);
     return cancelMockCustomerParcel(trackingId, payload.reason);
   }
