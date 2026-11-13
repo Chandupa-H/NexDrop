@@ -7,7 +7,7 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   courier: "/courier/dashboard",
   merchant: "/merchant",
   customer: "/",
-  dispatcher: "/courier/dashboard",
+  dispatcher: "/dispatcher/dashboard",
 };
 
 export const DEFAULT_AUTHENTICATED_REDIRECT = "/register";
@@ -52,7 +52,9 @@ export function isProtectedRoute(pathname: string): boolean {
     pathname === "/courier" ||
     pathname.startsWith("/courier/") ||
     pathname === "/merchant" ||
-    pathname.startsWith("/merchant/")
+    pathname.startsWith("/merchant/") ||
+    pathname === "/dispatcher" ||
+    pathname.startsWith("/dispatcher/")
   );
 }
 
@@ -61,6 +63,7 @@ export function isProtectedRoute(pathname: string): boolean {
  * - Admin users have universal access across operational dashboards.
  * - Courier users can access `/courier/*`.
  * - Merchant users can access `/merchant/*`.
+ * - Dispatcher users can access `/dispatcher/*`.
  * - Cross-role access to `/admin/*` is strictly forbidden to non-admins.
  * - Registration routes and public pages are open to all.
  */
@@ -75,6 +78,11 @@ export function isRouteAllowedForRole(pathname: string, role?: string | null): b
   // Courier section: courier or admin
   if (pathname === "/courier" || pathname.startsWith("/courier/")) {
     return normalizedRole === "courier" || normalizedRole === "admin";
+  }
+
+  // Dispatcher section: dispatcher or admin
+  if (pathname === "/dispatcher" || pathname.startsWith("/dispatcher/")) {
+    return normalizedRole === "dispatcher" || normalizedRole === "admin";
   }
 
   // Merchant section: merchant or admin
