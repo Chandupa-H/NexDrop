@@ -18,8 +18,9 @@ import { CreateOrderTab } from "./tabs/CreateOrderTab";
 import { ApiTab } from "./tabs/ApiTab";
 import { WebhooksTab } from "./tabs/WebhooksTab";
 import { ParcelDetailModal } from "./ParcelDetailModal";
+import { MerchantProfileView } from "./MerchantProfileView";
 
-type ActiveTab = "overview" | "orders" | "create" | "api" | "webhooks";
+type ActiveTab = "overview" | "orders" | "create" | "api" | "webhooks" | "profile";
 
 export function MerchantDashboardView() {
   const searchParams = useSearchParams();
@@ -28,7 +29,7 @@ export function MerchantDashboardView() {
   // Read initial tab from search param
   const initialTabParam = searchParams.get("tab") as ActiveTab | null;
   const [activeTab, setActiveTab] = useState<ActiveTab>(
-    initialTabParam && ["overview", "orders", "create", "api", "webhooks"].includes(initialTabParam)
+    initialTabParam && ["overview", "orders", "create", "api", "webhooks", "profile"].includes(initialTabParam)
       ? initialTabParam
       : "overview"
   );
@@ -36,7 +37,7 @@ export function MerchantDashboardView() {
   // Sync state if query changes
   useEffect(() => {
     const tabParam = searchParams.get("tab") as ActiveTab | null;
-    if (tabParam && ["overview", "orders", "create", "api", "webhooks"].includes(tabParam)) {
+    if (tabParam && ["overview", "orders", "create", "api", "webhooks", "profile"].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
@@ -165,8 +166,8 @@ export function MerchantDashboardView() {
         </div>
       )}
 
-      {/* Primary Dashboard Navigation Tabs */}
-      <div className="bg-white border border-[#E5E7EB] rounded-xl p-1.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
+      {activeTab !== "profile" && (
+        <div className="bg-white border border-[#E5E7EB] rounded-xl p-1.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1">
           <button
             onClick={() => handleTabChange("overview")}
@@ -236,6 +237,7 @@ export function MerchantDashboardView() {
             <Webhook className="w-3.5 h-3.5" />
             <span>Webhooks</span>
           </button>
+
         </div>
 
         <div className="hidden sm:flex items-center gap-2 pr-3">
@@ -245,6 +247,7 @@ export function MerchantDashboardView() {
           </span>
         </div>
       </div>
+      )}
 
       {/* Active Tab View */}
       {activeTab === "overview" && (
@@ -288,6 +291,8 @@ export function MerchantDashboardView() {
         />
       )}
 
+      {activeTab === "profile" && <MerchantProfileView />}
+
       {/* Parcel Detail / Tracking Journey Modal */}
       <ParcelDetailModal
         order={selectedOrder}
@@ -298,4 +303,3 @@ export function MerchantDashboardView() {
     </div>
   );
 }
-

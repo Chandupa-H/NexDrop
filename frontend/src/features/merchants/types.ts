@@ -25,6 +25,38 @@ export interface MerchantOrder {
   courierPhone?: string;
 }
 
+export interface MerchantProfileDTO {
+  id: number;
+  full_name: string;
+  email: string;
+  contact_phone: string;
+  business_name: string;
+  registration_number: string;
+  business_contact_phone: string;
+  business_address: string;
+  business_type: string | null;
+  website_url: string | null;
+  approval_status: "pending" | "approved" | "rejected";
+  rejection_reason: string | null;
+  joined_date: string;
+}
+
+export interface MerchantProfileUpdateDTO {
+  full_name: string;
+  contact_phone: string;
+  business_name: string;
+  business_contact_phone: string;
+  business_address: string;
+  business_type: string | null;
+  website_url: string | null;
+}
+
+export interface MerchantPasswordChangeDTO {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
 export interface MerchantKpis {
   totalOrders: number;
   inTransit: number;
@@ -63,4 +95,3 @@ export interface WebhookDeliveryLog {
   durationMs: number;
   payloadSummary: string;
 }
-

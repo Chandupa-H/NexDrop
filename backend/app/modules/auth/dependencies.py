@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import base64
 import binascii
@@ -16,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.modules.couriers.models import Courier
+from app.modules.merchants.models import Merchant, ApprovalStatus
 from app.modules.users.models import User, UserRole
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -301,6 +303,8 @@ async def get_authenticated_courier(
     claims: dict[str, Any] = Depends(get_verified_token_claims),
     session: AsyncSession = Depends(get_db),
 ) -> Courier:
+    from app.modules.couriers.models import Courier
+
     result = await session.execute(
         select(User).where(User.email == claims["email"])
     )
@@ -321,3 +325,34 @@ async def get_authenticated_courier(
             detail="No courier profile is associated with the authenticated user.",
         )
     return courier
+
+
+async def get_authenticated_merchant_profile(
+    claims: dict[str, Any] = Depends(get_verified_token_claims),
+    session: AsyncSession = Depends(get_db),
+) -> Merchant:
+    result = await session.execute(
+        select(User).where(User.email == claims["email"])
+    )
+    user = result.scalars().first()
+    if user is None or not user.is_active or user.role != UserRole.MERCHANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The authenticated user is not an active merchant.",
+        )
+
+    merchant_result = await session.execute(
+        select(Merchant).where(Merchant.user_id == user.id)
+    )
+    merchant = merchant_result.scalars().first()
+    if merchant is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No merchant profile is associated with the authenticated user.",
+        )
+    if merchant.approval_status != ApprovalStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Merchant account must be approved to access the merchant portal.",
+        )
+    return merchant

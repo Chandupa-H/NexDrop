@@ -250,6 +250,7 @@ class MerchantService:
                 user = User(
                     email=payload.email,
                     full_name=payload.full_name,
+                    contact_phone=payload.direct_phone or payload.contact_phone,
                     hashed_password=hashed_pw,
                     role=UserRole.MERCHANT,
                     is_active=False,

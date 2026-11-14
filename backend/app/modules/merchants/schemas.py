@@ -77,6 +77,82 @@ class MerchantUpdate(BaseModel):
     website_url: Optional[str] = None
 
 
+class MerchantProfileUpdateRequest(BaseModel):
+    """Editable fields for the authenticated merchant's account and business."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    contact_phone: Optional[str] = Field(default=None, min_length=7, max_length=24)
+    business_name: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    business_contact_phone: Optional[str] = Field(
+        default=None, min_length=7, max_length=24
+    )
+    business_address: Optional[str] = Field(default=None, min_length=2, max_length=255)
+    business_type: Optional[str] = Field(default=None, max_length=100)
+    website_url: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("full_name", "business_name", "business_address")
+    @classmethod
+    def validate_profile_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            raise ValueError("This field cannot be empty.")
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("This field must contain at least 2 characters.")
+        return value
+
+    @field_validator("contact_phone", "business_contact_phone")
+    @classmethod
+    def validate_profile_phone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            raise ValueError("This field cannot be empty.")
+        import re
+
+        value = value.strip()
+        if not re.fullmatch(r"\+?[0-9][0-9\s()-]*", value):
+            raise ValueError("Enter a valid contact phone number.")
+        digit_count = sum(character.isdigit() for character in value)
+        if not 7 <= digit_count <= 15:
+            raise ValueError("Phone number must contain 7 to 15 digits.")
+        return value
+
+
+class MerchantProfileResponse(BaseModel):
+    """Profile details for the authenticated merchant, excluding API secrets."""
+
+    id: int
+    full_name: str
+    email: EmailStr
+    contact_phone: str
+    business_name: str
+    registration_number: str
+    business_contact_phone: str
+    business_address: str
+    business_type: Optional[str] = None
+    website_url: Optional[str] = None
+    approval_status: ApprovalStatus
+    rejection_reason: Optional[str] = None
+    joined_date: str
+
+
+class MerchantPasswordChangeRequest(BaseModel):
+    """Validate a merchant password change before sending it to Supabase Auth."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=12, max_length=1024)
+    confirm_password: str = Field(min_length=12, max_length=1024)
+
+    @field_validator("confirm_password")
+    @classmethod
+    def validate_password_confirmation(cls, value: str, info) -> str:
+        if "new_password" in info.data and value != info.data["new_password"]:
+            raise ValueError("Password confirmation does not match.")
+        return value
+
+
 # ---------------------------------------------------------------------------
 # Full response (returned to authenticated callers)
 # ---------------------------------------------------------------------------

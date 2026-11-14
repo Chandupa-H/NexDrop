@@ -10,7 +10,7 @@ export const merchantDashboardConfig: DashboardRoleConfig = {
   roleLabel: "Merchant Portal",
   basePath: "/merchant",
   homeHref: "/merchant/dashboard?tab=orders",
-  profileHref: "/merchant/dashboard?tab=api",
+  profileHref: "/merchant/dashboard?tab=profile",
   searchPlaceholder: "Search shipments, tracking #, recipient...",
   nav: [
     {
@@ -49,6 +49,19 @@ export const merchantDashboardConfig: DashboardRoleConfig = {
           label: "Webhooks",
           href: "/merchant/dashboard?tab=webhooks",
           icon: "webhook",
+          availability: "live",
+        },
+      ],
+    },
+    {
+      id: "account",
+      label: "Account",
+      items: [
+        {
+          id: "profile",
+          label: "My Profile",
+          href: "/merchant/dashboard?tab=profile",
+          icon: "user",
           availability: "live",
         },
       ],
