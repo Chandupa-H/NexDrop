@@ -8,6 +8,7 @@ import { cache } from "react";
 import apiClient from "@/lib/api-client";
 import type {
   CustomerMeDTO,
+  CustomerProfileUpdateDTO,
   CustomerDashboardSummaryDTO,
   CustomerParcelListDTO,
   CustomerParcelDetailDTO,
@@ -27,9 +28,14 @@ import {
 } from "./customer.mock";
 
 /**
- * Get authenticated customer profile.
- * Wrapped in React cache() so the layout userSlot and page share one request per render.
+ * Strict account read. Errors propagate; no demo identity is returned.
+ * React cache() deduplicates server-render reads within the current render.
  */
+export const getCustomerAccountProfile = cache(async (): Promise<CustomerMeDTO> => {
+  return apiClient.get<CustomerMeDTO>("/customers/customer/me");
+});
+
+/** Legacy delivery defaults only. Never use this demo-capable reader for account identity. */
 export const getCustomerProfile = cache(async (): Promise<CustomerMeDTO> => {
   try {
     return await apiClient.get<CustomerMeDTO>("/customers/customer/me");
@@ -42,40 +48,14 @@ export const getCustomerProfile = cache(async (): Promise<CustomerMeDTO> => {
 /**
  * Update authenticated customer profile.
  */
-export async function updateCustomerProfile(
-  payload: Partial<{
-    full_name: string;
-    phone: string;
-    default_address: string;
-    city: string;
-    postal_code: string;
-  }>
-): Promise<CustomerMeDTO> {
-  try {
-    const updated = await apiClient.put<CustomerMeDTO>("/customers/customer/me", payload);
-    // keep mock in sync
-    Object.assign(MOCK_CUSTOMER_ME, updated);
-    return updated;
-  } catch (err) {
-    console.warn("[CustomerAPI] Backend unreachable, updating in-memory profile:", err);
-    if (payload.full_name) MOCK_CUSTOMER_ME.full_name = payload.full_name;
-    if (payload.phone) MOCK_CUSTOMER_ME.phone = payload.phone;
-    if (payload.default_address) MOCK_CUSTOMER_ME.default_address = payload.default_address;
-    if (payload.city) MOCK_CUSTOMER_ME.city = payload.city;
-    if (payload.postal_code) MOCK_CUSTOMER_ME.postal_code = payload.postal_code;
-    return { ...MOCK_CUSTOMER_ME };
-  }
+export async function updateCustomerProfile(payload: CustomerProfileUpdateDTO): Promise<CustomerMeDTO> {
+  // HTTP/network failures are never converted into an in-memory update.
+  return apiClient.put<CustomerMeDTO>("/customers/customer/me", payload);
 }
 
-/**
- * Delete customer profile and session data.
- */
+/** Account deletion is disabled; never invoke a live DELETE endpoint. */
 export async function deleteCustomerProfile(): Promise<void> {
-  try {
-    await apiClient.delete("/customers/customer/me");
-  } catch (err) {
-    console.warn("[CustomerAPI] Backend unreachable during profile deletion:", err);
-  }
+  throw new Error("Account deletion is disabled pending Platform identity and account-lifecycle integration.");
 }
 
 /**

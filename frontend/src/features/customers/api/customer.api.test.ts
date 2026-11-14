@@ -1,11 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import apiClient from "@/lib/api-client";
-import { getCustomerParcels, getCustomerParcelDetail, cancelCustomerParcel } from "./customer.api";
+import { getCustomerParcels, getCustomerParcelDetail, cancelCustomerParcel, getCustomerAccountProfile, updateCustomerProfile, deleteCustomerProfile } from "./customer.api";
 
-vi.mock("@/lib/api-client", () => ({ default: { get: vi.fn(), post: vi.fn() } }));
+vi.mock("@/lib/api-client", () => ({ default: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } }));
 
 describe("customer parcel list API", () => {
   beforeEach(() => vi.resetAllMocks());
+  it("never substitutes a mock identity or mock update on the strict account path", async () => {
+    const unavailable = new Error("Account unavailable");
+    vi.mocked(apiClient.get).mockRejectedValue(unavailable);
+    vi.mocked(apiClient.put).mockRejectedValue(unavailable);
+    await expect(getCustomerAccountProfile()).rejects.toBe(unavailable);
+    await expect(updateCustomerProfile({ full_name: "New Name" })).rejects.toBe(unavailable);
+  });
+  it("blocks deletion locally without calling the API", async () => {
+    await expect(deleteCustomerProfile()).rejects.toThrow("deletion is disabled");
+    expect(apiClient.delete).not.toHaveBeenCalled();
+  });
   it("propagates strict cancellation errors without a mock success", async () => {
     const conflict = new Error("Conflict");
     vi.mocked(apiClient.post).mockRejectedValue(conflict);

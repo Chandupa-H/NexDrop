@@ -1,4 +1,5 @@
-import { getCustomerProfile } from "../api/customer.api";
+import Link from "next/link";
+import { getCustomerAccountProfile } from "../api/customer.api";
 import { mapCustomerProfile } from "../api/customer.mappers";
 import { customerDashboardConfig } from "../config/dashboard.config";
 import { TopbarProfileLink } from "@/components/dashboard/shell/dashboard-topbar";
@@ -8,7 +9,12 @@ import { TopbarProfileLink } from "@/components/dashboard/shell/dashboard-topbar
  * Wrapped in Suspense by the layout with CustomerTopbarUserSkeleton fallback.
  */
 export async function CustomerTopbarUser({ profileHref }: { profileHref: string }) {
-  const profile = mapCustomerProfile(await getCustomerProfile());
+  let profile;
+  try {
+    profile = mapCustomerProfile(await getCustomerAccountProfile());
+  } catch {
+    return <Link href={profileHref} className="inline-flex min-h-11 items-center px-3 text-sm text-primary" title="Authenticated customer account details are unavailable">Customer account</Link>;
+  }
 
   return (
     <TopbarProfileLink

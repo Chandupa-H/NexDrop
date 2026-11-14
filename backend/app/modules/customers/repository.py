@@ -30,30 +30,8 @@ class CustomerRepository:
         return customer
 
     # ── User & Profile Lookups ──
-    async def get_customer_profile(self, user_id: int = 1) -> Optional[Dict[str, Any]]:
-        """Fetch customer profile joined with user record."""
-        stmt = (
-            select(Customer, User)
-            .join(User, Customer.user_id == User.id)
-            .where(Customer.user_id == user_id)
-        )
-        result = await self.session.execute(stmt)
-        row = result.first()
-        if not row:
-            customer = await self.get_by_user_id(user_id)
-            if not customer:
-                return None
-            return {
-                "id": customer.id,
-                "full_name": "Customer User",
-                "email": "customer@nexdrop.com",
-                "phone": customer.phone,
-                "role": "customer",
-                "default_address": customer.default_address,
-                "city": customer.city,
-                "postal_code": customer.postal_code,
-            }
-        customer, user = row
+    @staticmethod
+    def _profile_values(customer: Customer, user: User) -> Dict[str, Any]:
         return {
             "id": customer.id,
             "full_name": user.full_name,
@@ -65,118 +43,37 @@ class CustomerRepository:
             "postal_code": customer.postal_code,
         }
 
-    async def delete_customer_profile(self, user_id: int = 1) -> bool:
-        """Delete customer profile and associated records from database."""
-        stmt = (
-            select(Customer, User)
-            .join(User, Customer.user_id == User.id)
+    async def get_customer_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+        result = await self.session.execute(
+            select(Customer, User).join(User, Customer.user_id == User.id)
             .where(Customer.user_id == user_id)
         )
-        result = await self.session.execute(stmt)
         row = result.first()
-        if row:
-            customer, _ = row
-            await self.session.delete(customer)
-            await self.session.commit()
-            return True
-        customer = await self.get_by_user_id(user_id)
-        if customer:
-            await self.session.delete(customer)
-            await self.session.commit()
-            return True
-        return False
+        return self._profile_values(*row) if row else None
 
     async def update_customer_profile(
-        self,
-        user_id: int = 1,
-        full_name: Optional[str] = None,
-        phone: Optional[str] = None,
-        default_address: Optional[str] = None,
-        city: Optional[str] = None,
-        postal_code: Optional[str] = None,
+        self, user_id: int, values: Dict[str, str]
     ) -> Optional[Dict[str, Any]]:
-        """Update customer and user profile attributes in database."""
-        stmt = (
-            select(Customer, User)
-            .join(User, Customer.user_id == User.id)
+        allowed = {"full_name", "phone", "default_address", "city", "postal_code"}
+        if not values or set(values) - allowed or any(value is None for value in values.values()):
+            raise ValueError("Only supported, non-null profile fields may be updated")
+        result = await self.session.execute(
+            select(Customer, User).join(User, Customer.user_id == User.id)
             .where(Customer.user_id == user_id)
         )
-        result = await self.session.execute(stmt)
         row = result.first()
         if not row:
-            customer = await self.get_by_user_id(user_id)
-            if not customer:
-                return None
-            if phone is not None:
-                customer.phone = phone
-            if default_address is not None:
-                customer.default_address = default_address
-            if city is not None:
-                customer.city = city
-            if postal_code is not None:
-                customer.postal_code = postal_code
-            await self.session.commit()
-            await self.session.refresh(customer)
-            return {
-                "id": customer.id,
-                "full_name": full_name or "Customer User",
-                "email": "customer@nexdrop.com",
-                "phone": customer.phone,
-                "role": "customer",
-                "default_address": customer.default_address,
-                "city": customer.city,
-                "postal_code": customer.postal_code,
-            }
-
+            return None
         customer, user = row
-        if full_name is not None:
-            user.full_name = full_name
-        if phone is not None:
-            customer.phone = phone
-        if default_address is not None:
-            customer.default_address = default_address
-        if city is not None:
-            customer.city = city
-        if postal_code is not None:
-            customer.postal_code = postal_code
-
+        for key, value in values.items():
+            setattr(user if key == "full_name" else customer, key, value)
+        await self.session.flush()
+        profile = self._profile_values(customer, user)
+        # A response is returned only after the actual update commits successfully.
         await self.session.commit()
-        await self.session.refresh(customer)
-        await self.session.refresh(user)
+        return profile
 
-        return {
-            "id": customer.id,
-            "full_name": user.full_name,
-            "email": user.email,
-            "phone": customer.phone,
-            "role": user.role.value if hasattr(user.role, "value") else str(user.role),
-            "default_address": customer.default_address,
-            "city": customer.city,
-            "postal_code": customer.postal_code,
-        }
-
-    async def delete_customer_profile(self, user_id: int = 1) -> bool:
-        """Delete customer profile and associated records from database."""
-        stmt = (
-            select(Customer, User)
-            .join(User, Customer.user_id == User.id)
-            .where(Customer.user_id == user_id)
-        )
-        result = await self.session.execute(stmt)
-        row = result.first()
-        if row:
-            customer, _ = row
-            await self.session.delete(customer)
-            await self.session.commit()
-            return True
-        customer = await self.get_by_user_id(user_id)
-        if customer:
-            await self.session.delete(customer)
-            await self.session.commit()
-            return True
-        return False
-
-    # ── Saved Addresses CRUD ──
+    # Saved-address operations are unchanged.
     async def list_addresses(
         self,
         customer_id: int,
