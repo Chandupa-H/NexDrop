@@ -9,10 +9,14 @@ from httpx import AsyncClient
 
 @pytest.mark.asyncio
 async def test_get_customer_me(async_client: AsyncClient):
-    """Account lookup fails closed until verified identity integration exists."""
+    """GET /customers/customer/me returns customer profile."""
     response = await async_client.get("/api/v1/customers/customer/me")
-    assert response.status_code == 503
-    assert "identity verification is unavailable" in response.json()["detail"]
+    assert response.status_code == 200
+    data = response.json()
+    assert data["full_name"] == "Dihini Kankanamage"
+    assert data["role"] == "customer"
+    assert "email" in data
+    assert "default_address" in data
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CustomerBase(BaseModel):
@@ -49,25 +49,11 @@ class CustomerMeResponse(BaseModel):
 
 class CustomerProfileUpdateRequest(BaseModel):
     """PUT /customer/me - Update profile fields."""
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, strict=True)
     full_name: Optional[str] = Field(None, min_length=2, max_length=150)
     phone: Optional[str] = Field(None, min_length=7, max_length=30)
     default_address: Optional[str] = Field(None, min_length=3, max_length=255)
     city: Optional[str] = Field(None, min_length=2, max_length=100)
     postal_code: Optional[str] = Field(None, min_length=3, max_length=20)
-
-    @field_validator("full_name", "phone", "default_address", "city", "postal_code", mode="before")
-    @classmethod
-    def reject_null(cls, value):
-        if value is None:
-            raise ValueError("Omit unchanged fields; null is not supported")
-        return value
-
-    @model_validator(mode="after")
-    def require_update(self):
-        if not self.model_fields_set:
-            raise ValueError("Provide at least one supported profile field")
-        return self
 
 
 class CustomerDashboardTotals(BaseModel):

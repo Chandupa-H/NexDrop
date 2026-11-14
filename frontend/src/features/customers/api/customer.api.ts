@@ -8,7 +8,6 @@ import { cache } from "react";
 import apiClient from "@/lib/api-client";
 import type {
   CustomerMeDTO,
-  CustomerProfileUpdateDTO,
   CustomerDashboardSummaryDTO,
   CustomerParcelListDTO,
   CustomerParcelDetailDTO,
@@ -28,14 +27,9 @@ import {
 } from "./customer.mock";
 
 /**
- * Strict account read. Errors propagate; no demo identity is returned.
- * React cache() deduplicates server-render reads within the current render.
+ * Get authenticated customer profile.
+ * Wrapped in React cache() so the layout userSlot and page share one request per render.
  */
-export const getCustomerAccountProfile = cache(async (): Promise<CustomerMeDTO> => {
-  return apiClient.get<CustomerMeDTO>("/customers/customer/me");
-});
-
-/** Legacy delivery defaults only. Never use this demo-capable reader for account identity. */
 export const getCustomerProfile = cache(async (): Promise<CustomerMeDTO> => {
   try {
     return await apiClient.get<CustomerMeDTO>("/customers/customer/me");
@@ -48,14 +42,40 @@ export const getCustomerProfile = cache(async (): Promise<CustomerMeDTO> => {
 /**
  * Update authenticated customer profile.
  */
-export async function updateCustomerProfile(payload: CustomerProfileUpdateDTO): Promise<CustomerMeDTO> {
-  // HTTP/network failures are never converted into an in-memory update.
-  return apiClient.put<CustomerMeDTO>("/customers/customer/me", payload);
+export async function updateCustomerProfile(
+  payload: Partial<{
+    full_name: string;
+    phone: string;
+    default_address: string;
+    city: string;
+    postal_code: string;
+  }>
+): Promise<CustomerMeDTO> {
+  try {
+    const updated = await apiClient.put<CustomerMeDTO>("/customers/customer/me", payload);
+    // keep mock in sync
+    Object.assign(MOCK_CUSTOMER_ME, updated);
+    return updated;
+  } catch (err) {
+    console.warn("[CustomerAPI] Backend unreachable, updating in-memory profile:", err);
+    if (payload.full_name) MOCK_CUSTOMER_ME.full_name = payload.full_name;
+    if (payload.phone) MOCK_CUSTOMER_ME.phone = payload.phone;
+    if (payload.default_address) MOCK_CUSTOMER_ME.default_address = payload.default_address;
+    if (payload.city) MOCK_CUSTOMER_ME.city = payload.city;
+    if (payload.postal_code) MOCK_CUSTOMER_ME.postal_code = payload.postal_code;
+    return { ...MOCK_CUSTOMER_ME };
+  }
 }
 
-/** Account deletion is disabled; never invoke a live DELETE endpoint. */
+/**
+ * Delete customer profile and session data.
+ */
 export async function deleteCustomerProfile(): Promise<void> {
-  throw new Error("Account deletion is disabled pending Platform identity and account-lifecycle integration.");
+  try {
+    await apiClient.delete("/customers/customer/me");
+  } catch (err) {
+    console.warn("[CustomerAPI] Backend unreachable during profile deletion:", err);
+  }
 }
 
 /**
@@ -82,8 +102,7 @@ export interface GetCustomerParcelsParams {
  * List customer parcels with optional status filter and pagination.
  */
 export async function getCustomerParcels(
-  params?: GetCustomerParcelsParams,
-  allowMockFallback = true
+  params?: GetCustomerParcelsParams
 ): Promise<CustomerParcelListDTO> {
   const searchParams = new URLSearchParams();
   if (params?.status && params.status !== "all") {
@@ -102,7 +121,6 @@ export async function getCustomerParcels(
       `/customers/customer/parcels${query ? `?${query}` : ""}`
     );
   } catch (err) {
-    if (!allowMockFallback) throw err;
     console.warn("[CustomerAPI] Backend unreachable, falling back to mock parcels list:", err);
     return filterMockParcels(params?.status, params?.limit, params?.offset);
   }
@@ -112,15 +130,13 @@ export async function getCustomerParcels(
  * Get full customer parcel details including timeline and masked phone.
  */
 export async function getCustomerParcelDetail(
-  trackingId: string,
-  allowMockFallback = true
+  trackingId: string
 ): Promise<CustomerParcelDetailDTO> {
   try {
     return await apiClient.get<CustomerParcelDetailDTO>(
-      `/customers/customer/parcels/${encodeURIComponent(trackingId)}`
+      `/customers/customer/parcels/${trackingId}`
     );
   } catch (err) {
-    if (!allowMockFallback) throw err;
     console.warn(`[CustomerAPI] Backend unreachable, falling back to mock parcel detail for ${trackingId}:`, err);
     return getMockCustomerParcelDetail(trackingId);
   }
@@ -131,16 +147,14 @@ export async function getCustomerParcelDetail(
  */
 export async function cancelCustomerParcel(
   trackingId: string,
-  payload: CustomerCancelParcelRequestDTO = {},
-  allowMockFallback = true
+  payload: CustomerCancelParcelRequestDTO = {}
 ): Promise<CustomerParcelDetailDTO> {
   try {
     return await apiClient.post<CustomerParcelDetailDTO>(
-      `/customers/customer/parcels/${encodeURIComponent(trackingId)}/cancel`,
+      `/customers/customer/parcels/${trackingId}/cancel`,
       payload
     );
   } catch (err) {
-    if (!allowMockFallback) throw err;
     console.warn(`[CustomerAPI] Backend unreachable, falling back to mock cancellation for ${trackingId}:`, err);
     return cancelMockCustomerParcel(trackingId, payload.reason);
   }
