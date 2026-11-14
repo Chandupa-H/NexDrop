@@ -1,14 +1,18 @@
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
+import jwt
 from httpx import AsyncClient
-from fastapi import HTTPException
+from fastapi import HTTPException, WebSocketDisconnect
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -18,8 +22,19 @@ from app.modules.auth.dependencies import (
     get_verified_token_claims,
     verify_supabase_access_token,
 )
-from app.modules.couriers.delivery_routes import get_courier_service
+from app.modules.auth import dependencies as auth_dependencies
+from app.modules.couriers.delivery_routes import (
+    courier_location_websocket,
+    create_courier_location_websocket_ticket,
+    get_courier_service,
+)
 from app.modules.couriers.repository import CourierRepository
+from app.modules.couriers.routes import (
+    get_courier_me,
+    get_courier_parcels,
+    get_dashboard_summary,
+    list_courier_failed_deliveries,
+)
 from app.modules.couriers.schemas import (
     CourierLocationResponse,
     CourierLocationUpdateRequest,
@@ -29,7 +44,8 @@ from app.modules.couriers.schemas import (
     DeliveryStatusUpdateRequest,
 )
 from app.modules.couriers.service import CourierService
-from app.modules.parcels.models import ParcelStatus
+from app.modules.parcels.models import ParcelStatus, ParcelStatusHistory
+from app.modules.users.models import UserRole
 
 
 class StubResult:
@@ -390,8 +406,18 @@ async def test_history_route_rejects_invalid_filters(async_client: AsyncClient, 
 @pytest.mark.asyncio
 async def test_location_route_uses_authenticated_courier_and_rejects_bad_coordinates(
     async_client: AsyncClient,
+    monkeypatch,
 ):
     service = StubCourierService()
+    broadcasts = []
+
+    async def record_broadcast(channel, message):
+        broadcasts.append((channel, message))
+
+    monkeypatch.setattr(
+        "app.modules.couriers.delivery_routes.ws_manager.broadcast_to_channel",
+        record_broadcast,
+    )
     app.dependency_overrides[get_authenticated_courier] = lambda: SimpleNamespace(id=42)
     app.dependency_overrides[get_courier_service] = lambda: service
     try:
@@ -424,9 +450,55 @@ async def test_location_route_uses_authenticated_courier_and_rejects_bad_coordin
     assert accepted.status_code == 200
     assert service.location_request[0] == 42
     assert service.location_request[1].delivery_id == 9
+    assert broadcasts[0][0] == "courier-location:42"
+    assert broadcasts[0][1]["type"] == "courier.location.updated"
     assert out_of_range.status_code == 422
     assert not_finite.status_code == 422
     assert non_numeric.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_location_websocket_ticket_is_short_lived_and_single_use(monkeypatch):
+    ticket_response = await create_courier_location_websocket_ticket(
+        SimpleNamespace(id=42)
+    )
+    connections = []
+    disconnections = []
+
+    async def record_connect(_websocket, channel):
+        connections.append(channel)
+
+    def record_disconnect(_websocket, channel):
+        disconnections.append(channel)
+
+    monkeypatch.setattr(
+        "app.modules.couriers.delivery_routes.ws_manager.connect",
+        record_connect,
+    )
+    monkeypatch.setattr(
+        "app.modules.couriers.delivery_routes.ws_manager.disconnect",
+        record_disconnect,
+    )
+
+    class StubWebSocket:
+        def __init__(self, ticket):
+            self.query_params = {"ticket": ticket}
+            self.close_code = None
+
+        async def close(self, code, reason):
+            self.close_code = code
+
+        async def receive_text(self):
+            raise WebSocketDisconnect(code=1000)
+
+    websocket = StubWebSocket(ticket_response.ticket)
+    await courier_location_websocket(websocket)
+    assert connections == ["courier-location:42"]
+    assert disconnections == ["courier-location:42"]
+
+    reused_websocket = StubWebSocket(ticket_response.ticket)
+    await courier_location_websocket(reused_websocket)
+    assert reused_websocket.close_code == 1008
 
 
 @pytest.mark.asyncio
@@ -559,7 +631,7 @@ class LocationRepositoryStub:
 
 
 @pytest.mark.asyncio
-async def test_location_service_uses_authenticated_courier_and_requires_active_delivery():
+async def test_location_service_allows_device_tracking_without_delivery():
     repository = LocationRepositoryStub()
     service = CourierService(repository)
     courier = SimpleNamespace(id=42, is_available=True)
@@ -577,9 +649,12 @@ async def test_location_service_uses_authenticated_courier_and_requires_active_d
     assert no_active_delivery.value.status_code == 409
 
     courier.is_available = False
-    with pytest.raises(HTTPException) as unavailable_courier:
-        await service.post_courier_location(courier, payload)
-    assert unavailable_courier.value.status_code == 409
+    location, accepted = await service.post_courier_location(
+        courier,
+        CourierLocationUpdateRequest(lat=6.9, lng=79.8),
+    )
+    assert accepted is True
+    assert location.active_delivery_id is None
 
 
 @pytest.mark.asyncio
@@ -679,3 +754,358 @@ def test_supabase_access_token_signature_and_claims(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         verify_supabase_access_token(f"{header}.{claims}.invalid")
     assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_supabase_es256_access_token_verification_is_shared_and_cached(monkeypatch):
+    supabase_url = "https://example.supabase.co"
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", "legacy-secret")
+    monkeypatch.setattr(settings, "SUPABASE_URL", supabase_url)
+    private_key = ec.generate_private_key(ec.SECP256R1())
+    token = jwt.encode(
+        {
+            "aud": "authenticated",
+            "role": "authenticated",
+            "email": "courier@example.com",
+            "exp": 4_102_444_800,
+            "iss": f"{supabase_url}/auth/v1",
+        },
+        private_key,
+        algorithm="ES256",
+        headers={"kid": "current-signing-key"},
+    )
+
+    class JwksClient:
+        requests = 0
+
+        def get_signing_key_from_jwt(self, _token):
+            type(self).requests += 1
+            time.sleep(0.05)
+            return SimpleNamespace(key=private_key.public_key())
+
+    monkeypatch.setattr(
+        auth_dependencies,
+        "_get_supabase_jwks_client",
+        lambda _url: JwksClient(),
+    )
+
+    credentials = SimpleNamespace(scheme="Bearer", credentials=token)
+    claims, concurrent_claims = await asyncio.gather(
+        get_verified_token_claims(credentials),
+        get_verified_token_claims(credentials),
+    )
+    cached_claims = await get_verified_token_claims(credentials)
+
+    assert claims["email"] == "courier@example.com"
+    assert claims["role"] == "authenticated"
+    assert concurrent_claims == claims
+    assert cached_claims == claims
+    assert JwksClient.requests == 1
+
+
+@pytest.mark.asyncio
+async def test_supabase_access_token_falls_back_to_auth_api_for_rotated_keys(monkeypatch):
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", "legacy-secret")
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "SUPABASE_KEY", "test-api-key")
+
+    request_values = {}
+
+    class AuthResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"id": "auth-user-id", "email": "courier@example.com"}
+
+    class AuthClient:
+        def __init__(self, *, timeout):
+            assert timeout == 5.0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, url, *, headers):
+            request_values.update(url=url, headers=headers)
+            return AuthResponse()
+
+    monkeypatch.setattr(auth_dependencies.httpx, "AsyncClient", AuthClient)
+
+    claims = await get_verified_token_claims(
+        SimpleNamespace(scheme="Bearer", credentials="signed-with-rotated-key")
+    )
+
+    assert claims["sub"] == "auth-user-id"
+    assert claims["email"] == "courier@example.com"
+    assert request_values["url"] == "https://example.supabase.co/auth/v1/user"
+    assert request_values["headers"]["apikey"] == "test-api-key"
+    assert request_values["headers"]["Authorization"] == "Bearer signed-with-rotated-key"
+
+
+@pytest.mark.asyncio
+async def test_supabase_access_token_rejects_tokens_not_accepted_by_auth_api(monkeypatch):
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", "legacy-secret")
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "SUPABASE_KEY", "test-api-key")
+
+    class AuthResponse:
+        status_code = 401
+
+    class AuthClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url, *, headers):
+            return AuthResponse()
+
+    monkeypatch.setattr(auth_dependencies.httpx, "AsyncClient", AuthClient)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_verified_token_claims(
+            SimpleNamespace(scheme="Bearer", credentials="invalid-token")
+        )
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_concurrent_requests_share_supabase_token_verification(monkeypatch):
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", "legacy-secret")
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setattr(settings, "SUPABASE_KEY", "test-api-key")
+
+    class AuthResponse:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"id": "supabase-user-id", "email": "courier@example.com"}
+
+    class AuthClient:
+        requests = 0
+
+        def __init__(self, *, timeout):
+            assert timeout == 5.0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def get(self, _url, *, headers):
+            type(self).requests += 1
+            assert headers["Authorization"] == "Bearer unsupported-token"
+            await asyncio.sleep(0.02)
+            return AuthResponse()
+
+    monkeypatch.setattr(auth_dependencies.httpx, "AsyncClient", AuthClient)
+    credentials = SimpleNamespace(
+        scheme="Bearer",
+        credentials="unsupported-token",
+    )
+
+    first, second = await asyncio.gather(
+        get_verified_token_claims(credentials),
+        get_verified_token_claims(credentials),
+    )
+
+    assert first == second
+    assert first["email"] == "courier@example.com"
+    assert AuthClient.requests == 1
+
+
+@pytest.mark.asyncio
+async def test_courier_me_returns_authenticated_database_profile():
+    class ProfileSession:
+        async def get(self, model, user_id):
+            assert user_id == 17
+            return SimpleNamespace(
+                full_name="Courier Example",
+                role=UserRole.COURIER,
+            )
+
+    profile = await get_courier_me(
+        courier=SimpleNamespace(id=42, user_id=17),
+        session=ProfileSession(),
+    )
+
+    assert profile.id == 42
+    assert profile.full_name == "Courier Example"
+    assert profile.role == "courier"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_summary_loads_weekly_deliveries_in_one_history_query():
+    colombo_tz = ZoneInfo("Asia/Colombo")
+    now = datetime.now(colombo_tz)
+    history = [
+        (5, now - timedelta(hours=1)),
+        (5, now - timedelta(minutes=30)),
+        (8, now - timedelta(days=1)),
+    ]
+
+    class SummaryResult:
+        def __init__(self, result_number):
+            self.result_number = result_number
+
+        def mappings(self):
+            return self
+
+        def one(self):
+            return {
+                "total": 3,
+                "delivered": 2,
+                "pending": 1,
+                "failed": 0,
+                "in_transit": 0,
+            }
+
+        def all(self):
+            assert self.result_number == 2
+            return history
+
+    class SummarySession:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _statement):
+            self.calls += 1
+            return SummaryResult(self.calls)
+
+    session = SummarySession()
+    summary = await get_dashboard_summary(
+        courier=SimpleNamespace(id=42),
+        session=session,
+    )
+
+    assert session.calls == 2
+    counts_by_date = {
+        entry.date: entry.delivered for entry in summary.weekly_deliveries
+    }
+    assert counts_by_date[now.date().isoformat()] == 1
+    assert counts_by_date[(now.date() - timedelta(days=1)).isoformat()] == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_deliveries_uses_persisted_courier_assignment_and_attempts():
+    now = datetime.now(timezone.utc)
+    today = now.astimezone(ZoneInfo("Asia/Colombo")).date()
+    parcel = SimpleNamespace(
+        id=5,
+        tracking_number="ND-FAILED-005",
+        recipient_name="Recipient",
+        recipient_phone="0771234567",
+        delivery_city="Galle",
+        delivery_address="12 Main Street",
+        status=ParcelStatus.CANCELLED,
+        failure_reason="customer_unavailable",
+        updated_at=now,
+        created_at=now - timedelta(days=3),
+    )
+    histories = [
+        SimpleNamespace(
+            id=1,
+            parcel_id=5,
+            status=ParcelStatus.CANCELLED,
+            occurred_at=now - timedelta(days=1),
+            note="Earlier attempt",
+        ),
+        SimpleNamespace(
+            id=2,
+            parcel_id=5,
+            status=ParcelStatus.CANCELLED,
+            occurred_at=now,
+            note="Most recent attempt",
+        ),
+    ]
+
+    class RowsResult:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self.rows
+
+    class Session:
+        def __init__(self):
+            self.results = [
+                RowsResult([parcel]),
+                RowsResult([(5, now - timedelta(days=3))]),
+                RowsResult(histories),
+            ]
+
+        async def execute(self, _statement):
+            return self.results.pop(0)
+
+        async def get(self, _model, _user_id):
+            return SimpleNamespace(full_name="Chamara Perera")
+
+    result = await list_courier_failed_deliveries(
+        q="ND-FAILED",
+        reason="customer_unavailable",
+        delivery_date=today,
+        courier=SimpleNamespace(id=42, user_id=7),
+        session=Session(),
+    )
+
+    assert result.total == 1
+    record = result.items[0]
+    assert record.courier_name == "Chamara Perera"
+    assert record.assigned_at == (now - timedelta(days=3)).isoformat()
+    assert record.parcel_status == "cancelled"
+    assert record.attempt_number == 2
+    assert record.previous_attempts[0].failure_reason is None
+    assert record.previous_attempts[0].failure_reason_label == "Not recorded"
+    assert record.redelivery_status is None
+    assert result.summary.pending_redelivery is None
+    assert result.summary.today_failed_deliveries == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_parcel_filter_maps_to_cancelled_backend_status():
+    parcel = SimpleNamespace(
+        id=5,
+        tracking_number="ND-FAILED-005",
+        recipient_name="Recipient",
+        recipient_phone="0771234567",
+        delivery_city="Galle",
+        delivery_address="12 Main Street",
+        status=ParcelStatus.CANCELLED,
+    )
+    assigned_at = datetime(2026, 11, 12, 8, tzinfo=timezone.utc)
+
+    class ParcelResult:
+        def all(self):
+            return [(parcel, assigned_at)]
+
+    class Session:
+        async def scalar(self, _statement):
+            return 1
+
+        async def execute(self, _statement):
+            return ParcelResult()
+
+    result = await get_courier_parcels(
+        status_filter="failed",
+        limit=6,
+        offset=0,
+        courier=SimpleNamespace(id=42),
+        session=Session(),
+    )
+
+    assert result.total == 1
+    assert result.items[0].tracking_id == "ND-FAILED-005"
+    assert result.items[0].status == "failed"
+    assert result.items[0].assigned_at == assigned_at.isoformat()

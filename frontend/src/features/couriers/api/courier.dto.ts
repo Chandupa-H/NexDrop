@@ -40,7 +40,7 @@ export interface DashboardTotalsDTO {
 export interface DashboardKPIDTO {
   key: string;
   value: number;
-  delta_pct: number;
+  delta_pct: number | null;
 }
 
 export interface WeeklyDeliveryDTO {
@@ -82,7 +82,7 @@ export interface ParcelDetailDTO {
   destination: string;
   address_line: string;
   status: string;
-  assigned_at: string;
+  assigned_at: string | null;
   eta: string | null;
   notes: string[];
   timeline: TimelineEventDTO[];
@@ -135,15 +135,13 @@ export interface CourierProofListDTO {
 export interface CourierProofParamsDTO {
   q?: string;
   date?: string;
-  status?: "delivered" | "failed";
+  status?: "delivered";
 }
-
-export type FailedRedeliveryStatusDTO = "pending" | "scheduled" | "completed" | "superseded";
 
 export interface FailedDeliveryAttemptDTO {
   attempt_number: number;
   failed_at: string;
-  failure_reason: string;
+  failure_reason: string | null;
   failure_reason_label: string;
   note: string | null;
 }
@@ -158,14 +156,14 @@ export interface FailedDeliveryRecordDTO extends FailedDeliveryAttemptDTO {
   eta: string | null;
   courier_name: string | null;
   parcel_status: string;
-  redelivery_status: FailedRedeliveryStatusDTO;
+  redelivery_status: null;
   previous_attempts: FailedDeliveryAttemptDTO[];
 }
 
 export interface FailedDeliverySummaryDTO {
   total_failed_deliveries: number;
   today_failed_deliveries: number;
-  pending_redelivery: number;
+  pending_redelivery: number | null;
   most_common_failure_reason: string | null;
 }
 
@@ -179,7 +177,6 @@ export interface FailedDeliveryParamsDTO {
   q?: string;
   reason?: string;
   date?: string;
-  redelivery_status?: FailedRedeliveryStatusDTO;
 }
 
 export interface SuccessfulDeliveryRequestDTO {
@@ -188,7 +185,7 @@ export interface SuccessfulDeliveryRequestDTO {
 }
 
 export interface FailedDeliveryRequestDTO {
-  failure_reason: string;
+  failure_reason: string | null;
   note?: string;
   confirmed: boolean;
 }
@@ -264,6 +261,7 @@ export interface DeliveryHistoryParams {
 }
 
 export interface CourierLocationDTO {
+  courier_id?: number;
   lat: number;
   lng: number;
   accuracy: number | null;
@@ -282,10 +280,9 @@ export interface DeliveryDestinationDTO {
 export interface DeliveryTrackingDTO {
   delivery: DeliveryListItemDTO;
   courier_location: CourierLocationDTO | null;
-  location_source: "live" | "simulated" | "unavailable";
+  location_source: "live" | "unavailable";
   next_destination: DeliveryDestinationDTO | null;
   next_action: string;
-  simulation_route?: Array<{ lat: number; lng: number }>;
 }
 
 export interface CourierLocationUpdateDTO {
@@ -300,6 +297,10 @@ export interface CourierLocationUpdateDTO {
 export interface CourierLocationUpdateResponseDTO {
   location: CourierLocationDTO;
   accepted: boolean;
+}
+
+export interface CourierLocationWebSocketTicketDTO {
+  ticket: string;
 }
 
 export interface DeliveryStatusUpdateDTO {

@@ -246,15 +246,12 @@ class CourierService:
     async def post_courier_location(
         self, courier: Courier, payload: CourierLocationUpdateRequest
     ) -> tuple[CourierLocationResponse, bool]:
-        if not courier.is_available:
-            raise HTTPException(
-                status_code=http_status.HTTP_409_CONFLICT,
-                detail="Location updates require an available courier.",
+        active_delivery = None
+        if payload.delivery_id is not None:
+            active_delivery = await self.repository.get_active_assigned_delivery(
+                courier.id, payload.delivery_id
             )
-        active_delivery = await self.repository.get_active_assigned_delivery(
-            courier.id, payload.delivery_id
-        )
-        if active_delivery is None:
+        if payload.delivery_id is not None and active_delivery is None:
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
                 detail="Location updates require an active delivery assigned to this courier.",
@@ -266,7 +263,7 @@ class CourierService:
             accuracy=payload.accuracy,
             heading=payload.heading,
             speed=payload.speed,
-            delivery_id=active_delivery.id,
+            delivery_id=active_delivery.id if active_delivery is not None else None,
         )
         return self._location_response(location), accepted
 

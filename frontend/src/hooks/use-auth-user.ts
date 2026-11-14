@@ -5,27 +5,79 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import {
   DEFAULT_AUTHENTICATED_REDIRECT,
-  resolveUserDashboardPath,
+  resolveUserRole,
+  getDashboardPathForRole,
 } from "@/lib/auth/routes";
 
 export interface AuthUserState {
   user: User | null;
+  role: string | null;
   dashboardHref: string;
+  isDashboardAccessible: boolean;
   isLoading: boolean;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+function isRoleDashboardAccessible(role: string | null): boolean {
+  if (!role) return false;
+  const normalized = role.trim().toLowerCase();
+  if (normalized === "admin" || normalized === "courier" || normalized === "dispatcher") {
+    return true;
+  }
+  if (normalized === "merchant") {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("nexdrop_merchant_application");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          return parsed?.approval_status === "approved";
+        }
+      } catch {}
+    }
+    return false;
+  }
+  return false;
 }
 
 export function useAuthUser(): AuthUserState {
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [dashboardHref, setDashboardHref] = useState<string>(
     DEFAULT_AUTHENTICATED_REDIRECT
   );
+  const [isDashboardAccessible, setIsDashboardAccessible] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const syncUser = useCallback(async () => {
+    try {
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser();
+
+      setUser(currentUser);
+
+      if (currentUser) {
+        const resolvedRole = await resolveUserRole(supabase, currentUser.id);
+        const target = getDashboardPathForRole(resolvedRole);
+        const accessible = isRoleDashboardAccessible(resolvedRole);
+        setRole(resolvedRole);
+        setDashboardHref(target);
+        setIsDashboardAccessible(accessible);
+      } else {
+        setRole(null);
+        setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+        setIsDashboardAccessible(false);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
 
-    async function syncUser() {
+    async function initialSync() {
       try {
         const {
           data: { user: currentUser },
@@ -35,19 +87,27 @@ export function useAuthUser(): AuthUserState {
         setUser(currentUser);
 
         if (currentUser) {
-          const target = await resolveUserDashboardPath(
-            supabase,
-            currentUser.id,
-            DEFAULT_AUTHENTICATED_REDIRECT
-          );
-          if (active) setDashboardHref(target);
+          const resolvedRole = await resolveUserRole(supabase, currentUser.id);
+          const target = getDashboardPathForRole(resolvedRole);
+          const accessible = isRoleDashboardAccessible(resolvedRole);
+          if (active) {
+            setRole(resolvedRole);
+            setDashboardHref(target);
+            setIsDashboardAccessible(accessible);
+          }
+        } else {
+          if (active) {
+            setRole(null);
+            setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+            setIsDashboardAccessible(false);
+          }
         }
       } finally {
         if (active) setIsLoading(false);
       }
     }
 
-    syncUser();
+    initialSync();
 
     const {
       data: { subscription },
@@ -58,14 +118,18 @@ export function useAuthUser(): AuthUserState {
       setIsLoading(false);
 
       if (nextUser) {
-        const target = await resolveUserDashboardPath(
-          supabase,
-          nextUser.id,
-          DEFAULT_AUTHENTICATED_REDIRECT
-        );
-        if (active) setDashboardHref(target);
+        const resolvedRole = await resolveUserRole(supabase, nextUser.id);
+        const target = getDashboardPathForRole(resolvedRole);
+        const accessible = isRoleDashboardAccessible(resolvedRole);
+        if (active) {
+          setRole(resolvedRole);
+          setDashboardHref(target);
+          setIsDashboardAccessible(accessible);
+        }
       } else {
+        setRole(null);
         setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+        setIsDashboardAccessible(false);
       }
     });
 
@@ -78,9 +142,10 @@ export function useAuthUser(): AuthUserState {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setRole(null);
     setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
+    setIsDashboardAccessible(false);
   }, []);
 
-  return { user, dashboardHref, isLoading, signOut };
+  return { user, role, dashboardHref, isDashboardAccessible, isLoading, signOut, refresh: syncUser };
 }
-

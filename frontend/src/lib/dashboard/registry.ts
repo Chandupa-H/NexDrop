@@ -9,13 +9,14 @@ import { courierDashboardConfig } from "@/features/couriers/config/dashboard.con
 import { adminDashboardConfig } from "@/features/admin/config/dashboard.config";
 import { dispatcherDashboardConfig } from "@/features/dispatcher/config/dashboard.config";
 import { customerDashboardConfig } from "@/features/customers/config/dashboard.config";
+import { merchantDashboardConfig } from "@/features/merchants/config/dashboard.config";
 
 const ROLE_CONFIGS: Partial<Record<DashboardRole, DashboardRoleConfig>> = {
   courier: courierDashboardConfig,
   admin: adminDashboardConfig,
   dispatcher: dispatcherDashboardConfig,
   customer: customerDashboardConfig,
-  // merchant: merchantDashboardConfig,
+  merchant: merchantDashboardConfig,
 };
 
 export function getDashboardConfig(role: DashboardRole): DashboardRoleConfig {

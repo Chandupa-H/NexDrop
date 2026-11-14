@@ -54,6 +54,9 @@ class Parcel(Base, TimestampMixin):
     )
     sender_id: Mapped[int] = mapped_column(Integer, nullable=False)
     recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    delivery_recipient_name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
     recipient_phone: Mapped[str] = mapped_column(String(32), nullable=False)
     delivery_address: Mapped[str] = mapped_column(String(255), nullable=False)
     delivery_city: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -117,6 +120,12 @@ class ParcelStatusHistory(Base):
             "parcel_id",
             "occurred_at",
         ),
+        Index(
+            "ix_parcel_status_history_parcel_status_occurred",
+            "parcel_id",
+            "status",
+            "occurred_at",
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -144,6 +153,10 @@ class ParcelStatusHistory(Base):
 
     proof_reference: Mapped[Optional[str]] = mapped_column(
         String(512), nullable=True
+    )
+
+    proof_public_id: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
     )
 
     actor: Mapped[Optional[str]] = mapped_column(

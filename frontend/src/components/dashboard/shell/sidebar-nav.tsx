@@ -1,11 +1,12 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { iconMap } from "./icon-map";
 import type { DashboardRoleConfig } from "@/lib/dashboard/types";
 
-export function SidebarNav({
+function SidebarNavContent({
   config,
   onNavigate,
 }: {
@@ -13,10 +14,27 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const isActive = (href: string, match: "exact" | "prefix" = "prefix") => {
-    if (match === "exact") return pathname === href;
-    return pathname.startsWith(href);
+    const [itemPath, itemQuery] = href.split("?");
+
+    // Path must match
+    const pathMatches =
+      match === "exact" ? pathname === itemPath : pathname.startsWith(itemPath);
+    if (!pathMatches) return false;
+
+    // Query parameters match (e.g. ?tab=orders vs ?tab=api)
+    if (itemQuery) {
+      const itemParams = new URLSearchParams(itemQuery);
+      const itemTab = itemParams.get("tab");
+      const currentTab = searchParams?.get("tab") || "orders";
+      return itemTab === currentTab;
+    }
+
+    // Default when no tab param is specified
+    const currentTab = searchParams?.get("tab");
+    return !currentTab;
   };
 
   return (
@@ -71,5 +89,16 @@ export function SidebarNav({
         </div>
       ))}
     </nav>
+  );
+}
+
+export function SidebarNav(props: {
+  config: DashboardRoleConfig;
+  onNavigate?: () => void;
+}) {
+  return (
+    <Suspense fallback={<nav className="dashboard-sidebar-navigation" aria-label="Main navigation" />}>
+      <SidebarNavContent {...props} />
+    </Suspense>
   );
 }

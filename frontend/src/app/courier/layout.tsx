@@ -1,10 +1,6 @@
-import { Suspense } from "react";
 import { getDashboardConfig } from "@/lib/dashboard/registry";
 import { DashboardShell } from "@/components/dashboard";
-import {
-  TopbarUser,
-  TopbarUserSkeleton,
-} from "@/features/couriers/components/TopbarUser";
+import { TopbarUser } from "@/features/couriers/components/TopbarUser";
 
 export default function CourierLayout({
   children,
@@ -18,9 +14,7 @@ export default function CourierLayout({
     <DashboardShell
       config={config}
       userSlot={
-        <Suspense fallback={<TopbarUserSkeleton />}>
-          <TopbarUser profileHref={config.profileHref ?? `${config.basePath}/profile`} />
-        </Suspense>
+        <TopbarUser profileHref={config.profileHref ?? `${config.basePath}/profile`} />
       }
     >
       {children}
