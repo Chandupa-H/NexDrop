@@ -2,6 +2,10 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError, OperationalError
+from app.modules.customers.dependencies import (
+    VerifiedCustomerProfileIdentity, get_verified_customer_profile_identity, get_customer_profile_service,
+)
 from app.db.session import get_optional_db
 from app.modules.customers.schemas import (
     CustomerResponse,
@@ -320,89 +324,48 @@ def _get_system_greeting() -> str:
 # ── Customer Dashboard Endpoints ───────────────────────────────────
 
 
-@router.get("/customer/me", response_model=CustomerMeResponse, tags=["Customer Dashboard"])
+def _profile_storage_error(error: SQLAlchemyError) -> HTTPException:
+    if isinstance(error, OperationalError):
+        return HTTPException(503, detail="Customer account storage is temporarily unavailable.")
+    return HTTPException(500, detail="Customer profile operation could not be completed.")
+
+
+@router.get("/customer/me", response_model=CustomerMeResponse, tags=["Customer Account"])
 async def get_customer_me(
-    service: Optional[CustomerService] = Depends(get_customer_service),
+    identity: VerifiedCustomerProfileIdentity = Depends(get_verified_customer_profile_identity),
+    service: CustomerService = Depends(get_customer_profile_service),
 ) -> CustomerMeResponse:
-    """
-    Get authenticated customer profile.
-    Connects to DB when available, with in-memory fallback.
-    """
-    if service is not None:
-        try:
-            profile = await service.get_profile(user_id=1)
-            if profile:
-                return CustomerMeResponse(**profile)
-        except Exception:
-            pass
-
-    return CustomerMeResponse(**_MOCK_CUSTOMER_ME)
+    try:
+        profile = await service.get_profile(identity.user_id)
+    except SQLAlchemyError as error:
+        raise _profile_storage_error(error) from None
+    if profile is None:
+        raise HTTPException(404, detail="Customer profile was not found for the verified account.")
+    return CustomerMeResponse(**profile)
 
 
-@router.put("/customer/me", response_model=CustomerMeResponse, tags=["Customer Dashboard"])
+@router.put("/customer/me", response_model=CustomerMeResponse, tags=["Customer Account"])
 async def update_customer_me(
     payload: CustomerProfileUpdateRequest,
-    service: Optional[CustomerService] = Depends(get_customer_service),
+    identity: VerifiedCustomerProfileIdentity = Depends(get_verified_customer_profile_identity),
+    service: CustomerService = Depends(get_customer_profile_service),
 ) -> CustomerMeResponse:
-    """
-    Update authenticated customer profile details.
-    """
-    if service is not None:
-        try:
-            updated = await service.update_profile(
-                user_id=1,
-                full_name=payload.full_name,
-                phone=payload.phone,
-                default_address=payload.default_address,
-                city=payload.city,
-                postal_code=payload.postal_code,
-            )
-            if updated:
-                _MOCK_CUSTOMER_ME.update({k: v for k, v in updated.items() if v is not None})
-                return CustomerMeResponse(**updated)
-        except Exception:
-            pass
-
-    if payload.full_name:
-        _MOCK_CUSTOMER_ME["full_name"] = payload.full_name
-    if payload.phone:
-        _MOCK_CUSTOMER_ME["phone"] = payload.phone
-    if payload.default_address:
-        _MOCK_CUSTOMER_ME["default_address"] = payload.default_address
-    if payload.city:
-        _MOCK_CUSTOMER_ME["city"] = payload.city
-    if payload.postal_code:
-        _MOCK_CUSTOMER_ME["postal_code"] = payload.postal_code
-
-    return CustomerMeResponse(**_MOCK_CUSTOMER_ME)
+    try:
+        profile = await service.update_profile(identity.user_id, payload.model_dump(exclude_unset=True))
+    except SQLAlchemyError as error:
+        raise _profile_storage_error(error) from None
+    if profile is None:
+        raise HTTPException(404, detail="Customer profile was not found for the verified account.")
+    return CustomerMeResponse(**profile)
 
 
-@router.delete("/customer/me", status_code=status.HTTP_200_OK, tags=["Customer Dashboard"])
+@router.delete("/customer/me", tags=["Customer Account"])
 async def delete_customer_me(
-    service: Optional[CustomerService] = Depends(get_customer_service),
+    identity: VerifiedCustomerProfileIdentity = Depends(get_verified_customer_profile_identity),
 ) -> dict:
-    """
-    Permanently delete the authenticated customer profile and user data.
-    """
-    if service is not None:
-        try:
-            await service.delete_profile(user_id=1)
-        except Exception:
-            pass
-
-    _MOCK_CUSTOMER_ME.clear()
-    _MOCK_CUSTOMER_ME.update({
-        "id": 1,
-        "full_name": "Deleted Customer",
-        "email": "deleted@nexdrop.com",
-        "phone": "",
-        "role": "customer",
-        "default_address": "",
-        "city": "",
-        "postal_code": "",
-    })
-
-    return {"message": "Customer profile deleted successfully."}
+    # Resolving identity alone cannot authorize deletion across the two account systems.
+    # No session, repository delete or Supabase admin operation is invoked.
+    raise HTTPException(501, detail="Account deletion is disabled pending verified ownership, retention and Platform account-lifecycle integration.")
 
 
 @router.get("/customer/dashboard/summary", response_model=CustomerDashboardSummaryResponse, tags=["Customer Dashboard"])

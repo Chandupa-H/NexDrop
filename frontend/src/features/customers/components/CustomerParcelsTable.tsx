@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { SectionCard, StatusBadge, EmptyState } from "@/components/dashboard";
 import {
   Table,
@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Search, Eye } from "lucide-react";
 import { getCustomerStatusLabel, getCustomerStatusTone } from "../lib/status";
+import { isCustomerReceiptEligible } from "../lib/receipt";
 import type { CustomerParcelListItem, CustomerTableFilter } from "../types";
 
 const filterTabs: Array<{ key: CustomerTableFilter; label: string }> = [
@@ -34,6 +35,7 @@ export interface CustomerParcelsTableProps {
   loading?: boolean;
   error?: string;
   onRetry?: () => void;
+  showReceipts?: boolean;
 }
 
 export function CustomerParcelsTable({
@@ -45,8 +47,10 @@ export function CustomerParcelsTable({
   loading,
   error,
   onRetry,
+  showReceipts = false,
 }: CustomerParcelsTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const searchId = useId();
 
   const filteredParcels = useMemo(() => {
     if (!searchQuery.trim()) return parcels;
@@ -62,7 +66,7 @@ export function CustomerParcelsTable({
   return (
     <SectionCard
       title="My Deliveries & Orders"
-      subtitle={`Showing ${filteredParcels.length} of ${total} shipments`}
+      subtitle={loading ? "Loading shipments..." : error ? "Shipments unavailable" : `Showing ${filteredParcels.length} of ${total} shipments`}
     >
       <div className="space-y-4" aria-busy={loading}>
         {/* Filter pills + search bar */}
@@ -71,8 +75,9 @@ export function CustomerParcelsTable({
             {filterTabs.map((tab) => (
               <button
                 key={tab.key}
+                aria-pressed={filter === tab.key}
                 onClick={() => onFilterChange(tab.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                className={`min-h-10 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
                   filter === tab.key
                     ? "bg-[var(--dashboard-primary)] text-white shadow-sm"
                     : "bg-[var(--dashboard-neutral-bg)] text-[var(--dashboard-text)] hover:bg-[var(--dashboard-neutral-bg)]/80"
@@ -83,21 +88,25 @@ export function CustomerParcelsTable({
             ))}
           </div>
 
-          <div className="relative min-w-[240px] sm:w-80 md:w-96">
+          <div className="w-full min-w-0 sm:w-80 md:w-96 sm:shrink-0">
+            <label htmlFor={searchId} className="mb-1 block text-sm text-muted-foreground">Search this page</label>
+            <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--dashboard-muted)]" />
             <input
+              id={searchId}
               type="text"
               placeholder="Filter by tracking number or recipient..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] placeholder:text-[var(--dashboard-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--dashboard-primary)]"
+              className="min-h-10 w-full pl-9 pr-3 py-1.5 text-xs sm:text-sm rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] placeholder:text-[var(--dashboard-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--dashboard-primary)]"
             />
+            </div>
           </div>
         </div>
 
         {/* Error notification */}
         {error && (
-          <div className="flex items-center justify-between p-4 bg-[var(--dashboard-danger-bg)] text-[var(--dashboard-danger-text)] rounded-xl text-sm">
+          <div role="alert" className="flex items-center justify-between p-4 bg-[var(--dashboard-danger-bg)] text-[var(--dashboard-danger-text)] rounded-xl text-sm">
             <span>{error}</span>
             {onRetry && (
               <Button onClick={onRetry} size="sm" variant="outline">
@@ -109,12 +118,13 @@ export function CustomerParcelsTable({
 
         {/* Table content */}
         {loading ? (
-          <div className="space-y-3">
+          <div role="status" className="space-y-3">
+            <span className="sr-only">Loading deliveries...</span>
             {[...Array(4)].map((_, i) => (
               <Skeleton key={i} className="h-14 w-full rounded-xl" />
             ))}
           </div>
-        ) : filteredParcels.length === 0 ? (
+        ) : error ? null : filteredParcels.length === 0 ? (
           <EmptyState
             icon="package"
             title="No deliveries found"
@@ -135,7 +145,7 @@ export function CustomerParcelsTable({
                 >
                   Clear Filters
                 </Button>
-              ) : undefined
+              ) : <Link href="/customer/book" className="text-primary underline">Book Delivery</Link>
             }
           />
         ) : (
@@ -215,6 +225,16 @@ export function CustomerParcelsTable({
                         <Eye className="h-3.5 w-3.5" />
                         Details
                       </Button>
+                      {showReceipts && isCustomerReceiptEligible(parcel.status, parcel.trackingId) && (
+                        <Link
+                          href={`/customer/history/receipt?trackingId=${encodeURIComponent(parcel.trackingId)}`}
+                          onClick={(event) => event.stopPropagation()}
+                          className="inline-flex min-h-10 items-center px-3 text-sm font-medium text-primary underline"
+                          aria-label={`View shipment receipt for ${parcel.trackingId}`}
+                        >
+                          View Receipt
+                        </Link>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
