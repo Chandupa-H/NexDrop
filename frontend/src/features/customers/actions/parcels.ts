@@ -3,22 +3,24 @@
 import { getCustomerParcels, cancelCustomerParcel } from "../api/customer.api";
 import type { CustomerParcelListDTO, CustomerParcelDetailDTO } from "../api/customer.dto";
 import type { CustomerTableFilter } from "../types";
-import { filterToCustomerStatusString } from "../lib/status";
+
+const filterStatuses: Partial<Record<CustomerTableFilter, string>> = {
+  active: "picked_up,in_transit,out_for_delivery",
+  delivered: "delivered",
+  pending: "pending",
+  cancelled: "cancelled",
+};
 
 export async function fetchCustomerParcelsAction(
-  filter: CustomerTableFilter,
-  page = 1,
-  allowMockFallback = true
+  filter: CustomerTableFilter
 ): Promise<CustomerParcelListDTO> {
-  const status = filterToCustomerStatusString(filter);
-  const safePage = Number.isSafeInteger(page) && page > 0 ? page : 1;
-  return getCustomerParcels({ status, limit: 10, offset: (safePage - 1) * 10 }, allowMockFallback);
+  const status = filter === "all" ? undefined : filterStatuses[filter];
+  return getCustomerParcels({ status, limit: 10, offset: 0 });
 }
 
 export async function cancelCustomerParcelAction(
   trackingId: string,
-  reason?: string,
-  allowMockFallback = true
+  reason?: string
 ): Promise<CustomerParcelDetailDTO> {
-  return cancelCustomerParcel(trackingId, { reason }, allowMockFallback);
+  return cancelCustomerParcel(trackingId, { reason });
 }

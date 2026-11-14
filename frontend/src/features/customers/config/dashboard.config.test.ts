@@ -3,11 +3,6 @@ import { customerDashboardConfig } from "./dashboard.config";
 import { getDashboardConfig } from "@/lib/dashboard/registry";
 
 describe("Customer Dashboard Config", () => {
-  it("enables the delivery history route", () => {
-    const history = customerDashboardConfig.nav.flatMap((section) => section.items).find((item) => item.id === "history");
-    expect(history?.href).toBe("/customer/history");
-    expect(history?.availability).toBe("live");
-  });
   it("has valid role configuration values", () => {
     expect(customerDashboardConfig.role).toBe("customer");
     expect(customerDashboardConfig.roleLabel).toBe("Customer");

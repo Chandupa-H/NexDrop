@@ -37,15 +37,29 @@ class CustomerService:
         return await self.repository.create(customer)
 
     # ── Profile & Dashboard ──
-    async def get_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_profile(self, user_id: int = 1) -> Optional[Dict[str, Any]]:
         return await self.repository.get_customer_profile(user_id)
 
-    async def update_profile(self, user_id: int, values: Dict[str, str]) -> Optional[Dict[str, Any]]:
-        try:
-            return await self.repository.update_customer_profile(user_id, values)
-        except Exception:
-            await self.repository.session.rollback()
-            raise
+    async def update_profile(
+        self,
+        user_id: int = 1,
+        full_name: Optional[str] = None,
+        phone: Optional[str] = None,
+        default_address: Optional[str] = None,
+        city: Optional[str] = None,
+        postal_code: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        return await self.repository.update_customer_profile(
+            user_id=user_id,
+            full_name=full_name,
+            phone=phone,
+            default_address=default_address,
+            city=city,
+            postal_code=postal_code,
+        )
+
+    async def delete_profile(self, user_id: int = 1) -> bool:
+        return await self.repository.delete_customer_profile(user_id)
 
     async def get_dashboard_summary(self, sender_id: int = 1) -> Dict[str, Any]:
         return await self.repository.get_dashboard_summary(sender_id)

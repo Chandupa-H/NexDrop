@@ -51,7 +51,7 @@ export const customerDashboardConfig: DashboardRoleConfig = {
           label: "Delivery History",
           href: "/customer/history",
           icon: "history",
-          availability: "live",
+          availability: "planned",
         },
       ],
     },
