@@ -5,14 +5,12 @@ const {
   getCourierDeliveries,
   getCourierTracking,
   updateCourierDeliveryStatus,
-  isDevelopmentCourierMockEnabled,
   push,
   readSearchParams,
 } = vi.hoisted(() => ({
   getCourierDeliveries: vi.fn(),
   getCourierTracking: vi.fn(),
   updateCourierDeliveryStatus: vi.fn(),
-  isDevelopmentCourierMockEnabled: vi.fn(() => false),
   push: vi.fn(),
   readSearchParams: vi.fn(),
 }));
@@ -28,7 +26,6 @@ vi.mock("@/features/couriers/api/courier.api", () => ({
   getCourierTracking,
   updateCourierDeliveryStatus,
   postCourierLocation: vi.fn(),
-  isDevelopmentCourierMockEnabled,
 }));
 
 vi.mock("./DeliveryMapPanel", () => ({
@@ -62,14 +59,13 @@ describe("AssignedDeliveries", () => {
         delivery_instructions: null,
       },
       courier_location: { lat: 6.9344, lng: 79.8428 },
-      location_source: "simulated",
+      location_source: "live",
       next_destination: {
         address: "10 Main Street, Colombo",
         lat: 6.9147,
         lng: 79.8521,
       },
       next_action: "Navigate to pickup location",
-      simulation_route: [],
     });
   });
 

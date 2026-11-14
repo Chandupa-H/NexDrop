@@ -94,7 +94,7 @@ function AccountValue({
       <dt className="mb-1.5 text-xs font-semibold text-[#0f2a1d]">{label}</dt>
       <dd className="flex min-h-11 items-center gap-2.5 rounded-xl border border-[#e5eee8] bg-[#f8fbf9] px-3 text-sm text-[#294237]">
         <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-[#6b8176]" />
-        <span className="min-w-0 break-words">{value}</span>
+        <span className="min-w-0 break-words">{value || "Not provided"}</span>
       </dd>
     </div>
   );

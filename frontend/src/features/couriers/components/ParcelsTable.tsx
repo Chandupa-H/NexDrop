@@ -12,19 +12,26 @@
  */
 
 import { useState } from "react";
-import { SectionCard, StatusBadge, EmptyState } from "@/components/dashboard";
+import Link from "next/link";
+import { StatusBadge, EmptyState } from "@/components/dashboard";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { MoreVertical, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  MoreVertical,
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+} from "lucide-react";
 import { getStatusLabel, getStatusTone } from "../lib/status";
 import type { ParcelListItem, TableFilter, ActionType } from "../types";
 
 const filters: Array<{ key: TableFilter; label: string }> = [
   { key: "all", label: "All" },
   { key: "pending", label: "Pending" },
-  { key: "in_transit_group", label: "In transit" },
+  { key: "in_transit_group", label: "In progress" },
   { key: "delivered", label: "Delivered" },
   { key: "failed", label: "Failed" },
 ];
@@ -59,28 +66,39 @@ export function ParcelsTable({
   const rangeEnd = Math.min((page - 1) * pageSize + parcels.length, total);
 
   return (
-    <SectionCard
-      title="Today's Assigned Parcels"
-      subtitle={`Showing ${rangeStart}–${rangeEnd} of ${total}`}
-      action={
-        <button
-          disabled
-          className="text-sm text-[var(--dashboard-primary)] hover:underline disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed flex items-center gap-1"
+    <section className="overflow-hidden rounded-2xl border border-[#e4eee7] bg-white shadow-[0_8px_24px_-20px_rgba(16,42,29,0.45)]">
+      <header className="flex flex-col gap-3 border-b border-[#eaf0ec] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#eff8f2] text-[#16824a]">
+              <Package aria-hidden="true" className="h-4 w-4" />
+            </span>
+            <h2 className="text-base font-semibold text-[#103b29]">
+              Assigned parcels
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-[#687b70] sm:ml-11">
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </p>
+        </div>
+        <Link
+          href="/courier/deliveries"
+          className="inline-flex items-center gap-1 self-start rounded-lg px-2 py-1 text-sm font-semibold text-[#16824a] hover:bg-[#eff8f2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#16824a] sm:self-auto"
         >
-          View all <ArrowRight className="w-3 h-3" />
-        </button>
-      }
-    >
-      <div className="space-y-4" aria-busy={loading}>
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)]/60 p-1.5">
+          View all <ArrowRight aria-hidden="true" className="h-4 w-4" />
+        </Link>
+      </header>
+      <div className="space-y-4 p-4 sm:p-5" aria-busy={loading}>
+        <div className="flex flex-wrap items-center gap-1.5">
           {filters.map((f) => (
             <button
               key={f.key}
               onClick={() => onFilterChange(f.key)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+              aria-pressed={filter === f.key}
+              className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                 filter === f.key
-                  ? "bg-[var(--dashboard-primary)] text-white shadow-sm"
-                  : "text-[var(--dashboard-text)] hover:bg-white hover:text-[var(--dashboard-primary)]"
+                  ? "bg-[#0b5137] text-white shadow-sm"
+                  : "text-[#5b7266] hover:bg-[#eff8f2] hover:text-[#103b29]"
               }`}
             >
               {f.label}
@@ -116,9 +134,9 @@ export function ParcelsTable({
           />
         ) : (
           <>
-            <div className="hidden lg:block overflow-hidden rounded-2xl border border-[var(--dashboard-hairline)] bg-white shadow-sm">
+            <div className="hidden overflow-hidden rounded-xl border border-[#e7eee9] bg-white shadow-sm xl:block">
               <Table className="min-w-[760px]">
-                <TableHeader className="bg-slate-50/80">
+                <TableHeader className="bg-[#f6faf7]">
                   <TableRow>
                     <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Tracking ID</TableHead>
                     <TableHead className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Customer</TableHead>
@@ -133,7 +151,7 @@ export function ParcelsTable({
                     <TableRow
                       key={parcel.trackingId}
                       onClick={() => onOpen(parcel.trackingId)}
-                      className="group h-16 cursor-pointer border-t border-slate-100 transition-colors hover:bg-emerald-50/60"
+                      className="group h-16 cursor-pointer border-t border-[#edf2ee] transition-colors hover:bg-[#f5faf6]"
                     >
                       <TableCell className="px-4 py-3 font-semibold text-slate-900">{parcel.trackingId}</TableCell>
                       <TableCell className="px-4 py-3">
@@ -160,12 +178,12 @@ export function ParcelsTable({
               </Table>
             </div>
 
-            <div className="lg:hidden space-y-3">
+            <div className="space-y-3 xl:hidden">
               {parcels.map((parcel) => (
                 <button
                   key={parcel.trackingId}
                   onClick={() => onOpen(parcel.trackingId)}
-                  className="w-full rounded-2xl border border-[var(--dashboard-hairline)] bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                  className="w-full rounded-xl border border-[#e7eee9] bg-white p-4 text-left transition-colors hover:border-[#c8dfd0] hover:bg-[#fbfdfb]"
                 >
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -232,7 +250,7 @@ export function ParcelsTable({
           </>
         )}
       </div>
-    </SectionCard>
+    </section>
   );
 }
 

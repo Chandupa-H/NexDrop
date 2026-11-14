@@ -1,6 +1,4 @@
-import { Suspense } from "react";
 import { DashboardData } from "@/features/couriers/components/DashboardData";
-import DashboardSkeleton from "./loading";
 
 export const metadata = {
   title: "Courier Dashboard — NexDrop",
@@ -8,9 +6,5 @@ export const metadata = {
 };
 
 export default function CourierDashboardPage() {
-  return (
-    <Suspense fallback={<DashboardSkeleton />}>
-      <DashboardData />
-    </Suspense>
-  );
+  return <DashboardData />;
 }

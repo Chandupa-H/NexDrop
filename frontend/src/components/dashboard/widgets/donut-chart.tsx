@@ -13,10 +13,12 @@ export function DonutChart({
   segments,
   total,
   centerLabel,
+  compact = false,
 }: {
   segments: DonutSegment[];
   total?: number;
   centerLabel: string;
+  compact?: boolean;
 }) {
   const percentages = calculatePercentages(segments.map((s) => s.value));
   const displayTotal = total ?? segments.reduce((sum, segment) => sum + segment.value, 0);
@@ -41,9 +43,17 @@ export function DonutChart({
     .join(", ");
 
   return (
-    <div className="flex flex-col lg:flex-row items-center gap-6">
+    <div
+      className={`flex items-center ${
+        compact
+          ? "flex-col gap-3"
+          : "flex-col gap-6 lg:flex-row"
+      }`}
+    >
       <div
-        className="relative w-48 h-48"
+        className={`relative shrink-0 ${
+          compact ? "h-32 w-32" : "h-48 w-48"
+        }`}
         role="img"
         aria-label={`Total ${displayTotal}. ${summary || "No status data"}`}
       >
@@ -80,16 +90,22 @@ export function DonutChart({
         </div>
       </div>
 
-      <div className="flex-1 space-y-3 w-full">
+      <div
+        className={`w-full flex-1 ${
+          compact
+            ? "grid grid-cols-1 gap-x-3 gap-y-2 sm:grid-cols-2 2xl:grid-cols-1"
+            : "space-y-3"
+        }`}
+      >
         {segments.map((segment, i) => (
-          <div key={segment.key} className="flex items-center justify-between gap-3">
+          <div key={segment.key} className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div
                 className="w-3 h-3 rounded-full shrink-0"
                 style={{ backgroundColor: toneColors[segment.tone] }}
                 aria-hidden="true"
               />
-              <span className="text-sm text-[var(--dashboard-text)]">{segment.label}</span>
+              <span className="truncate text-sm text-[var(--dashboard-text)]">{segment.label}</span>
             </div>
             <div className="flex items-center gap-2 tabular-nums">
               <span className="text-sm font-medium">{segment.value}</span>

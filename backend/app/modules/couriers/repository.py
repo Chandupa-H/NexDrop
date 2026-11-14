@@ -327,7 +327,7 @@ class CourierRepository:
         accuracy: Optional[float],
         heading: Optional[float],
         speed: Optional[float],
-        delivery_id: int,
+        delivery_id: Optional[int],
     ) -> tuple[CourierLocation, bool]:
         location = await self.get_latest_location(courier_id)
         now = datetime.now(timezone.utc)
