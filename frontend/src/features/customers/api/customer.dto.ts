@@ -13,14 +13,6 @@ export interface CustomerMeDTO {
   postal_code: string;
 }
 
-export interface CustomerProfileUpdateDTO {
-  full_name?: string;
-  phone?: string;
-  default_address?: string;
-  city?: string;
-  postal_code?: string;
-}
-
 export interface CustomerDashboardTotalsDTO {
   total_orders: number;
   active_deliveries: number;

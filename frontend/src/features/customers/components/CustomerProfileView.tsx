@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { User, MapPin, Mail, Phone, ShieldCheck, Pencil, X, Check, AlertCircle, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { User, MapPin, Mail, Phone, ShieldCheck, Pencil, X, Check, AlertCircle, Trash2, AlertTriangle } from "lucide-react";
 import { PageHeader, SectionCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import type { CustomerProfile } from "../types";
-import { updateCustomerProfile } from "../api/customer.api";
+import { updateCustomerProfile, deleteCustomerProfile } from "../api/customer.api";
 import { mapCustomerProfile } from "../api/customer.mappers";
-import { profileFields, validateProfile, profileRequestError, type ProfileFieldErrors } from "../lib/profile-validation";
+import { logoutAction } from "@/lib/auth/logout";
 
 interface CustomerProfileViewProps {
   initialProfile: CustomerProfile;
@@ -16,12 +16,12 @@ interface CustomerProfileViewProps {
 export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps) {
   const [profile, setProfile] = useState<CustomerProfile>(initialProfile);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<ProfileFieldErrors>({});
-  const [unavailable, setUnavailable] = useState(false);
-  const saveInFlight = useRef(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Form states
   const [fullName, setFullName] = useState(profile.fullName);
@@ -31,9 +31,6 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
   const [postalCode, setPostalCode] = useState(profile.postalCode);
 
   const handleOpenEdit = () => {
-    if (unavailable) return;
-    setFieldErrors({});
-    setSaveSuccess(false);
     setFullName(profile.fullName);
     setPhone(profile.phone);
     setDefaultAddress(profile.defaultAddress);
@@ -50,12 +47,19 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (unavailable || saveInFlight.current) return;
-    setSaveSuccess(false);
-    const validation = validateProfile({ full_name: fullName, phone, default_address: defaultAddress, city, postal_code: postalCode });
-    setFieldErrors(validation);
-    if (Object.keys(validation).length) return;
-    saveInFlight.current = true;
+    if (!fullName.trim()) {
+      setError("Full name is required.");
+      return;
+    }
+    if (!phone.trim()) {
+      setError("Contact number is required.");
+      return;
+    }
+    if (!defaultAddress.trim()) {
+      setError("Street address is required.");
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -72,14 +76,22 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
       setIsEditModalOpen(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3500);
-    } catch (error: unknown) {
-      const failure = profileRequestError(error);
-      setError(failure.message);
-      setFieldErrors(failure.fields);
-      setUnavailable(failure.unavailable);
+    } catch {
+      setError("Failed to update profile. Please try again.");
     } finally {
-      saveInFlight.current = false;
       setSaving(false);
+    }
+  };
+
+  const handleDeleteProfile = async () => {
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+      await deleteCustomerProfile();
+      await logoutAction();
+    } catch {
+      setDeleteError("Failed to delete profile. Please try again.");
+      setDeleting(false);
     }
   };
 
@@ -92,7 +104,6 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
           <Button
             type="button"
             onClick={handleOpenEdit}
-            disabled={unavailable}
             className="bg-[var(--dashboard-primary)] hover:bg-[var(--dashboard-primary)]/90 text-white font-medium px-4 py-2 h-auto rounded-xl gap-2 cursor-pointer shadow-sm transition-colors"
           >
             <Pencil className="w-4 h-4" />
@@ -101,11 +112,10 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
         }
       />
 
-      {unavailable && <p role="alert" className="text-sm text-destructive">Account editing is unavailable until your identity can be verified.</p>}
       {saveSuccess && (
         <div className="p-3.5 rounded-xl border border-green-200 bg-green-50 text-green-800 text-sm flex items-center gap-2.5 animate-in fade-in duration-200">
           <Check className="w-4 h-4 text-green-600 shrink-0" />
-          <span role="status">Profile updated successfully!</span>
+          <span>Profile updated successfully!</span>
         </div>
       )}
 
@@ -210,14 +220,16 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
               <Trash2 className="w-5 h-5 text-red-600" />
               Delete Profile
             </h3>
-            <p id="profile-deletion-unavailable" className="text-sm text-red-800/80">
-              Account deletion is disabled until verified ownership, retention and Platform account-lifecycle integration are available.
+            <p className="text-sm text-red-800/80">
+              Permanently delete your profile, default addresses, and associated customer preferences.
             </p>
           </div>
           <Button
             type="button"
-            disabled
-            aria-describedby="profile-deletion-unavailable"
+            onClick={() => {
+              setDeleteError(null);
+              setIsDeleteModalOpen(true);
+            }}
             className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-2.5 h-auto rounded-xl gap-2 cursor-pointer shrink-0 shadow-sm transition-colors"
           >
             <Trash2 className="w-4 h-4" />
@@ -243,7 +255,6 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                 type="button"
                 onClick={handleCloseEdit}
                 className="p-1.5 rounded-lg text-[var(--dashboard-muted)] hover:text-[var(--dashboard-text)] hover:bg-[var(--dashboard-neutral-bg)] transition-colors cursor-pointer"
-                disabled={saving}
                 aria-label="Close dialog"
               >
                 <X className="w-5 h-5" />
@@ -251,41 +262,33 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
             </div>
 
             {error && (
-              <div role="alert" className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
-            <form noValidate onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
-                <label htmlFor="profile-full_name" className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
+                <label className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
                   Full Name <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
                   type="text"
-                  id="profile-full_name"
-                  minLength={profileFields.full_name.min}
-                  maxLength={profileFields.full_name.max}
-                  disabled={saving || unavailable}
-                  aria-invalid={!!fieldErrors.full_name}
-                  aria-describedby={fieldErrors.full_name ? "profile-full_name-error" : undefined}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
                   placeholder="Your full name"
                   required
                 />
-                {fieldErrors.full_name && <p id="profile-full_name-error" className="text-sm text-destructive">{fieldErrors.full_name}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="profile-email" className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
+                <label className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
                   Email Address
                 </label>
                 <input
                   type="email"
-                  id="profile-email"
                   value={profile.email}
                   disabled
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-gray-100 text-sm text-[var(--dashboard-muted)] cursor-not-allowed"
@@ -294,85 +297,57 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="profile-phone" className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
+                <label className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
                   Contact Number <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
                   type="tel"
-                  id="profile-phone"
-                  minLength={profileFields.phone.min}
-                  maxLength={profileFields.phone.max}
-                  disabled={saving || unavailable}
-                  aria-invalid={!!fieldErrors.phone}
-                  aria-describedby={fieldErrors.phone ? "profile-phone-error" : undefined}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
                   placeholder="+94 77 123 4567"
                   required
                 />
-                {fieldErrors.phone && <p id="profile-phone-error" className="text-sm text-destructive">{fieldErrors.phone}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="profile-default_address" className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
+                <label className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
                   Street Address <span className="text-red-500 font-bold">*</span>
                 </label>
                 <input
                   type="text"
-                  id="profile-default_address"
-                  minLength={profileFields.default_address.min}
-                  maxLength={profileFields.default_address.max}
-                  disabled={saving || unavailable}
-                  aria-invalid={!!fieldErrors.default_address}
-                  aria-describedby={fieldErrors.default_address ? "profile-default_address-error" : undefined}
                   value={defaultAddress}
                   onChange={(e) => setDefaultAddress(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
                   placeholder="e.g. 45/2 Temple Road"
                   required
                 />
-                {fieldErrors.default_address && <p id="profile-default_address-error" className="text-sm text-destructive">{fieldErrors.default_address}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label htmlFor="profile-city" className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
+                  <label className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
                     City
                   </label>
                   <input
                     type="text"
-                    id="profile-city"
-                    minLength={profileFields.city.min}
-                    maxLength={profileFields.city.max}
-                    disabled={saving || unavailable}
-                    aria-invalid={!!fieldErrors.city}
-                    aria-describedby={fieldErrors.city ? "profile-city-error" : undefined}
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
                     placeholder="e.g. Colombo 07"
                   />
-                  {fieldErrors.city && <p id="profile-city-error" className="text-sm text-destructive">{fieldErrors.city}</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <label htmlFor="profile-postal_code" className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
+                  <label className="text-xs font-semibold text-[var(--dashboard-muted)] block uppercase tracking-wider">
                     Postal Code
                   </label>
                   <input
                     type="text"
-                    id="profile-postal_code"
-                    minLength={profileFields.postal_code.min}
-                    maxLength={profileFields.postal_code.max}
-                    disabled={saving || unavailable}
-                    aria-invalid={!!fieldErrors.postal_code}
-                    aria-describedby={fieldErrors.postal_code ? "profile-postal_code-error" : undefined}
                     value={postalCode}
                     onChange={(e) => setPostalCode(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
                     placeholder="e.g. 00700"
                   />
-                  {fieldErrors.postal_code && <p id="profile-postal_code-error" className="text-sm text-destructive">{fieldErrors.postal_code}</p>}
                 </div>
               </div>
 
@@ -388,7 +363,7 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                 </Button>
                 <Button
                   type="submit"
-                  disabled={saving || unavailable}
+                  disabled={saving}
                   className="bg-[var(--dashboard-primary)] hover:bg-[var(--dashboard-primary)]/90 text-white text-sm font-semibold cursor-pointer"
                 >
                   {saving ? "Saving..." : "Save Changes"}
@@ -399,6 +374,63 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
         </div>
       )}
 
+      {/* Delete Profile Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-[var(--dashboard-surface)] rounded-2xl border border-red-200 shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-full bg-red-100 text-red-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[var(--dashboard-text)]">
+                  Delete Customer Profile?
+                </h3>
+                <p className="text-sm text-[var(--dashboard-muted)] mt-1 leading-relaxed">
+                  Are you sure you want to delete your profile? All personal contact details and delivery preferences will be permanently wiped. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-[var(--dashboard-hairline)]">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleting}
+                className="text-xs cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleDeleteProfile}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Confirm Delete
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
