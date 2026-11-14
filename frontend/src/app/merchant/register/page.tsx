@@ -320,9 +320,6 @@ function PendingApprovalScreen() {
         </div>
 
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-[#064E3B] text-xs font-semibold">
-            <span>✓</span> Application Approved
-          </div>
           <h2 className="text-2xl font-bold text-[#064E3B]">Account Approved & Activated!</h2>
           <p className="text-sm text-[#4B5563] max-w-sm mx-auto">
             Congratulations! Your merchant account for <strong>{businessData.business_name || "your business"}</strong> is approved. You can now access your merchant dashboard.
