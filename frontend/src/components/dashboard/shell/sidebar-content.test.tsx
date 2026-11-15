@@ -8,6 +8,7 @@ const { route } = vi.hoisted(() => ({ route: { pathname: "/courier/dashboard" } 
 
 vi.mock("next/navigation", () => ({
   usePathname: () => route.pathname,
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({

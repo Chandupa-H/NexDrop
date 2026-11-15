@@ -18,7 +18,6 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   getCourierTracking,
-  isDevelopmentCourierMockEnabled,
   postCourierLocation,
   updateCourierDeliveryStatus,
 } from "../api/courier.api";
@@ -49,40 +48,8 @@ type LocationState =
   | "waiting"
   | "denied"
   | "unavailable"
-  | "simulated"
   | "completed"
   | "cancelled";
-
-type Point = { lat: number; lng: number };
-
-function interpolateRoute(route: Point[]): Point[] {
-  if (route.length < 2) return route;
-  const interpolated = [route[0]];
-  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-  for (let index = 1; index < route.length; index += 1) {
-    const start = route[index - 1];
-    const end = route[index];
-    const latitudeDelta = toRadians(end.lat - start.lat);
-    const longitudeDelta = toRadians(end.lng - start.lng);
-    const latitudeStart = toRadians(start.lat);
-    const latitudeEnd = toRadians(end.lat);
-    const haversine =
-      Math.sin(latitudeDelta / 2) ** 2 +
-      Math.cos(latitudeStart) *
-        Math.cos(latitudeEnd) *
-        Math.sin(longitudeDelta / 2) ** 2;
-    const distance = 6_371_000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-    const steps = Math.max(1, Math.ceil(distance / 15));
-    for (let step = 1; step <= steps; step += 1) {
-      const progress = step / steps;
-      interpolated.push({
-        lat: start.lat + (end.lat - start.lat) * progress,
-        lng: start.lng + (end.lng - start.lng) * progress,
-      });
-    }
-  }
-  return interpolated;
-}
 
 export function DeliveryDetailsDialog({
   deliveryId,
@@ -95,11 +62,9 @@ export function DeliveryDetailsDialog({
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const watchIdRef = useRef<number | null>(null);
-  const simulationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initialLoadTimerRef = useRef<number | null>(null);
   const lastLocationPostRef = useRef(0);
-  const simulationIndexRef = useRef(0);
   const mountedRef = useRef(false);
   const trackingRef = useRef<DeliveryTrackingDTO | null>(null);
   const [tracking, setTracking] = useState<DeliveryTrackingDTO | null>(null);
@@ -119,10 +84,6 @@ export function DeliveryDetailsDialog({
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
-    if (simulationTimerRef.current) {
-      clearInterval(simulationTimerRef.current);
-      simulationTimerRef.current = null;
-    }
     if (watchIdRef.current !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -132,15 +93,8 @@ export function DeliveryDetailsDialog({
   const refresh = useCallback(async (showLoading = false) => {
     if (showLoading && mountedRef.current) setLoading(true);
     try {
-      let result = await getCourierTracking(deliveryId);
+      const result = await getCourierTracking(deliveryId);
       if (!mountedRef.current) return;
-      const current = trackingRef.current;
-      if (
-        current?.location_source === "simulated" &&
-        current.delivery.status === result.delivery.status
-      ) {
-        result = { ...result, courier_location: current.courier_location };
-      }
       trackingRef.current = result;
       setTracking(result);
       setError(false);
@@ -178,68 +132,6 @@ export function DeliveryDetailsDialog({
       !currentTracking ||
       ["delivered", "cancelled"].includes(currentTracking.delivery.status)
     ) return;
-
-    if (
-      isDevelopmentCourierMockEnabled() &&
-      currentTracking.location_source === "simulated"
-    ) {
-      const route = currentTracking.simulation_route ?? [];
-      const start = currentTracking.courier_location;
-      if (!start || route.length === 0) return;
-
-      if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
-      simulationIndexRef.current = 0;
-      const orderedRoute = [{ lat: start.lat, lng: start.lng }, ...route].filter(
-        (point, index, points) =>
-          index === 0 ||
-          point.lat !== points[index - 1]?.lat ||
-          point.lng !== points[index - 1]?.lng
-      );
-      const points = interpolateRoute(orderedRoute);
-      simulationTimerRef.current = setInterval(() => {
-        if (!mountedRef.current) return;
-        const current = trackingRef.current;
-        if (!current || ["delivered", "cancelled"].includes(current.delivery.status)) {
-          if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
-          simulationTimerRef.current = null;
-          return;
-        }
-        simulationIndexRef.current += 1;
-        if (simulationIndexRef.current >= points.length) {
-          if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
-          simulationTimerRef.current = null;
-          return;
-        }
-        const point = points[simulationIndexRef.current];
-        void postCourierLocation({
-          lat: point.lat,
-          lng: point.lng,
-          deliveryId,
-        })
-          .then(() => {
-            if (mountedRef.current) setLocationSyncError(false);
-          })
-          .catch((locationError: unknown) => {
-            console.error("Failed to save simulated courier location:", locationError);
-            if (mountedRef.current) setLocationSyncError(true);
-          });
-        const updated = {
-          ...current,
-          courier_location: {
-            ...current.courier_location!,
-            ...point,
-            updated_at: new Date().toISOString(),
-          },
-          location_source: "simulated" as const,
-        };
-        trackingRef.current = updated;
-        setTracking(updated);
-      }, 1500);
-      return () => {
-        if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      };
-    }
 
     if (!navigator.geolocation) return;
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -300,7 +192,6 @@ export function DeliveryDetailsDialog({
   }, [
     deliveryId,
     tracking?.delivery.status,
-    tracking?.simulation_route?.length,
   ]);
 
   const close = () => {
@@ -319,10 +210,6 @@ export function DeliveryDetailsDialog({
     setActionError(false);
     try {
       await updateCourierDeliveryStatus(deliveryId, { status: action.status });
-      if (action.status === "delivered" && simulationTimerRef.current) {
-        clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
       await refresh();
       if (mountedRef.current) onStatusUpdated();
     } catch (statusError) {
@@ -340,18 +227,14 @@ export function DeliveryDetailsDialog({
       ? "completed"
       : tracking?.delivery.status === "cancelled"
         ? "cancelled"
-        : isDevelopmentCourierMockEnabled() &&
-            tracking?.location_source === "simulated"
-          ? "simulated"
-          : typeof navigator !== "undefined" && !navigator.geolocation
-            ? "unavailable"
-            : locationState;
+        : typeof navigator !== "undefined" && !navigator.geolocation
+          ? "unavailable"
+          : locationState;
   const locationLabel: Record<LocationState, string> = {
     active: "Location tracking active",
     waiting: "Waiting for GPS",
     denied: "Permission denied",
     unavailable: "Location unavailable",
-    simulated: "Simulated GPS",
     completed: "Delivery completed",
     cancelled: "Delivery cancelled",
   };
@@ -361,12 +244,9 @@ export function DeliveryDetailsDialog({
         location_source:
           ["delivered", "cancelled"].includes(tracking.delivery.status)
             ? "unavailable"
-            : isDevelopmentCourierMockEnabled() &&
-                tracking.location_source === "simulated"
-              ? "simulated"
-              : resolvedLocationState === "active"
-                ? "live"
-                : "unavailable",
+            : resolvedLocationState === "active"
+              ? "live"
+              : "unavailable",
       }
     : null;
 

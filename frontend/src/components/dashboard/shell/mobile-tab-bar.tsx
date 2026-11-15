@@ -1,23 +1,37 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { iconMap } from "./icon-map";
 import type { DashboardRoleConfig, NavItem } from "@/lib/dashboard/types";
 
-export function MobileTabBar({ config }: { config: DashboardRoleConfig }) {
+function MobileTabBarContent({ config }: { config: DashboardRoleConfig }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const items = config.nav.flatMap((section) => section.items).slice(0, 5);
+
+  const isActive = (href: string, match: "exact" | "prefix" = "prefix") => {
+    const [itemPath, itemQuery] = href.split("?");
+    const pathMatches =
+      match === "exact" ? pathname === itemPath : pathname.startsWith(itemPath);
+    if (!pathMatches) return false;
+
+    if (itemQuery) {
+      const itemParams = new URLSearchParams(itemQuery);
+      const itemTab = itemParams.get("tab");
+      const currentTab = searchParams.get("tab") || "orders";
+      return itemTab === currentTab;
+    }
+    const currentTab = searchParams.get("tab");
+    return !currentTab;
+  };
 
   return (
     <nav className="dashboard-mobile-tab-bar" aria-label="Dashboard tabs">
       {items.map((item: NavItem) => {
         const Icon = iconMap[item.icon];
-        const active =
-          item.availability === "live" &&
-          (item.match === "exact"
-            ? pathname === item.href
-            : pathname.startsWith(item.href));
+        const active = item.availability === "live" && isActive(item.href, item.match);
         const classes = `dashboard-mobile-tab${active ? " is-active" : ""}${
           item.availability === "planned" ? " is-planned" : ""
         }`;
@@ -40,5 +54,13 @@ export function MobileTabBar({ config }: { config: DashboardRoleConfig }) {
         );
       })}
     </nav>
+  );
+}
+
+export function MobileTabBar({ config }: { config: DashboardRoleConfig }) {
+  return (
+    <Suspense fallback={null}>
+      <MobileTabBarContent config={config} />
+    </Suspense>
   );
 }

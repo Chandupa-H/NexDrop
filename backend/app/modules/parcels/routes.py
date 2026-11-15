@@ -58,4 +58,15 @@ async def update_parcel_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Parcel with ID {parcel_id} not found",
         )
+    # Part 5: Automatically send webhook update to merchant
+    try:
+        from app.modules.webhooks.service import WebhookService
+        webhook_svc = WebhookService()
+        await webhook_svc.trigger_parcel_status_webhook(
+            tracking_number=parcel.tracking_number,
+            status=payload.status.value if hasattr(payload.status, "value") else str(payload.status),
+            merchant_id=parcel.sender_id,
+        )
+    except Exception:
+        pass
     return ParcelResponse.model_validate(parcel)

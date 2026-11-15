@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { supabase } from "@/lib/supabase/client";
 import apiClient, { ApiError } from "@/lib/api-client";
 import type { MerchantRegisterRequest, MerchantRegistrationResponse } from "@/features/merchants";
 
@@ -11,8 +12,10 @@ import type { MerchantRegisterRequest, MerchantRegistrationResponse } from "@/fe
 export interface AccountFormData {
   full_name: string;
   email: string;
-  password: string;
-  confirm_password: string;
+  direct_phone?: string;
+  role_designation?: string;
+  password?: string;
+  confirm_password?: string;
 }
 
 export interface BusinessFormData {
@@ -39,8 +42,8 @@ export function useMerchantRegister() {
   const [accountData, setAccountData] = useState<AccountFormData>({
     full_name: "",
     email: "",
-    password: "",
-    confirm_password: "",
+    direct_phone: "+94 ",
+    role_designation: "",
   });
 
   const [businessData, setBusinessData] = useState<BusinessFormData>({
@@ -74,18 +77,11 @@ export function useMerchantRegister() {
       errors.email = "Please enter a valid email address.";
     }
 
-    if (!accountData.password) {
-      errors.password = "Password is required.";
-    } else if (accountData.password.length < 8) {
-      errors.password = "Password must be at least 8 characters.";
-    } else if (!/(?=.*[A-Za-z])(?=.*\d)/.test(accountData.password)) {
-      errors.password = "Password must contain at least one letter and one number.";
-    }
-
-    if (!accountData.confirm_password) {
-      errors.confirm_password = "Please confirm your password.";
-    } else if (accountData.password !== accountData.confirm_password) {
-      errors.confirm_password = "Passwords do not match.";
+    if (accountData.direct_phone && accountData.direct_phone.trim() !== "+94") {
+      const clean = accountData.direct_phone.replace(/[\s\-()]/g, "");
+      if (clean && !/^(?:\+94|0)?7[0-9]{8}$|^(?:\+94|0)?[1-9][0-9]{7,8}$/.test(clean)) {
+        errors.direct_phone = "Please enter a valid Sri Lankan mobile number (e.g. +94 77 123 4567).";
+      }
     }
 
     setAccountErrors(errors);
@@ -164,7 +160,32 @@ export function useMerchantRegister() {
     try {
       const response = await apiClient.registerMerchant(payload);
       setResult(response);
-      setStep(3); // Final success screen
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            "nexdrop_merchant_application",
+            JSON.stringify({
+              merchant_id: response.merchant_id,
+              business_name: payload.business_name,
+              email: payload.email,
+              approval_status: response.approval_status || "pending",
+              submitted_at: new Date().toISOString(),
+            })
+          );
+          localStorage.setItem("nexdrop_user_role", "merchant");
+          document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+        } catch {
+          // ignore localstorage quota errors
+        }
+      }
+      try {
+        await supabase.auth.updateUser({
+          data: { role: "merchant" },
+        });
+      } catch {
+        // ignore if offline or not logged into supabase
+      }
+      setStep(3); // Final pending review screen
     } catch (error) {
       if (error instanceof ApiError) {
         setServerError(error.message);
