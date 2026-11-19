@@ -8,6 +8,8 @@ import { useBackendHealth } from "@/hooks/use-health";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/lib/supabase/client";
+import apiClient from "@/lib/api-client";
 
 interface SavedApplication {
   merchant_id: number;
@@ -26,6 +28,26 @@ export default function MerchantPage() {
         const item = localStorage.getItem("nexdrop_merchant_application");
         if (item) {
           setSavedApp(JSON.parse(item));
+        } else {
+          supabase.auth.getSession().then(async ({ data: { session } }) => {
+            if (session?.user?.email) {
+              try {
+                const statusData = await apiClient.getMerchantStatus(session.user.email);
+                if (statusData?.merchant_id) {
+                  const restored = {
+                    merchant_id: statusData.merchant_id,
+                    business_name: statusData.business_name,
+                    email: session.user.email,
+                    approval_status: statusData.approval_status,
+                  };
+                  localStorage.setItem("nexdrop_merchant_application", JSON.stringify(restored));
+                  localStorage.setItem("nexdrop_user_role", "merchant");
+                  document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+                  setSavedApp(restored);
+                }
+              } catch {}
+            }
+          });
         }
       } catch {
         // ignore storage parse errors

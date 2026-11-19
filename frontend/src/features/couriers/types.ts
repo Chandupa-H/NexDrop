@@ -63,7 +63,7 @@ export interface DashboardKPI {
   key: string;
   label: string;
   value: number;
-  deltaPct: number;
+  deltaPct?: number;
   tone: "success" | "warning" | "danger";
 }
 
@@ -107,7 +107,7 @@ export interface ParcelDetail {
   destination: string;
   addressLine: string;
   status: CourierParcelStatus;
-  assignedAt: string;
+  assignedAt: string | null;
   assignedAtDisplay: string;
   eta: string | null;
   notes: string[];

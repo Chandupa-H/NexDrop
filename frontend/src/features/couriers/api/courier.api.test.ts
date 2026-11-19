@@ -33,7 +33,10 @@ vi.mock("@/lib/api-client", () => ({
 
 let getCourierDeliveries: typeof import("./courier.api").getCourierDeliveries;
 let getDeliveryHistory: typeof import("./courier.api").getDeliveryHistory;
+let getParcelsForFilter: typeof import("./courier.api").getParcelsForFilter;
 let getCourierAccountProfile: typeof import("./courier.api").getCourierAccountProfile;
+let getDashboardSummary: typeof import("./courier.api").getDashboardSummary;
+let getAssignedParcels: typeof import("./courier.api").getAssignedParcels;
 let updateCourierAccountProfile: typeof import("./courier.api").updateCourierAccountProfile;
 let changeCourierPassword: typeof import("./courier.api").changeCourierPassword;
 
@@ -43,12 +46,13 @@ describe("getCourierDeliveries", () => {
     ({
       getCourierDeliveries,
       getDeliveryHistory,
+      getParcelsForFilter,
       getCourierAccountProfile,
+      getDashboardSummary,
+      getAssignedParcels,
       updateCourierAccountProfile,
       changeCourierPassword,
     } = await import("./courier.api"));
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES", "true");
     vi.clearAllMocks();
   });
 
@@ -57,36 +61,18 @@ describe("getCourierDeliveries", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses mock deliveries after a 401 in development", async () => {
-    get.mockRejectedValue(new ApiError(401, "Invalid or missing bearer token"));
-    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("sends grouped status filters to the backend without a mock fallback", async () => {
+    const error = new ApiError(401, "Unauthorized");
+    get.mockRejectedValue(error);
 
-    const deliveries = await getCourierDeliveries();
-
-    expect(get).toHaveBeenCalledWith("/courier/deliveries/today");
-    expect(deliveries).toHaveLength(4);
-    expect(deliveries.map((delivery) => delivery.status)).toEqual([
-      "pending",
-      "picked_up",
-      "in_transit",
-      "delivered",
-    ]);
-    expect(warning).toHaveBeenCalledOnce();
-  });
-
-  it("applies the selected status filter to mock deliveries", async () => {
-    get.mockRejectedValue(new ApiError(401, "Unauthorized"));
-
-    const deliveries = await getCourierDeliveries([
+    await expect(getCourierDeliveries([
       "picked_up",
       "in_transit",
       "out_for_delivery",
-    ]);
-
-    expect(deliveries.map((delivery) => delivery.status)).toEqual([
-      "picked_up",
-      "in_transit",
-    ]);
+    ])).rejects.toBe(error);
+    expect(get).toHaveBeenCalledWith(
+      "/courier/deliveries/today?status=picked_up&status=in_transit&status=out_for_delivery"
+    );
   });
 
   it("uses real API data when the API succeeds", async () => {
@@ -110,20 +96,12 @@ describe("getCourierDeliveries", () => {
     expect(get).toHaveBeenCalledWith("/courier/deliveries/today?status=pending");
   });
 
-  it("does not use mocks in production", async () => {
-    vi.stubEnv("NODE_ENV", "production");
+  it("surfaces authentication failures in development instead of returning demo data", async () => {
     const error = new ApiError(401, "Unauthorized");
     get.mockRejectedValue(error);
 
     await expect(getCourierDeliveries()).rejects.toBe(error);
-  });
-
-  it("can disable the development fallback with its environment setting", async () => {
-    vi.stubEnv("NEXT_PUBLIC_USE_MOCK_COURIER_DELIVERIES", "false");
-    const error = new ApiError(401, "Unauthorized");
-    get.mockRejectedValue(error);
-
-    await expect(getCourierDeliveries()).rejects.toBe(error);
+    expect(get).toHaveBeenCalledWith("/courier/deliveries/today");
   });
 
   it("still surfaces non-401 failures in development", async () => {
@@ -146,6 +124,71 @@ describe("getCourierDeliveries", () => {
 
     await expect(getCourierAccountProfile()).resolves.toEqual(profile);
     expect(get).toHaveBeenCalledWith("/couriers/courier/profile");
+  });
+
+  it("shares an in-flight profile request between dashboard and topbar", async () => {
+    const profile = {
+      id: 1,
+      full_name: "Kasun Perera",
+      email: "kasun@example.com",
+      contact_phone: "+94 77 123 4567",
+      status: "ACTIVE" as const,
+      joined_date: "2026-01-15",
+    };
+    let resolveProfile!: (value: typeof profile) => void;
+    get.mockReturnValue(
+      new Promise<typeof profile>((resolve) => {
+        resolveProfile = resolve;
+      })
+    );
+
+    const dashboardRequest = getCourierAccountProfile();
+    const topbarRequest = getCourierAccountProfile();
+
+    expect(get).toHaveBeenCalledTimes(1);
+    resolveProfile(profile);
+    await expect(
+      Promise.all([dashboardRequest, topbarRequest])
+    ).resolves.toEqual([profile, profile]);
+  });
+
+  it("shares in-flight dashboard summary requests", async () => {
+    const summary = { totals: {}, kpis: [], weekly_deliveries: [] };
+    let resolveSummary!: (value: typeof summary) => void;
+    get.mockReturnValue(
+      new Promise<typeof summary>((resolve) => {
+        resolveSummary = resolve;
+      })
+    );
+
+    const firstRequest = getDashboardSummary();
+    const secondRequest = getDashboardSummary();
+
+    expect(get).toHaveBeenCalledTimes(1);
+    resolveSummary(summary);
+    await expect(
+      Promise.all([firstRequest, secondRequest])
+    ).resolves.toEqual([summary, summary]);
+  });
+
+  it("shares in-flight parcel requests with the same filter and page", async () => {
+    const parcels = { items: [], total: 0 };
+    let resolveParcels!: (value: typeof parcels) => void;
+    get.mockReturnValue(
+      new Promise<typeof parcels>((resolve) => {
+        resolveParcels = resolve;
+      })
+    );
+
+    const firstRequest = getAssignedParcels({ limit: 6 });
+    const secondRequest = getAssignedParcels({ limit: 6 });
+
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(get).toHaveBeenCalledWith("/couriers/courier/parcels?limit=6");
+    resolveParcels(parcels);
+    await expect(
+      Promise.all([firstRequest, secondRequest])
+    ).resolves.toEqual([parcels, parcels]);
   });
 
   it("saves only the courier's editable profile fields", async () => {
@@ -208,6 +251,22 @@ describe("getCourierDeliveries", () => {
     ).resolves.toEqual(result);
     expect(get).toHaveBeenCalledWith(
       "/courier/deliveries/history?status=cancelled&from=2026-10-01&to=2026-11-01&q=Ruwan+%26+Nugegoda&page=2&page_size=8"
+    );
+  });
+
+  it("requests courier parcel filters and pagination from the shared API client", async () => {
+    const result = { items: [], total: 0 };
+    get.mockResolvedValue(result);
+
+    await expect(getParcelsForFilter("failed", 2, 6)).resolves.toEqual(result);
+    expect(get).toHaveBeenCalledWith(
+      "/couriers/courier/parcels?status=cancelled&limit=6&offset=6"
+    );
+
+    get.mockClear();
+    await getParcelsForFilter("in_transit_group", 1, 6);
+    expect(get).toHaveBeenCalledWith(
+      "/couriers/courier/parcels?status=picked_up%2Cin_transit%2Cout_for_delivery&limit=6&offset=0"
     );
   });
 });

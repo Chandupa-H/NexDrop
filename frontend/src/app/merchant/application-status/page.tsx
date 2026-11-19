@@ -21,28 +21,25 @@ import type { MerchantStatusResponse, ApprovalStatus } from "@/features/merchant
 
 const STATUS_CONFIG: Record<
   ApprovalStatus,
-  { label: string; variant: "success" | "secondary" | "destructive"; description: string; icon: string }
+  { label: string; variant: "success" | "secondary" | "destructive"; description: string }
 > = {
   pending: {
     label: "Under Review",
     variant: "secondary",
     description:
       "Your registration has been submitted and is currently in the verification queue. Our administrative compliance team is validating your business details before activating portal access. This typically takes 1–2 business days.",
-    icon: "⏳",
   },
   approved: {
     label: "Approved & Active",
     variant: "success",
     description:
       "Congratulations! Your merchant account has been verified and approved by the admin team. Your login credentials and live API keys are now active.",
-    icon: "✓",
   },
   rejected: {
     label: "Not Approved",
     variant: "destructive",
     description:
       "Your application was not approved during administrative verification. Please review the note below or contact support for guidance.",
-    icon: "✕",
   },
 };
 
@@ -229,7 +226,7 @@ function ApplicationStatusContent() {
                 : "bg-amber-50 border-b border-amber-200"
             }
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wide mb-0.5">
                   Reference: MER-{String(statusData.merchant_id).padStart(6, "0")}
@@ -238,10 +235,7 @@ function ApplicationStatusContent() {
                   {statusData.business_name}
                 </CardTitle>
               </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <span className="text-xl">{config.icon}</span>
-                <Badge variant={config.variant}>{config.label}</Badge>
-              </div>
+              <Badge variant={config.variant}>{config.label}</Badge>
             </div>
           </CardHeader>
 

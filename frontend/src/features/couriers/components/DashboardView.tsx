@@ -171,7 +171,7 @@ export function DashboardView({
               {userName}
             </h1>
             <p className="mt-2 text-sm text-[#687b70]">
-              Here’s what’s happening with your deliveries today.
+              Here's what's happening with your deliveries today.
             </p>
           </div>
 

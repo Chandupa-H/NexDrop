@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getParcelsForFilter } from "../api/courier.api";
 import { mapParcelListItem } from "../api/courier.mappers";
-import { fetchParcelsAction } from "../actions/parcels";
 import { sortCourierParcelsByStatus } from "../lib/status";
 import { COURIER_PARCEL_PAGE_SIZE } from "../types";
 import type { ParcelListItem, TableFilter } from "../types";
@@ -51,7 +51,7 @@ export function useParcels(
       setState((current) => ({ ...current, loading: true, error: null }));
     });
 
-    fetchParcelsAction(filter, page, COURIER_PARCEL_PAGE_SIZE)
+    getParcelsForFilter(filter, page, COURIER_PARCEL_PAGE_SIZE)
       .then((response) => {
         if (controller.signal.aborted) return;
         const sortedParcels = sortCourierParcelsByStatus(

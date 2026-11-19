@@ -42,3 +42,123 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   min-height: 100vh;
 }
+
+/* Hide scrollbars globally across all browsers while preserving full scrolling */
+*,
+*::before,
+*::after,
+html,
+body {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+*::-webkit-scrollbar,
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Utility to hide scrollbars while preserving scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* Prevent unwanted focus rings/black boxes on button clicks */
+button:focus,
+button:focus-visible,
+[type="button"]:focus,
+[type="button"]:focus-visible,
+[type="submit"]:focus,
+[type="submit"]:focus-visible {
+  outline: none !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+}
+
+/* Delivery progress bar gliding beam animation (segmented live tracking) */
+@keyframes progressBeam {
+  0% {
+    transform: translateX(-110%);
+    opacity: 0.7;
+  }
+  30% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(260%);
+    opacity: 0.7;
+  }
+}
+
+.animate-progress-beam {
+  animation: progressBeam 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+/* Delivery progress bar intro step beam animation (passes through completed stages on load) */
+@keyframes progressBeamStep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.6;
+  }
+  30% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(250%);
+    opacity: 0.6;
+  }
+}
+
+.animate-progress-beam-step {
+  animation: progressBeamStep 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-progress-beam,
+  .animate-progress-beam-step {
+    animation: none;
+    transform: translateX(50%);
+  }
+}
+
+/* Remove scrollbars from all dropdowns and listboxes */
+[role="listbox"],
+.themed-select-dropdown {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+[role="listbox"]::-webkit-scrollbar,
+.themed-select-dropdown::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+[role="listbox"]::-webkit-scrollbar-thumb,
+.themed-select-dropdown::-webkit-scrollbar-thumb {
+  display: none !important;
+  background: transparent !important;
+}
+
+[role="listbox"]::-webkit-scrollbar-track,
+.themed-select-dropdown::-webkit-scrollbar-track {
+  display: none !important;
+  background: transparent !important;
+}

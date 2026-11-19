@@ -51,6 +51,14 @@ from app.integrations.websockets.manager import ws_manager
 
 router = APIRouter(prefix="/couriers", tags=["Couriers"])
 
+_FAILURE_REASON_LABELS = {
+    "address_not_found": "Address Not Found",
+    "customer_unavailable": "Customer Unavailable",
+    "refused_delivery": "Refused Delivery",
+    "damaged_parcel": "Damaged Parcel",
+    "other": "Other",
+}
+
 
 async def _publish_parcel_status_event(
     tracking_id: str,
@@ -73,14 +81,6 @@ async def _publish_parcel_status_event(
         "type": "PARCEL_STATUS_CHANGED",
         "data": payload,
     })
-
-_FAILURE_REASON_LABELS = {
-    "address_not_found": "Address Not Found",
-    "customer_unavailable": "Customer Unavailable",
-    "refused_delivery": "Refused Delivery",
-    "damaged_parcel": "Damaged Parcel",
-    "other": "Other",
-}
 
 
 def get_courier_service(session: AsyncSession = Depends(get_db)) -> CourierService:
@@ -131,7 +131,6 @@ async def update_location(
             detail=f"Courier with ID {courier_id} not found",
         )
     return CourierResponse.model_validate(courier)
-
 
 
 MAX_PROOF_IMAGE_BYTES = 5 * 1024 * 1024
@@ -876,7 +875,7 @@ async def get_parcel_detail(
 ) -> ParcelDetailResponse:
     """Get full parcel details. Verifies the parcel is assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking(tracking_id)
+    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     # Confirm this parcel belongs to the authenticated courier
@@ -910,7 +909,7 @@ async def upload_delivery_proof(
 ) -> DeliveryProofResponse:
     """Upload a proof-of-delivery photo. Parcel must be assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking(tracking_id)
+    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -967,7 +966,7 @@ async def delete_delivery_proof(
 ) -> ParcelDetailResponse:
     """Delete a proof photo. Only the assigned courier may delete it, and only before delivery."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking(tracking_id)
+    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -1021,7 +1020,7 @@ async def submit_successful_delivery(
 ) -> ParcelDetailResponse:
     """Mark a parcel as delivered. The parcel must be assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking(tracking_id)
+    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -1100,7 +1099,7 @@ async def submit_failed_delivery(
 ) -> ParcelDetailResponse:
     """Mark a parcel delivery as failed. Parcel must be assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking(tracking_id)
+    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -1158,7 +1157,7 @@ async def update_parcel_status(
     Courier identity comes exclusively from the validated token.
     """
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking(tracking_id)
+    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     # Verify the parcel belongs to this courier

@@ -4,7 +4,7 @@ echo ========================================================
 echo          Starting NexDrop Backend and Frontend
 echo ========================================================
 
-start "NexDrop Backend (FastAPI)" cmd /k "cd /d %~dp0backend && venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "NexDrop Backend (FastAPI)" cmd /k "cd /d %~dp0backend && (if exist .venv\Scripts\python.exe (.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload) else (venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload))"
 
 start "NexDrop Frontend (Next.js)" cmd /k "cd /d %~dp0frontend && npm run dev"
 

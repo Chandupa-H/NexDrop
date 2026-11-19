@@ -370,6 +370,15 @@ export const apiClient = {
   /** Get recent webhook delivery logs. */
   getMerchantWebhookLogs: (merchantId: number | string = "me", limit: number = 50) =>
     apiClient.get<WebhookDeliveryLog[]>(`/merchants/${merchantId}/webhooks/logs?limit=${limit}`),
+
+  /** Send query to AI Delivery Assistant (Gemini / MCP tool agent). */
+  sendAiChat: (message: string, history: Array<{ role: "user" | "assistant" | "system"; content: string }> = []) =>
+    apiClient.post<{
+      reply: string;
+      tool_used?: string | null;
+      data?: Record<string, any> | null;
+      model: string;
+    }>("/ai/chat", { message, history }),
 };
 
 export default apiClient;

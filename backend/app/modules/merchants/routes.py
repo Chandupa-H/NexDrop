@@ -1,18 +1,24 @@
 import secrets
+import httpx
 from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 
+from app.core.config import settings
 from app.db.session import get_db, get_optional_db
 from app.modules.merchants.models import Merchant, ApprovalStatus
+from app.modules.parcels.models import Parcel, ParcelStatus, DeliveryMethod, CurrentLocationType
 from app.modules.merchants.schemas import (
     MerchantApprovalUpdate,
     MerchantRegisterRequest,
     MerchantRegistrationResponse,
     MerchantResponse,
     MerchantStatusResponse,
+    MerchantProfileResponse,
+    MerchantProfileUpdateRequest,
+    MerchantPasswordChangeRequest,
     ApiCredentialsResponse,
     RegenerateKeyRequest,
     OAuthTokenRequest,
@@ -39,6 +45,8 @@ from app.modules.merchants.security import (
     generate_oauth_token,
     MOCK_APPROVED_MERCHANT,
 )
+from app.modules.auth.dependencies import get_authenticated_merchant_profile
+from app.modules.users.models import User
 from app.modules.webhooks.service import WebhookService
 
 router = APIRouter(prefix="/merchants", tags=["Merchants"])
@@ -137,6 +145,170 @@ async def register_merchant(
             "You will be notified once an admin reviews your account."
         ),
     )
+
+
+@router.get(
+    "/me/profile",
+    response_model=MerchantProfileResponse,
+    summary="Get the authenticated merchant profile",
+)
+async def get_my_merchant_profile(
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    session: AsyncSession = Depends(get_db),
+) -> MerchantProfileResponse:
+    user = await session.get(User, merchant.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Merchant account profile was not found.",
+        )
+    joined_at = merchant.created_at or user.created_at
+    return MerchantProfileResponse(
+        id=merchant.id,
+        full_name=user.full_name,
+        email=user.email,
+        contact_phone=user.contact_phone or "",
+        business_name=merchant.business_name,
+        registration_number=merchant.registration_number,
+        business_contact_phone=merchant.contact_phone,
+        business_address=merchant.business_address,
+        business_type=merchant.business_type,
+        website_url=merchant.website_url,
+        approval_status=merchant.approval_status,
+        rejection_reason=merchant.rejection_reason,
+        joined_date=joined_at.date().isoformat(),
+    )
+
+
+@router.patch(
+    "/me/profile",
+    response_model=MerchantProfileResponse,
+    summary="Update the authenticated merchant profile",
+)
+async def update_my_merchant_profile(
+    payload: MerchantProfileUpdateRequest,
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    session: AsyncSession = Depends(get_db),
+) -> MerchantProfileResponse:
+    user = await session.get(User, merchant.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Merchant account profile was not found.",
+        )
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "full_name" in updates:
+        user.full_name = updates["full_name"]
+    if "contact_phone" in updates:
+        user.contact_phone = updates["contact_phone"]
+    if "business_name" in updates:
+        merchant.business_name = updates["business_name"]
+    if "business_contact_phone" in updates:
+        merchant.contact_phone = updates["business_contact_phone"]
+    if "business_address" in updates:
+        merchant.business_address = updates["business_address"]
+    if "business_type" in updates:
+        merchant.business_type = updates["business_type"]
+    if "website_url" in updates:
+        merchant.website_url = updates["website_url"]
+
+    await session.commit()
+    await session.refresh(user)
+    await session.refresh(merchant)
+    joined_at = merchant.created_at or user.created_at
+    return MerchantProfileResponse(
+        id=merchant.id,
+        full_name=user.full_name,
+        email=user.email,
+        contact_phone=user.contact_phone or "",
+        business_name=merchant.business_name,
+        registration_number=merchant.registration_number,
+        business_contact_phone=merchant.contact_phone,
+        business_address=merchant.business_address,
+        business_type=merchant.business_type,
+        website_url=merchant.website_url,
+        approval_status=merchant.approval_status,
+        rejection_reason=merchant.rejection_reason,
+        joined_date=joined_at.date().isoformat(),
+    )
+
+
+@router.post(
+    "/me/profile/change-password",
+    summary="Change the authenticated merchant's password",
+)
+async def change_my_merchant_password(
+    payload: MerchantPasswordChangeRequest,
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    session: AsyncSession = Depends(get_db),
+) -> None:
+    user = await session.get(User, merchant.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Merchant account profile was not found.",
+        )
+    if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase authentication is not configured for password changes.",
+        )
+
+    auth_url = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1"
+    headers = {"apikey": settings.SUPABASE_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            login_response = await client.post(
+                f"{auth_url}/token?grant_type=password",
+                headers=headers,
+                json={"email": user.email, "password": payload.current_password},
+            )
+            if login_response.status_code in (400, 401):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Current password is incorrect.",
+                )
+            if login_response.status_code != status.HTTP_200_OK:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Supabase could not verify the current password.",
+                )
+
+            try:
+                access_token = login_response.json().get("access_token")
+            except ValueError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Supabase returned an invalid authentication response.",
+                ) from error
+            if not isinstance(access_token, str) or not access_token:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="Supabase returned an invalid authentication response.",
+                )
+
+            update_response = await client.put(
+                f"{auth_url}/user",
+                headers={**headers, "Authorization": f"Bearer {access_token}"},
+                json={"password": payload.new_password},
+            )
+    except httpx.RequestError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to contact Supabase to change the password.",
+        ) from error
+
+    if update_response.status_code not in (200, 201):
+        if update_response.status_code in (400, 422):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="The new password does not meet Supabase password requirements.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Supabase could not update the password.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -437,10 +609,37 @@ async def verify_merchant_api_key(
 async def create_delivery_via_api(
     payload: MerchantDeliveryCreate,
     merchant: Merchant = Depends(get_authenticated_merchant),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantDeliveryResponse:
     """Create delivery programmatically, tied to authenticated merchant."""
     tracking_number = f"ND-LK-{secrets.randbelow(900000) + 100000}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if session:
+        try:
+            db_parcel = Parcel(
+                tracking_number=tracking_number,
+                sender_id=merchant.user_id or merchant.id,
+                merchant_id=merchant.id,
+                recipient_name=payload.recipient_name.strip(),
+                recipient_phone=payload.recipient_phone.strip(),
+                delivery_address=payload.delivery_address.strip(),
+                delivery_city=payload.delivery_city.strip(),
+                pickup_address=merchant.business_address,
+                weight_kg=float(payload.weight_kg),
+                dimensions=payload.dimensions or "20x15x10 cm",
+                status=ParcelStatus.PENDING,
+                cod_amount=float(payload.cod_amount),
+                is_prepaid=payload.cod_amount <= 0.0,
+                special_instructions=payload.special_instructions,
+                delivery_method=DeliveryMethod.DIRECT,
+                current_location_type=CurrentLocationType.SENDER,
+            )
+            session.add(db_parcel)
+            await session.commit()
+            await session.refresh(db_parcel)
+        except Exception as exc:
+            pass
 
     delivery_record = {
         "tracking_number": tracking_number,
@@ -477,8 +676,38 @@ async def create_delivery_via_api(
 )
 async def list_merchant_deliveries(
     merchant: Merchant = Depends(get_authenticated_merchant),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> List[MerchantDeliveryResponse]:
     """Return all parcels created by the authenticated merchant."""
+    if session:
+        try:
+            stmt = select(Parcel).where(
+                or_(
+                    Parcel.merchant_id == merchant.id,
+                    Parcel.sender_id == (merchant.user_id or merchant.id),
+                )
+            ).order_by(Parcel.created_at.desc())
+            res = await session.execute(stmt)
+            db_parcels = res.scalars().all()
+            if db_parcels:
+                return [
+                    MerchantDeliveryResponse(
+                        tracking_number=p.tracking_number,
+                        status="created" if p.status == ParcelStatus.PENDING else (p.status.value if hasattr(p.status, "value") else str(p.status)),
+                        recipient_name=p.recipient_name,
+                        recipient_phone=p.recipient_phone,
+                        delivery_address=p.delivery_address,
+                        delivery_city=p.delivery_city,
+                        weight_kg=float(p.weight_kg),
+                        cod_amount=float(getattr(p, "cod_amount", 0.0) or 0.0),
+                        special_instructions=p.special_instructions,
+                        created_at=p.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(p, "created_at") and p.created_at else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                    for p in db_parcels
+                ]
+        except Exception:
+            pass
+
     records = [d for d in _MERCHANT_DELIVERIES if d["sender_id"] == merchant.id]
     return [MerchantDeliveryResponse(**d) for d in records]
 
@@ -491,8 +720,36 @@ async def list_merchant_deliveries(
 async def get_merchant_delivery(
     tracking_number: str,
     merchant: Merchant = Depends(get_authenticated_merchant),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantDeliveryResponse:
     """Retrieve delivery detail and status for authenticated merchant."""
+    if session:
+        try:
+            stmt = select(Parcel).where(
+                func.lower(Parcel.tracking_number) == tracking_number.strip().lower(),
+                or_(
+                    Parcel.merchant_id == merchant.id,
+                    Parcel.sender_id == (merchant.user_id or merchant.id),
+                )
+            )
+            res = await session.execute(stmt)
+            p = res.scalars().first()
+            if p:
+                return MerchantDeliveryResponse(
+                    tracking_number=p.tracking_number,
+                    status="created" if p.status == ParcelStatus.PENDING else (p.status.value if hasattr(p.status, "value") else str(p.status)),
+                    recipient_name=p.recipient_name,
+                    recipient_phone=p.recipient_phone,
+                    delivery_address=p.delivery_address,
+                    delivery_city=p.delivery_city,
+                    weight_kg=float(p.weight_kg),
+                    cod_amount=float(getattr(p, "cod_amount", 0.0) or 0.0),
+                    special_instructions=p.special_instructions,
+                    created_at=p.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(p, "created_at") and p.created_at else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                )
+        except Exception:
+            pass
+
     match = next(
         (d for d in _MERCHANT_DELIVERIES if d["tracking_number"] == tracking_number and d["sender_id"] == merchant.id),
         None,

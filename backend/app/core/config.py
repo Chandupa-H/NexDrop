@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
+    # AI Delivery Assistant (Groq / Gemini / Generative AI / MCP)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GEMINI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    AI_MODEL: str = "gemini-2.5-flash"
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env", "backend/.env"),
         env_file_encoding="utf-8",
