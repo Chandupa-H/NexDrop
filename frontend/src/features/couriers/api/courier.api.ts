@@ -272,7 +272,7 @@ export async function uploadDeliveryProof(
   onProgress: (percent: number) => void
 ): Promise<DeliveryProofUploadDTO> {
   const body = new FormData();
-  body.append("proof_file", file);
+  body.append("file", file);
   return apiClient.postForm<DeliveryProofUploadDTO>(
     `/couriers/courier/parcels/${encodeURIComponent(trackingId)}/delivery-result/proof`,
     body,

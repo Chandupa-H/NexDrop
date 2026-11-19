@@ -18,7 +18,7 @@ from app.modules.couriers.schemas import (
     StatusHistoryEntry,
 )
 from app.modules.couriers.repository import CourierRepository
-from app.modules.parcels.models import ParcelStatus
+from app.modules.parcels.models import ParcelStatus, CurrentLocationType
 
 ACTIVE_DELIVERY_STATUSES = {
     ParcelStatus.PENDING,
@@ -72,7 +72,7 @@ class CourierService:
         self,
         courier_id: int,
         status: Optional[List[ParcelStatus]],
-        delivery_date: date,
+        delivery_date: Optional[date] = None,
     ) -> List[DeliveryListItem]:
         rows = await self.repository.get_courier_deliveries(
             courier_id, status, delivery_date
@@ -228,6 +228,13 @@ class CourierService:
         parcel.status = next_status
         if failure_reason is not None:
             parcel.failure_reason = failure_reason
+
+        # Sync current_location_type with the new parcel status
+        if next_status == ParcelStatus.PICKED_UP:
+            parcel.current_location_type = CurrentLocationType.COURIER
+        elif next_status in {ParcelStatus.DELIVERED, ParcelStatus.CANCELLED}:
+            parcel.current_location_type = CurrentLocationType.RECIPIENT
+
         await self.repository.session.flush()
         occurred_at = datetime.now(timezone.utc)
         await self.repository.save_status_history(

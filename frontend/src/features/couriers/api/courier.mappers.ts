@@ -107,6 +107,7 @@ export function mapParcelDetail(dto: ParcelDetailDTO): ParcelDetail {
   return {
     trackingId: dto.tracking_id,
     customerName: dto.customer_name,
+    customerPhone: dto.customer_phone,
     customerPhoneMasked: dto.customer_phone_masked,
     destination: dto.destination,
     addressLine: dto.address_line,

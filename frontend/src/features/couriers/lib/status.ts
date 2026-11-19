@@ -13,10 +13,10 @@ export const statusMeta: Record<CourierParcelStatus, { label: string; tone: Stat
 };
 
 export const validNextStatuses: Record<CourierParcelStatus, ParcelStatus[]> = {
-  pending: ["picked_up"],
-  picked_up: ["in_transit"],
-  in_transit: ["out_for_delivery"],
-  out_for_delivery: [],
+  pending: ["picked_up", "cancelled"],
+  picked_up: ["in_transit", "cancelled"],
+  in_transit: ["out_for_delivery", "cancelled"],
+  out_for_delivery: ["delivered", "cancelled"],
   delivered: [],
   cancelled: [],
   failed: [],

@@ -44,12 +44,21 @@ class CourierRepository:
         self,
         courier_id: int,
         status: Optional[List[ParcelStatus]],
-        delivery_date: date,
+        delivery_date: Optional[date] = None,
     ) -> List[RowMapping]:
-        day_start = datetime.combine(
-            delivery_date, time.min, tzinfo=ZoneInfo("Asia/Colombo")
-        )
-        day_end = day_start + timedelta(days=1)
+        base_filters = [
+            DispatchAssignment.courier_id == courier_id,
+            DispatchAssignment.status != DispatchStatus.REJECTED,
+        ]
+        if delivery_date is not None:
+            day_start = datetime.combine(
+                delivery_date, time.min, tzinfo=ZoneInfo("Asia/Colombo")
+            )
+            day_end = day_start + timedelta(days=1)
+            base_filters += [
+                DispatchAssignment.assigned_at >= day_start,
+                DispatchAssignment.assigned_at < day_end,
+            ]
         statement = (
             select(
                 Parcel.id.label("parcel_id"),
@@ -73,12 +82,7 @@ class CourierRepository:
             )
             .join(DispatchAssignment, DispatchAssignment.parcel_id == Parcel.id)
             .outerjoin(Customer, Customer.id == Parcel.sender_id)
-            .where(
-                DispatchAssignment.courier_id == courier_id,
-                DispatchAssignment.assigned_at >= day_start,
-                DispatchAssignment.assigned_at < day_end,
-                DispatchAssignment.status != DispatchStatus.REJECTED,
-            )
+            .where(*base_filters)
             .order_by(DispatchAssignment.assigned_at.asc())
         )
         if status:

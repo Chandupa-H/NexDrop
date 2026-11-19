@@ -102,6 +102,7 @@ export interface TimelineEvent {
 export interface ParcelDetail {
   trackingId: string;
   customerName: string;
+  customerPhone: string;
   customerPhoneMasked: string;
   destination: string;
   addressLine: string;
