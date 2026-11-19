@@ -67,6 +67,17 @@ export interface AdminUserCreateDTO {
   business_address?: string;
 }
 
+export interface AdminUserUpdateDTO {
+  full_name: string;
+  role: AdminUserCreateDTO["role"] | "unassigned";
+  vehicle_type?: string;
+  license_plate?: string;
+  business_name?: string;
+  registration_number?: string;
+  phone?: string;
+  business_address?: string;
+}
+
 export interface AdminMerchantDTO {
   id: number;
   display_id: string;
@@ -175,6 +186,9 @@ export const adminApi = {
 
   createUser: (payload: AdminUserCreateDTO) =>
     apiClient.post<AdminUserDTO>("/admin/users", payload),
+
+  updateUser: (userId: number, payload: AdminUserUpdateDTO) =>
+    apiClient.patch<AdminUserDTO>(`/admin/users/${userId}`, payload),
 
   toggleUserStatus: (userId: number) =>
     apiClient.patch<{ id: number; is_active: boolean; status: string }>(

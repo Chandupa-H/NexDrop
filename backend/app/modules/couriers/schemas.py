@@ -103,7 +103,7 @@ class CourierPasswordChangeRequest(BaseModel):
 
 
 class DashboardTotals(BaseModel):
-    """Parcel count breakdown for today."""
+    """Current status breakdown for parcels assigned to the courier."""
     assigned: int
     delivered: int
     in_transit: int  # picked_up + in_transit + out_for_delivery
@@ -112,10 +112,10 @@ class DashboardTotals(BaseModel):
 
 
 class DashboardKPI(BaseModel):
-    """Key performance indicator with delta percentage."""
+    """Key performance indicator; delta is null when no comparison is available."""
     key: str
     value: int
-    delta_pct: int
+    delta_pct: Optional[int] = None
 
 
 class WeeklyDelivery(BaseModel):
@@ -125,7 +125,7 @@ class WeeklyDelivery(BaseModel):
 
 
 class DashboardSummaryResponse(BaseModel):
-    """GET /courier/dashboard/summary - All dashboard metrics computed from in-memory parcels."""
+    """GET /courier/dashboard/summary - Database-backed courier dashboard metrics."""
     totals: DashboardTotals
     kpis: List[DashboardKPI]
     weekly_deliveries: List[WeeklyDelivery]
@@ -176,7 +176,7 @@ class ParcelDetailResponse(BaseModel):
     destination: str
     address_line: str
     status: str
-    assigned_at: str  # ISO 8601 with timezone
+    assigned_at: Optional[str] = None  # ISO 8601 with timezone
     eta: Optional[str] = None
     notes: List[str] = Field(default_factory=list)
     timeline: List[TimelineEvent]
@@ -250,7 +250,7 @@ class CourierProofListResponse(BaseModel):
 class FailedDeliveryAttempt(BaseModel):
     attempt_number: int
     failed_at: str
-    failure_reason: str
+    failure_reason: Optional[str] = None
     failure_reason_label: str
     note: Optional[str] = None
 
@@ -265,14 +265,14 @@ class FailedDeliveryRecord(FailedDeliveryAttempt):
     eta: Optional[str] = None
     courier_name: Optional[str] = None
     parcel_status: str
-    redelivery_status: Literal["pending", "scheduled", "completed", "superseded"]
+    redelivery_status: None = None
     previous_attempts: List[FailedDeliveryAttempt] = Field(default_factory=list)
 
 
 class FailedDeliverySummary(BaseModel):
     total_failed_deliveries: int
     today_failed_deliveries: int
-    pending_redelivery: int
+    pending_redelivery: Optional[int] = None
     most_common_failure_reason: Optional[str] = None
 
 
@@ -370,6 +370,10 @@ class CourierLocationResponse(BaseModel):
 class CourierLocationUpdateResponse(BaseModel):
     location: CourierLocationResponse
     accepted: bool
+
+
+class CourierLocationWebSocketTicketResponse(BaseModel):
+    ticket: str
 
 
 class DeliveryDestination(BaseModel):

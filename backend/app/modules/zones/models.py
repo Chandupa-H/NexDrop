@@ -1,5 +1,5 @@
-from typing import Optional
-from sqlalchemy import String, Boolean, Float, Integer, Text
+from typing import Optional, Any
+from sqlalchemy import String, Boolean, Float, Integer, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin
 
@@ -11,7 +11,7 @@ class DeliveryZone(Base, TimestampMixin):
     code: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    postcodes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    postcodes: Mapped[Optional[Any]] = mapped_column(JSON, default=list, nullable=True)
     hub_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     base_fee: Mapped[Optional[float]] = mapped_column(Float, default=350.0, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(10), default="Rs.", nullable=True)

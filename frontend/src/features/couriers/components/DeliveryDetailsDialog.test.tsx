@@ -6,19 +6,16 @@ const {
   getCourierTracking,
   updateCourierDeliveryStatus,
   postCourierLocation,
-  isDevelopmentCourierMockEnabled,
 } = vi.hoisted(() => ({
   getCourierTracking: vi.fn(),
   updateCourierDeliveryStatus: vi.fn(),
   postCourierLocation: vi.fn(),
-  isDevelopmentCourierMockEnabled: vi.fn(),
 }));
 
 vi.mock("../api/courier.api", () => ({
   getCourierTracking,
   updateCourierDeliveryStatus,
   postCourierLocation,
-  isDevelopmentCourierMockEnabled,
 }));
 
 vi.mock("./DeliveryMapPanel", () => ({
@@ -65,7 +62,7 @@ function trackingFixture(status: DeliveryTrackingDTO["delivery"]["status"]): Del
           updated_at: "2026-11-05T08:30:00+05:30",
           active_delivery_id: 1001,
         },
-    location_source: delivered ? "unavailable" : "simulated",
+    location_source: delivered ? "unavailable" : "live",
     next_destination: delivered
       ? null
       : pending
@@ -84,13 +81,6 @@ function trackingFixture(status: DeliveryTrackingDTO["delivery"]["status"]): Del
       : pending
         ? "Navigate to pickup location"
         : "Navigate to delivery location",
-    simulation_route: delivered
-      ? []
-      : [
-          { lat: 6.9344, lng: 79.8428 },
-          { lat: 6.932, lng: 79.847 },
-          { lat: 6.9147, lng: 79.8521 },
-        ],
   };
 }
 
@@ -99,7 +89,6 @@ const oldGeolocation = Object.getOwnPropertyDescriptor(navigator, "geolocation")
 describe("DeliveryDetailsDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    isDevelopmentCourierMockEnabled.mockReturnValue(true);
     getCourierTracking.mockResolvedValue(trackingFixture("pending"));
     updateCourierDeliveryStatus.mockResolvedValue({});
     postCourierLocation.mockResolvedValue({ accepted: true });
@@ -129,7 +118,7 @@ describe("DeliveryDetailsDialog", () => {
     expect(await screen.findByTestId("delivery-map")).toHaveTextContent(
       "18 Galle Road, Colombo 03"
     );
-    expect(screen.getByText("Simulated GPS")).toBeInTheDocument();
+    expect(screen.getByText("Location unavailable")).toBeInTheDocument();
   });
 
   it("switches the destination after marking the parcel picked up", async () => {
@@ -160,7 +149,6 @@ describe("DeliveryDetailsDialog", () => {
   });
 
   it("handles denied GPS permissions and clears the watcher when closed", async () => {
-    isDevelopmentCourierMockEnabled.mockReturnValue(false);
     const clearWatch = vi.fn();
     Object.defineProperty(navigator, "geolocation", {
       configurable: true,
@@ -189,35 +177,42 @@ describe("DeliveryDetailsDialog", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("moves simulated GPS along the provided route and stops after unmount", async () => {
-    vi.useFakeTimers();
-    const { unmount } = render(
+  it("sends actual browser GPS coordinates to the backend", async () => {
+    let reportPosition: PositionCallback | undefined;
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        watchPosition: vi.fn((success: PositionCallback) => {
+          reportPosition = success;
+          return 23;
+        }),
+        clearWatch: vi.fn(),
+      },
+    });
+    render(
       <DeliveryDetailsDialog
         deliveryId={1001}
         onClose={vi.fn()}
         onStatusUpdated={vi.fn()}
       />
     );
+    await screen.findByText("Navigate to pickup location");
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
+      reportPosition?.({
+        coords: {
+          latitude: 6.955,
+          longitude: 79.88,
+          accuracy: 5,
+          heading: 90,
+          speed: 4,
+        },
+        timestamp: Date.now(),
+      } as GeolocationPosition);
     });
-    expect(screen.getByText("Navigate to pickup location")).toBeInTheDocument();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1500);
+    await waitFor(() => {
+      expect(postCourierLocation).toHaveBeenCalledWith(
+        expect.objectContaining({ lat: 6.955, lng: 79.88, deliveryId: 1001 })
+      );
     });
-    expect(postCourierLocation).toHaveBeenCalledOnce();
-    const simulatedPoint = postCourierLocation.mock.calls[0][0];
-    expect(simulatedPoint.deliveryId).toBe(1001);
-    expect(simulatedPoint.lat).toBeLessThan(6.9344);
-    expect(simulatedPoint.lat).toBeGreaterThan(6.932);
-    expect(simulatedPoint.lng).toBeGreaterThan(79.8428);
-
-    unmount();
-    const callsBeforeWait = postCourierLocation.mock.calls.length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
-    });
-    expect(postCourierLocation).toHaveBeenCalledTimes(callsBeforeWait);
   });
 });

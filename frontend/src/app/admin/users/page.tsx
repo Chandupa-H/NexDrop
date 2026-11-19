@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/dashboard";
+import { EditUserModal } from "@/features/admin/components/EditUserModal";
 import {
   adminApi,
   type AdminUserDTO,
@@ -14,6 +15,7 @@ import {
   Download,
   Loader2,
   Power,
+  Pencil,
   RefreshCw,
   Search,
   UserPlus,
@@ -42,6 +44,7 @@ export default function AdminUsersPage() {
   const [selectedRole, setSelectedRole] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [editingUser, setEditingUser] = useState<AdminUserDTO | null>(null);
 
   // Add User modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -134,6 +137,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-6">
+      {editingUser && <EditUserModal user={editingUser} onClose={() => setEditingUser(null)}
+        onSaved={(updated) => setUsers((users) => users.map((user) => user.id === updated.id ? updated : user))} />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -419,7 +424,7 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="flex items-center gap-1.5 overflow-x-auto w-full pb-1 sm:pb-0">
-              {["All", "Customer", "Merchant", "Courier", "Dispatcher", "Admin"].map((role) => (
+              {["All", "Customer", "Merchant", "Courier", "Dispatcher", "Admin", "Unassigned"].map((role) => (
                 <button
                   key={role}
                   type="button"
@@ -512,6 +517,10 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="py-3.5 px-4 text-xs text-[#5b7266]">{u.joined}</td>
                       <td className="py-3.5 px-4 text-right">
+                        <Button variant="outline" size="sm" onClick={() => setEditingUser(u)}
+                          aria-label={`Edit ${u.name}`} className="mr-2 text-xs gap-1.5">
+                          <Pencil className="w-3.5 h-3.5" /> Edit
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"

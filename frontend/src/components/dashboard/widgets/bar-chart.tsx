@@ -11,11 +11,13 @@ export function BarChart({
   yMax,
   yTicks = 5,
   caption,
+  expanded = false,
 }: {
   items: BarChartItem[];
   yMax: number;
   yTicks?: number;
   caption?: string;
+  expanded?: boolean;
 }) {
   const tickCount = Number.isFinite(yTicks) ? Math.max(1, Math.floor(yTicks)) : 5;
   const niceMax =
@@ -29,13 +31,27 @@ export function BarChart({
 
   return (
     <div className="flex flex-col h-full min-h-[260px]">
-      <div className="flex flex-1 gap-2">
-        <div className="flex h-56 flex-col justify-between py-2 text-xs tabular-nums text-[var(--dashboard-muted)]">
+      <div
+        className={`flex flex-1 gap-2 ${
+          expanded ? "min-h-0" : ""
+        }`}
+      >
+        <div
+          className={`flex flex-col justify-between py-2 text-xs tabular-nums text-[var(--dashboard-muted)] ${
+            expanded ? "h-full min-h-0" : "h-56"
+          }`}
+        >
           {[...ticks].reverse().map((tick, index) => (
             <div key={index}>{Number.isInteger(tick) ? tick : tick.toFixed(1)}</div>
           ))}
         </div>
-        <div className="relative h-56 min-h-56 min-w-0 flex-1">
+        <div
+          className={`relative min-w-0 flex-1 ${
+            expanded
+              ? "min-h-0"
+              : "h-56 min-h-56"
+          }`}
+        >
           <div className="absolute inset-0 flex flex-col justify-between" aria-hidden="true">
             {ticks.map((_, index) => (
               <div key={index} className="border-t border-dashed border-[var(--dashboard-hairline)]" />

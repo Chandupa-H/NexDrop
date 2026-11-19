@@ -1,11 +1,22 @@
 from datetime import date, datetime
+import secrets
+import time
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status as http_status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.integrations.websockets.manager import ws_manager
 from app.modules.auth.dependencies import get_authenticated_courier
 from app.modules.couriers.models import Courier
 from app.modules.couriers.repository import CourierRepository
@@ -13,6 +24,7 @@ from app.modules.couriers.schemas import (
     CourierLocationResponse,
     CourierLocationUpdateRequest,
     CourierLocationUpdateResponse,
+    CourierLocationWebSocketTicketResponse,
     DeliveryDetail,
     DeliveryHistoryResponse,
     DeliveryListItem,
@@ -24,6 +36,7 @@ from app.modules.parcels.models import ParcelStatus
 
 router = APIRouter(prefix="/courier", tags=["Courier Deliveries"])
 tracking_router = APIRouter(prefix="/deliveries", tags=["Delivery Tracking"])
+_location_websocket_tickets: dict[str, tuple[int, float]] = {}
 
 
 def get_courier_service(session: AsyncSession = Depends(get_db)) -> CourierService:
@@ -123,6 +136,14 @@ async def update_courier_location(
     service: CourierService = Depends(get_courier_service),
 ) -> CourierLocationUpdateResponse:
     location, accepted = await service.post_courier_location(courier, payload)
+    if accepted:
+        await ws_manager.broadcast_to_channel(
+            f"courier-location:{courier.id}",
+            {
+                "type": "courier.location.updated",
+                "data": location.model_dump(mode="json"),
+            },
+        )
     return CourierLocationUpdateResponse(location=location, accepted=accepted)
 
 
@@ -132,6 +153,48 @@ async def get_my_courier_location(
     service: CourierService = Depends(get_courier_service),
 ) -> Optional[CourierLocationResponse]:
     return await service.get_courier_location(courier.id)
+
+
+@router.post(
+    "/location/ws-ticket",
+    response_model=CourierLocationWebSocketTicketResponse,
+)
+async def create_courier_location_websocket_ticket(
+    courier: Courier = Depends(get_authenticated_courier),
+) -> CourierLocationWebSocketTicketResponse:
+    now = time.monotonic()
+    expired_tickets = [
+        ticket
+        for ticket, (_, expires_at) in _location_websocket_tickets.items()
+        if expires_at <= now
+    ]
+    for ticket in expired_tickets:
+        _location_websocket_tickets.pop(ticket, None)
+
+    ticket = secrets.token_urlsafe(32)
+    _location_websocket_tickets[ticket] = (courier.id, now + 30)
+    return CourierLocationWebSocketTicketResponse(ticket=ticket)
+
+
+@router.websocket("/ws/location")
+async def courier_location_websocket(websocket: WebSocket) -> None:
+    ticket = websocket.query_params.get("ticket")
+    ticket_data = _location_websocket_tickets.pop(ticket, None) if ticket else None
+    if ticket_data is None or ticket_data[1] <= time.monotonic():
+        await websocket.close(code=1008, reason="Authentication is required.")
+        return
+
+    channel = f"courier-location:{ticket_data[0]}"
+    await ws_manager.connect(websocket, channel)
+    try:
+        while True:
+            message = await websocket.receive_text()
+            if message == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        ws_manager.disconnect(websocket, channel)
 
 
 @tracking_router.get("/{delivery_id}/tracking", response_model=DeliveryTrackingResponse)

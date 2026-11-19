@@ -11,7 +11,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ backendHealthy }: NavbarProps) {
-  const { user, dashboardHref, isLoading, signOut } = useAuthUser();
+  const { user, dashboardHref, isDashboardAccessible, isLoading, signOut } = useAuthUser();
 
   const displayName =
     (user?.user_metadata?.full_name as string | undefined) ||
@@ -26,18 +26,24 @@ export function Navbar({ backendHealthy }: NavbarProps) {
         </Link>
 
         <nav className="hidden lg:flex items-center gap-7 text-sm font-semibold text-[#1F2937]/80">
-          <a href="#modules" className="hover:text-[#16A34A] transition-colors">
-            Modules
-          </a>
-          <a href="#calculator" className="hover:text-[#16A34A] transition-colors">
-            Pricing
-          </a>
-          <a href="#architecture" className="hover:text-[#16A34A] transition-colors">
-            Architecture
-          </a>
-          <a href="#team" className="hover:text-[#16A34A] transition-colors">
-            Squads
-          </a>
+          <Link
+            href="/#services"
+            className="hover:text-[#16A34A] transition-colors outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none"
+          >
+            Services
+          </Link>
+          <Link
+            href="/#calculator"
+            className="hover:text-[#16A34A] transition-colors outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none"
+          >
+            Rate Estimator
+          </Link>
+          <Link
+            href="/#team"
+            className="hover:text-[#16A34A] transition-colors outline-none focus:outline-none focus:ring-0 active:outline-none focus-visible:outline-none"
+          >
+            Delivery Zones
+          </Link>
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3">
@@ -79,12 +85,25 @@ export function Navbar({ backendHealthy }: NavbarProps) {
                 <span className="max-w-[140px] truncate">{displayName}</span>
               </div>
 
-              <Link href={dashboardHref}>
-                <Button variant="primary" size="sm" className="font-bold shadow-sm">
+              {isDashboardAccessible !== false ? (
+                <Link href={dashboardHref}>
+                  <Button variant="primary" size="sm" className="font-bold shadow-sm">
+                    <LayoutDashboard className="h-3.5 w-3.5" />
+                    Dashboard
+                  </Button>
+                </Link>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled
+                  title="Dashboard access is locked until your registration is approved by an admin"
+                  className="font-bold opacity-45 cursor-not-allowed select-none border border-[#E5E7EB]"
+                >
                   <LayoutDashboard className="h-3.5 w-3.5" />
                   Dashboard
                 </Button>
-              </Link>
+              )}
 
               <Button
                 variant="ghost"
@@ -98,19 +117,19 @@ export function Navbar({ backendHealthy }: NavbarProps) {
             </div>
           ) : (
             <>
-              <Link href="/login">
+              <Link href="/login" className="outline-none focus:outline-none">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="font-semibold text-[#064E3B] hover:text-[#043327] hover:bg-[#F1F5F1]"
+                  className="font-semibold text-[#064E3B] hover:text-[#043327] hover:bg-[#F1F5F1] outline-none focus:outline-none focus:ring-0"
                 >
                   <LogIn className="h-3.5 w-3.5" />
                   Sign In
                 </Button>
               </Link>
 
-              <Link href="/login?view=sign_up">
-                <Button variant="primary" size="sm" className="font-bold shadow-sm">
+              <Link href="/login?view=sign_up" className="outline-none focus:outline-none">
+                <Button variant="primary" size="sm" className="font-bold shadow-sm outline-none focus:outline-none focus:ring-0">
                   <UserPlus className="h-3.5 w-3.5" />
                   Sign Up
                 </Button>

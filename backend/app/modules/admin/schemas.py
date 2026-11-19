@@ -1,6 +1,18 @@
 from datetime import datetime
 from typing import List, Optional, Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from app.modules.users.models import UserRole
+
+
+class AdminUserUpdate(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=255)
+    role: UserRole
+    vehicle_type: str = Field(default="motorcycle", min_length=1, max_length=50)
+    license_plate: Optional[str] = Field(default=None, max_length=50)
+    business_name: Optional[str] = Field(default=None, max_length=255)
+    registration_number: Optional[str] = Field(default=None, max_length=100)
+    phone: Optional[str] = Field(default=None, max_length=32)
+    business_address: Optional[str] = Field(default=None, max_length=255)
 
 
 class AdminUserCreate(BaseModel):
