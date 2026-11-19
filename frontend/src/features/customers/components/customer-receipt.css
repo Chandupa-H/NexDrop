@@ -1,0 +1,52 @@
+.customer-receipt-page {
+  min-width: 0;
+}
+
+.customer-receipt-paper {
+  max-width: 52rem;
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+
+@media print {
+  /* Scope shell overrides to this receipt route, without changing other pages. */
+  body:has(.customer-receipt-page),
+  body:has(.customer-receipt-page) .dashboard-shell-grid,
+  body:has(.customer-receipt-page) .dashboard-main-column,
+  body:has(.customer-receipt-page) .dashboard-page-scroll,
+  body:has(.customer-receipt-page) .dashboard-page-container {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    color: black !important;
+  }
+
+  body:has(.customer-receipt-page) .dashboard-shell-grid > :not(.dashboard-main-column),
+  body:has(.customer-receipt-page) .dashboard-main-column > :not(main),
+  .customer-receipt-page > :not(.customer-receipt-paper) {
+    display: none !important;
+  }
+
+  .customer-receipt-paper {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 12mm;
+    border: 0;
+    border-radius: 0;
+    background: white;
+    color: black;
+    box-shadow: none;
+    font-size: 11pt;
+  }
+
+  .customer-receipt-paper section,
+  .customer-receipt-paper header,
+  .customer-receipt-paper dl > div {
+    break-inside: avoid;
+  }
+}

@@ -102,7 +102,8 @@ export interface GetCustomerParcelsParams {
  * List customer parcels with optional status filter and pagination.
  */
 export async function getCustomerParcels(
-  params?: GetCustomerParcelsParams
+  params?: GetCustomerParcelsParams,
+  allowMockFallback = true
 ): Promise<CustomerParcelListDTO> {
   const searchParams = new URLSearchParams();
   if (params?.status && params.status !== "all") {
@@ -121,6 +122,7 @@ export async function getCustomerParcels(
       `/customers/customer/parcels${query ? `?${query}` : ""}`
     );
   } catch (err) {
+    if (!allowMockFallback) throw err;
     console.warn("[CustomerAPI] Backend unreachable, falling back to mock parcels list:", err);
     return filterMockParcels(params?.status, params?.limit, params?.offset);
   }
@@ -130,13 +132,15 @@ export async function getCustomerParcels(
  * Get full customer parcel details including timeline and masked phone.
  */
 export async function getCustomerParcelDetail(
-  trackingId: string
+  trackingId: string,
+  allowMockFallback = true
 ): Promise<CustomerParcelDetailDTO> {
   try {
     return await apiClient.get<CustomerParcelDetailDTO>(
-      `/customers/customer/parcels/${trackingId}`
+      `/customers/customer/parcels/${encodeURIComponent(trackingId)}`
     );
   } catch (err) {
+    if (!allowMockFallback) throw err;
     console.warn(`[CustomerAPI] Backend unreachable, falling back to mock parcel detail for ${trackingId}:`, err);
     return getMockCustomerParcelDetail(trackingId);
   }
@@ -147,14 +151,16 @@ export async function getCustomerParcelDetail(
  */
 export async function cancelCustomerParcel(
   trackingId: string,
-  payload: CustomerCancelParcelRequestDTO = {}
+  payload: CustomerCancelParcelRequestDTO = {},
+  allowMockFallback = true
 ): Promise<CustomerParcelDetailDTO> {
   try {
     return await apiClient.post<CustomerParcelDetailDTO>(
-      `/customers/customer/parcels/${trackingId}/cancel`,
+      `/customers/customer/parcels/${encodeURIComponent(trackingId)}/cancel`,
       payload
     );
   } catch (err) {
+    if (!allowMockFallback) throw err;
     console.warn(`[CustomerAPI] Backend unreachable, falling back to mock cancellation for ${trackingId}:`, err);
     return cancelMockCustomerParcel(trackingId, payload.reason);
   }

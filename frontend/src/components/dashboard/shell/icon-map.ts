@@ -30,6 +30,10 @@ import {
   BarChart3,
   Settings,
   Shield,
+  Key,
+  Webhook,
+  PlusCircle,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { NavIconName } from "@/lib/dashboard/types";
@@ -62,6 +66,10 @@ export const iconMap: Record<NavIconName, LucideIcon> = {
   "bar-chart-3": BarChart3,
   settings: Settings,
   shield: Shield,
+  key: Key,
+  webhook: Webhook,
+  "plus-circle": PlusCircle,
+  "shield-check": ShieldCheck,
 };
 
 export function getIcon(name: NavIconName): LucideIcon {

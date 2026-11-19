@@ -39,5 +39,8 @@ class Merchant(Base, TimestampMixin):
     )
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # API access key (issued after approval)
+    # API access credentials (issued after approval)
     api_key: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    test_api_key: Mapped[Optional[str]] = mapped_column(String(128), unique=True, nullable=True)
+    client_id: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+    client_secret: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)

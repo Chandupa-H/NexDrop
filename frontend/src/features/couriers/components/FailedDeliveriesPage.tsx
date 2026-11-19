@@ -13,7 +13,6 @@ import type {
   FailedDeliveryListDTO,
   FailedDeliveryParamsDTO,
   FailedDeliveryRecordDTO,
-  FailedRedeliveryStatusDTO,
 } from "../api/courier.dto";
 
 const FAILURE_REASONS = [
@@ -24,13 +23,6 @@ const FAILURE_REASONS = [
   ["other", "Other"],
 ] as const;
 
-const REDELIVERY_STATES: { value: FailedRedeliveryStatusDTO; label: string }[] = [
-  { value: "pending", label: "Pending redelivery" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "completed", label: "Completed" },
-  { value: "superseded", label: "Previous attempt" },
-];
-
 function formatColomboDate(value: string): string {
   return new Intl.DateTimeFormat("en-LK", {
     dateStyle: "medium",
@@ -40,24 +32,24 @@ function formatColomboDate(value: string): string {
 }
 
 function statusLabel(value: string): string {
+  if (value === "cancelled") return "Failed";
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function redeliveryLabel(value: FailedRedeliveryStatusDTO): string {
-  return REDELIVERY_STATES.find((option) => option.value === value)?.label ?? statusLabel(value);
+function redeliveryLabel(value: string | null): string {
+  return value ? statusLabel(value) : "Not tracked";
 }
 
 export function FailedDeliveriesPage() {
   const [query, setQuery] = useState("");
   const [reason, setReason] = useState("");
   const [deliveryDate, setDeliveryDate] = useState("");
-  const [redeliveryStatus, setRedeliveryStatus] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<FailedDeliveryRecordDTO | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [result, setResult] = useState<{
     key: string;
     data: FailedDeliveryListDTO | null;
-    error: boolean;
+    errorMessage: string | null;
   } | null>(null);
 
   const params = useMemo<FailedDeliveryParamsDTO>(
@@ -65,25 +57,34 @@ export function FailedDeliveriesPage() {
       q: query.trim() || undefined,
       reason: reason || undefined,
       date: deliveryDate || undefined,
-      redelivery_status: redeliveryStatus
-        ? redeliveryStatus as FailedRedeliveryStatusDTO
-        : undefined,
     }),
-    [query, reason, deliveryDate, redeliveryStatus]
+    [query, reason, deliveryDate]
   );
-  const requestKey = `${params.q ?? ""}:${params.reason ?? ""}:${params.date ?? ""}:${params.redelivery_status ?? ""}:${requestVersion}`;
+  const requestKey = `${params.q ?? ""}:${params.reason ?? ""}:${params.date ?? ""}:${requestVersion}`;
   const loading = result?.key !== requestKey;
-  const error = result?.key === requestKey && result.error;
+  const errorMessage =
+    result?.key === requestKey ? result.errorMessage : null;
   const data = result?.key === requestKey ? result.data : null;
 
   useEffect(() => {
     let active = true;
     getCourierFailedDeliveries(params)
       .then((response) => {
-        if (active) setResult({ key: requestKey, data: response, error: false });
+        if (active) {
+          setResult({ key: requestKey, data: response, errorMessage: null });
+        }
       })
-      .catch(() => {
-        if (active) setResult({ key: requestKey, data: null, error: true });
+      .catch((error: unknown) => {
+        if (active) {
+          setResult({
+            key: requestKey,
+            data: null,
+            errorMessage:
+              error instanceof Error
+                ? error.message
+                : "Unable to load failed deliveries. Please try again.",
+          });
+        }
       });
     return () => { active = false; };
   }, [params, requestKey]);
@@ -101,15 +102,14 @@ export function FailedDeliveriesPage() {
     setQuery("");
     setReason("");
     setDeliveryDate("");
-    setRedeliveryStatus("");
   };
-  const hasFilters = Boolean(query || reason || deliveryDate || redeliveryStatus);
+  const hasFilters = Boolean(query || reason || deliveryDate);
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-5">
       <PageHeader
         title="Failed Deliveries"
-        subtitle="Review unsuccessful delivery attempts and their redelivery status."
+        subtitle="Review unsuccessful delivery attempts recorded by the backend."
       />
 
       <section aria-label="Failed delivery summary" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -119,13 +119,13 @@ export function FailedDeliveriesPage() {
           <>
             <StatCard label="Total Failed Deliveries" value={data?.summary.total_failed_deliveries ?? 0} icon="alert-triangle" tone="danger" />
             <StatCard label="Today's Failed Deliveries" value={data?.summary.today_failed_deliveries ?? 0} icon="clock" tone="warning" />
-            <StatCard label="Pending Redelivery" value={data?.summary.pending_redelivery ?? 0} icon="refresh-cw" tone="info" />
+            <StatCard label="Pending Redelivery" value={data?.summary.pending_redelivery ?? "—"} icon="refresh-cw" tone="info" />
             <StatCard label="Most Common Failure Reason" value={data?.summary.most_common_failure_reason ?? "—"} icon="alert-triangle" tone="neutral" />
           </>
         )}
       </section>
 
-      <Card className="grid min-w-0 grid-cols-1 gap-4 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-[minmax(220px,1.1fr)_minmax(190px,0.9fr)_minmax(220px,1fr)_minmax(220px,1fr)]">
+      <Card className="grid min-w-0 grid-cols-1 gap-4 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-[minmax(220px,1.1fr)_minmax(190px,0.9fr)_minmax(220px,1fr)]">
         <label className="relative block min-w-0">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input aria-label="Search tracking number or recipient" className="pl-9" placeholder="Tracking number or recipient" maxLength={100} value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -145,31 +145,22 @@ export function FailedDeliveriesPage() {
             <Input className="min-w-0" aria-label="Filter by failed date" type="date" value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} />
           </span>
         </label>
-        <div className="min-w-0">
-          <Select
-            aria-label="Filter by redelivery status"
-            className="min-w-0"
-            value={redeliveryStatus}
-            onChange={(event) => setRedeliveryStatus(event.target.value)}
-            options={[{ value: "", label: "All redelivery statuses" }, ...REDELIVERY_STATES.map(({ value, label }) => ({ value, label }))]}
-          />
-        </div>
       </Card>
 
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Loading failed deliveries">
           {[0, 1, 2].map((item) => <Card key={item} className="space-y-4 p-4"><Skeleton className="h-6 w-40" /><Skeleton className="h-4 w-3/4" /><Skeleton className="h-24 w-full" /></Card>)}
         </div>
-      ) : error ? (
+      ) : errorMessage ? (
         <Card className="flex flex-col items-center gap-4 p-8 text-center">
           <AlertCircle className="size-8 text-destructive" aria-hidden="true" />
-          <div><h2 className="font-semibold">Unable to load failed deliveries</h2><p className="mt-1 text-sm text-muted-foreground">Check your connection and try again.</p></div>
+          <div><h2 className="font-semibold">Unable to load failed deliveries</h2><p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p></div>
           <Button type="button" onClick={() => setRequestVersion((version) => version + 1)}>Try Again</Button>
         </Card>
       ) : !data?.items.length ? (
         <Card className="flex flex-col items-center gap-3 p-8 text-center">
           <AlertTriangle className="size-9 text-muted-foreground" aria-hidden="true" />
-          <div><h2 className="font-semibold">{hasFilters ? "No failed deliveries match your filters" : "No failed deliveries"}</h2><p className="mt-1 text-sm text-muted-foreground">{hasFilters ? "Try changing or clearing your filters." : "Failed attempts reported by the courier will appear here."}</p></div>
+          <div><h2 className="font-semibold">{hasFilters ? "No failed deliveries match your filters" : "No failed deliveries yet"}</h2><p className="mt-1 text-sm text-muted-foreground">{hasFilters ? "Try changing or clearing your filters." : "Parcels will appear here after a delivery attempt is reported as failed."}</p></div>
           {hasFilters && <Button type="button" variant="outline" onClick={clearFilters}>Clear filters</Button>}
         </Card>
       ) : (
@@ -187,7 +178,7 @@ export function FailedDeliveriesPage() {
                 <Card className="flex h-full min-w-0 flex-col gap-3 border-border/80 p-4 shadow-sm transition-shadow hover:shadow-md">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0"><h2 className="break-all text-sm font-semibold">{record.tracking_number}</h2><p className="mt-1 text-sm text-muted-foreground">Attempt {record.attempt_number}</p></div>
-                    <StatusBadge label={statusLabel(record.parcel_status)} tone={record.parcel_status === "failed" ? "danger" : record.parcel_status === "delivered" ? "success" : "neutral"} />
+                    <StatusBadge label={statusLabel(record.parcel_status)} tone={["failed", "cancelled"].includes(record.parcel_status) ? "danger" : record.parcel_status === "delivered" ? "success" : "neutral"} />
                   </div>
                   <div className="space-y-2 text-sm">
                     <p className="font-medium">{record.customer_name}</p>

@@ -44,7 +44,6 @@ export const adminDashboardConfig: DashboardRoleConfig = {
           href: "/admin/merchants",
           icon: "store",
           availability: "live",
-          badge: "3 Pending",
         },
         {
           id: "couriers",

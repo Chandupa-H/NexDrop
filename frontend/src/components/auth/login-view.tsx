@@ -22,6 +22,7 @@ export function LoginView() {
   const [authMode, setAuthMode] = useState<"sign_in" | "sign_up">("sign_in");
   const [authStep, setAuthStep] = useState<"credentials" | "verify_email">("credentials");
   const [pendingEmail, setPendingEmail] = useState<string>("");
+  const [returnTo, setReturnTo] = useState<string | undefined>();
 
   useEffect(() => {
     // Read URL params and stored theme on mount without blocking initial effect
@@ -29,10 +30,24 @@ export function LoginView() {
     const viewParam = params.get("view");
     const stepParam = params.get("step");
     const emailParam = params.get("email");
+    const redirectParam = params.get("redirect");
     const themeParam = params.get("theme");
+    const returnToParam = params.get("returnTo");
     const savedTheme = localStorage.getItem("nexdrop-theme");
 
     queueMicrotask(() => {
+      // Honor ?returnTo= (dev convention) or ?redirect= (merchant convention)
+      const preferredReturn =
+        returnToParam && returnToParam.startsWith("/") && !returnToParam.startsWith("//")
+          ? returnToParam
+          : redirectParam && redirectParam.startsWith("/") && !redirectParam.startsWith("//")
+          ? redirectParam
+          : null;
+
+      if (preferredReturn) {
+        setReturnTo(preferredReturn);
+      }
+
       if (viewParam === "sign_up") {
         setAuthMode("sign_up");
       }
@@ -45,7 +60,11 @@ export function LoginView() {
       } else {
         supabase.auth.getUser().then(async ({ data }) => {
           if (data.user) {
-            const target = await resolveUserDashboardPath(supabase, data.user.id);
+            const target = await resolveUserDashboardPath(
+              supabase,
+              data.user.id,
+              preferredReturn ?? "/courier/dashboard"
+            );
             router.replace(target);
           }
         });
@@ -167,7 +186,7 @@ export function LoginView() {
                 <VerifyEmailForm
                   email={pendingEmail || "courier@nexdrop.com"}
                   isDark={isDark}
-                  onSuccessRedirect="/courier/dashboard"
+                  onSuccessRedirect={returnTo}
                   onChangeEmail={() => setAuthStep("credentials")}
                 />
               ) : (
@@ -175,7 +194,7 @@ export function LoginView() {
                   isDark={isDark}
                   mode={authMode}
                   onModeChange={setAuthMode}
-                  onSuccessRedirect="/courier/dashboard"
+                  onSuccessRedirect={returnTo}
                   onRequireVerification={(email) => {
                     setPendingEmail(email);
                     setAuthStep("verify_email");

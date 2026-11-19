@@ -19,6 +19,8 @@ class ParcelBase(BaseModel):
     delivery_method: DeliveryMethod = DeliveryMethod.DIRECT
     current_location_type: CurrentLocationType = CurrentLocationType.SENDER
     current_warehouse_id: Optional[int] = None
+    cod_amount: Optional[float] = 0.0
+    is_prepaid: Optional[bool] = False
 
 
 class ParcelCreate(ParcelBase):

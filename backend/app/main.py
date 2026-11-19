@@ -1,3 +1,4 @@
+# NexDrop FastAPI Entrypoint - Reload with updated Groq environment
 import logging
 import math
 from contextlib import asynccontextmanager
@@ -82,6 +83,7 @@ async def validation_exception_handler(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

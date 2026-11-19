@@ -8,51 +8,42 @@ import type { CustomerParcelListItem, CustomerTableFilter } from "../types";
 export function useCustomerParcels(
   filter: CustomerTableFilter,
   initialParcels: CustomerParcelListItem[],
-  initialTotal: number
+  initialTotal: number,
+  { page = 1, fetchOnMount = false, allowMockFallback = true } = {}
 ) {
-  const [remoteData, setRemoteData] = useState<{
+  const [requestVersion, setRequestVersion] = useState(0);
+  const [result, setResult] = useState<{
+    key: string;
     parcels: CustomerParcelListItem[];
     total: number;
+    error: string | null;
   } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [requestVersion, setRequestVersion] = useState(0);
-
-  const refetch = useCallback(() => {
-    setRequestVersion((v) => v + 1);
-  }, []);
+  const key = `${filter}:${page}:${requestVersion}:${allowMockFallback}`;
+  const isInitial = !fetchOnMount && filter === "all" && page === 1 && requestVersion === 0;
+  const refetch = useCallback(() => setRequestVersion((v) => v + 1), []);
 
   useEffect(() => {
-    if (filter === "all" && requestVersion === 0) {
-      return;
-    }
-
-    const controller = new AbortController();
-    fetchCustomerParcelsAction(filter)
+    if (isInitial) return;
+    // Server actions cannot be aborted here. Ignore responses after cleanup instead.
+    let active = true;
+    fetchCustomerParcelsAction(filter, page, allowMockFallback)
       .then((res) => {
-        if (controller.signal.aborted) return;
-        setRemoteData({
-          parcels: res.items.map(mapCustomerParcelListItem),
-          total: res.total,
-        });
-        setLoading(false);
+        if (!active) return;
+        setResult({ key, parcels: res.items.map(mapCustomerParcelListItem), total: res.total, error: null });
       })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
-        setLoading(false);
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load customer deliveries. Please try again."
-        );
+      .catch(() => {
+        if (!active) return;
+        setResult({ key, parcels: [], total: 0, error: "Unable to load customer deliveries. Please try again." });
       });
+    return () => { active = false; };
+  }, [filter, page, allowMockFallback, key, isInitial]);
 
-    return () => controller.abort();
-  }, [filter, requestVersion]);
-
-  const isInitial = filter === "all" && requestVersion === 0;
-  const parcels = isInitial ? initialParcels : remoteData?.parcels ?? initialParcels;
-  const total = isInitial ? initialTotal : remoteData?.total ?? initialTotal;
-
-  return { parcels, total, loading, error, refetch };
+  const current = result?.key === key ? result : null;
+  return {
+    parcels: isInitial ? initialParcels : current?.parcels ?? [],
+    total: isInitial ? initialTotal : current?.total ?? 0,
+    loading: !isInitial && current === null,
+    error: isInitial ? null : current?.error ?? null,
+    refetch,
+  };
 }

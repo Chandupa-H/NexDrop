@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Camera, PackageCheck, Search, X } from "lucide-react";
@@ -10,11 +11,15 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getAssignedParcels, getCourierProofs, getParcelDetail } from "../api/courier.api";
-import type { CourierProofListDTO, CourierProofRecordDTO, ParcelDetailDTO } from "../api/courier.dto";
+import { getAssignedParcels, getCourierProofs } from "../api/courier.api";
+import type {
+  CourierProofListDTO,
+  CourierProofRecordDTO,
+  ParcelListItemDTO,
+} from "../api/courier.dto";
 import { ParcelDetailsDrawer } from "./ParcelDetailsDrawer";
 
-const EMPTY_ELIGIBLE_PARCELS: ParcelDetailDTO[] = [];
+const EMPTY_ELIGIBLE_PARCELS: ParcelListItemDTO[] = [];
 
 function formatColomboDate(value: string): string {
   return new Intl.DateTimeFormat("en-LK", {
@@ -36,29 +41,33 @@ export function ProofOfDeliveryPage() {
   const [eligibleRefreshVersion, setEligibleRefreshVersion] = useState(0);
   const [eligibleResult, setEligibleResult] = useState<{
     key: string;
-    parcels: ParcelDetailDTO[] | null;
-    error: boolean;
+    parcels: ParcelListItemDTO[] | null;
+    errorMessage: string | null;
   } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [result, setResult] = useState<{
     key: string;
     data: CourierProofListDTO | null;
-    error: boolean;
+    errorMessage: string | null;
   } | null>(null);
 
   const params = useMemo(
-    () => ({ q: query.trim() || undefined, date: deliveryDate || undefined, status: status ? status as "delivered" | "failed" : undefined }),
+    () => ({ q: query.trim() || undefined, date: deliveryDate || undefined, status: status === "delivered" ? "delivered" as const : undefined }),
     [query, deliveryDate, status]
   );
 
   const requestKey = `${params.q ?? ""}:${params.date ?? ""}:${params.status ?? ""}:${requestVersion}`;
   const loading = result?.key !== requestKey;
-  const error = result?.key === requestKey && result.error;
+  const errorMessage =
+    result?.key === requestKey ? result.errorMessage : null;
   const data = result?.key === requestKey ? result.data : null;
   const eligibleRequestKey = String(eligibleRefreshVersion);
   const eligibleLoading = selectorOpen && eligibleResult?.key !== eligibleRequestKey;
-  const eligibleError = selectorOpen && eligibleResult?.key === eligibleRequestKey && eligibleResult.error;
+  const eligibleError =
+    selectorOpen && eligibleResult?.key === eligibleRequestKey
+      ? eligibleResult.errorMessage
+      : null;
   const eligibleParcels = eligibleResult?.key === eligibleRequestKey
     ? eligibleResult.parcels ?? EMPTY_ELIGIBLE_PARCELS
     : EMPTY_ELIGIBLE_PARCELS;
@@ -75,10 +84,18 @@ export function ProofOfDeliveryPage() {
     let active = true;
     getCourierProofs(params)
       .then((response) => {
-        if (active) setResult({ key: requestKey, data: response, error: false });
+        if (active) {
+          setResult({ key: requestKey, data: response, errorMessage: null });
+        }
       })
       .catch(() => {
-        if (active) setResult({ key: requestKey, data: null, error: true });
+        if (active) {
+          setResult({
+            key: requestKey,
+            data: null,
+            errorMessage: "Unable to load proof records. Please try again.",
+          });
+        }
       });
     return () => {
       active = false;
@@ -89,18 +106,26 @@ export function ProofOfDeliveryPage() {
     if (!selectorOpen) return;
     let active = true;
     getAssignedParcels({ status: "out_for_delivery", limit: 100 })
-      .then(({ items }) => Promise.all(items.map((parcel) => getParcelDetail(parcel.tracking_id))))
-      .then((parcels) => {
+      .then(({ items }) => {
         if (active) {
           setEligibleResult({
             key: eligibleRequestKey,
-            parcels: parcels.filter((parcel) => parcel.status === "out_for_delivery"),
-            error: false,
+            parcels: items.filter((parcel) => parcel.status === "out_for_delivery"),
+            errorMessage: null,
           });
         }
       })
-      .catch(() => {
-        if (active) setEligibleResult({ key: eligibleRequestKey, parcels: null, error: true });
+      .catch((error: unknown) => {
+        if (active) {
+          setEligibleResult({
+            key: eligibleRequestKey,
+            parcels: null,
+            errorMessage:
+              error instanceof Error
+                ? error.message
+                : "Unable to load eligible parcels. Please try again.",
+          });
+        }
       });
     return () => {
       active = false;
@@ -201,7 +226,6 @@ export function ProofOfDeliveryPage() {
             options={[
               { value: "", label: "All statuses" },
               { value: "delivered", label: "Delivered" },
-              { value: "failed", label: "Failed" },
             ]}
           />
         </div>
@@ -211,10 +235,10 @@ export function ProofOfDeliveryPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Loading proof records">
           {[0, 1, 2].map((item) => <Card key={item} className="space-y-4 p-4"><Skeleton className="aspect-[4/3] w-full rounded-lg" /><Skeleton className="h-5 w-40" /><Skeleton className="h-4 w-3/4" /></Card>)}
         </div>
-      ) : error ? (
+      ) : errorMessage ? (
         <Card className="flex flex-col items-center gap-4 p-8 text-center">
           <AlertCircle className="size-8 text-destructive" aria-hidden="true" />
-          <div><h2 className="font-semibold">Unable to load proof records</h2><p className="mt-1 text-sm text-muted-foreground">Check your connection and try again.</p></div>
+          <div><h2 className="font-semibold">Unable to load proof records</h2><p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p></div>
           <Button type="button" onClick={() => setRequestVersion((version) => version + 1)}>Try Again</Button>
         </Card>
       ) : !data?.items.length ? (
@@ -291,7 +315,7 @@ export function ProofOfDeliveryPage() {
             ) : eligibleError ? (
               <Card className="mt-4 flex flex-col items-center gap-3 p-6 text-center">
                 <AlertCircle className="size-7 text-destructive" aria-hidden="true" />
-                <div><h3 className="font-semibold">Unable to load eligible parcels</h3><p className="mt-1 text-sm text-muted-foreground">Check your connection and try again.</p></div>
+                <div><h3 className="font-semibold">Unable to load eligible parcels</h3><p className="mt-1 text-sm text-muted-foreground">{eligibleError}</p></div>
                 <Button type="button" variant="outline" onClick={() => setEligibleRefreshVersion((version) => version + 1)}>Try Again</Button>
               </Card>
             ) : matchingEligibleParcels.length === 0 ? (
@@ -299,8 +323,17 @@ export function ProofOfDeliveryPage() {
                 <Camera className="size-8 text-muted-foreground" aria-hidden="true" />
                 <div>
                   <h3 className="font-semibold">{eligibleParcels.length === 0 ? "No eligible parcels" : "No parcels match your search"}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">{eligibleParcels.length === 0 ? "Only parcels currently out for delivery can be confirmed here." : "Try another tracking number or recipient name."}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{eligibleParcels.length === 0 ? "There are no parcels currently marked out for delivery. Update a parcel to Out for Delivery in Assigned Deliveries, and it will appear here." : "Try another tracking number or recipient name."}</p>
                 </div>
+                {eligibleParcels.length === 0 && (
+                  <Link
+                    className="text-sm font-semibold text-primary underline-offset-4 hover:underline"
+                    href="/courier/deliveries"
+                    onClick={() => setSelectorOpen(false)}
+                  >
+                    Go to Assigned Deliveries
+                  </Link>
+                )}
               </Card>
             ) : (
               <ul className="mt-4 space-y-3">
@@ -313,7 +346,7 @@ export function ProofOfDeliveryPage() {
                           <StatusBadge label="Out for delivery" tone="warning" />
                         </div>
                         <p className="text-sm font-medium">{parcel.customer_name}</p>
-                        <p className="break-words text-sm text-muted-foreground">{parcel.address_line}</p>
+                        <p className="break-words text-sm text-muted-foreground">{parcel.destination}</p>
                       </div>
                       <Button type="button" className="shrink-0" onClick={() => { setSelectedTrackingId(parcel.tracking_id); setSelectorOpen(false); }}>
                         Select parcel

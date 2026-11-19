@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Integer, ForeignKey, Enum, DateTime, Text
+from sqlalchemy import Integer, ForeignKey, Enum, DateTime, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base, TimestampMixin
 
@@ -15,6 +15,14 @@ class DispatchStatus(str, enum.Enum):
 
 class DispatchAssignment(Base, TimestampMixin):
     __tablename__ = "dispatch_assignments"
+    __table_args__ = (
+        Index(
+            "ix_dispatch_assignment_courier_parcel_assigned",
+            "courier_id",
+            "parcel_id",
+            "assigned_at",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
     parcel_id: Mapped[int] = mapped_column(Integer, ForeignKey("parcels.id"), nullable=False)

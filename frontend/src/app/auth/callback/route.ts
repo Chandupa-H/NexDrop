@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { DEFAULT_AUTHENTICATED_REDIRECT, resolveUserDashboardPath } from "@/lib/auth/routes";
+import { resolveUserDashboardPath } from "@/lib/auth/routes";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -45,14 +45,7 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      let targetPath = safeNext ?? DEFAULT_AUTHENTICATED_REDIRECT;
-      if (!safeNext || safeNext === DEFAULT_AUTHENTICATED_REDIRECT) {
-        targetPath = await resolveUserDashboardPath(
-          supabase,
-          data.user?.id,
-          DEFAULT_AUTHENTICATED_REDIRECT
-        );
-      }
+      const targetPath = await resolveUserDashboardPath(supabase, data.user?.id, safeNext);
 
       const response = NextResponse.redirect(`${origin}${targetPath}`);
       cookiesToSetOnResponse.forEach(({ name, value, options }) => {

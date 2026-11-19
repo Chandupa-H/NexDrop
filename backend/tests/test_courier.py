@@ -19,6 +19,24 @@ async def test_get_courier_me(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_get_courier_me_with_authenticated_token(async_client: AsyncClient):
+    """GET /courier/me resolves caller dynamically when bearer token is provided."""
+    from app.core.auth import create_token_for_user
+    from app.modules.users.models import UserRole
+
+    token = create_token_for_user("courier-42", role=UserRole.COURIER, email="chamara.perera@nexdrop.com")
+    response = await async_client.get(
+        "/api/v1/couriers/courier/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["full_name"] == "Chamara Perera"
+    assert data["role"] == "courier"
+    assert data["id"] == 1
+
+
+@pytest.mark.asyncio
 async def test_dashboard_summary_invariant(async_client: AsyncClient):
     """Summary totals must satisfy: assigned == delivered + in_transit + pending + failed."""
     response = await async_client.get("/api/v1/couriers/courier/dashboard/summary")
