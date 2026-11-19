@@ -30,12 +30,10 @@ import type { DeliveryTrackingDTO } from "../api/courier.dto";
 
 type Point = RoutingPoint;
 type LatLng = L.LatLngTuple;
-type RouteSource = "osrm" | "mock";
-
 interface DisplayRoute {
   destinationKey: string;
   points: Point[];
-  source: RouteSource;
+  source: "osrm";
   distanceMeters?: number;
   durationSeconds?: number;
 }
@@ -249,22 +247,9 @@ function RoutingMapContents({
       } catch (error) {
         if (controller.signal.aborted || requestId !== routeRequestIdRef.current) return;
         console.error("OSRM route request failed:", error);
-        const mockRoute =
-          current.tracking.location_source === "simulated" &&
-          current.tracking.simulation_route &&
-          current.tracking.simulation_route.length > 1
-            ? current.tracking.simulation_route
-            : null;
-        const fallback = mockRoute
-          ? {
-              destinationKey: requestedDestinationKey,
-              points: mockRoute,
-              source: "mock" as const,
-            }
-          : null;
-        setRoute(fallback);
-        onRoutePath(fallback?.points ?? []);
-        onRoutingState({ route: fallback, loading: false, failed: true });
+        setRoute(null);
+        onRoutePath([]);
+        onRoutingState({ route: null, loading: false, failed: true });
       } finally {
         if (routeRequestControllerRef.current === controller) {
           routeRequestControllerRef.current = null;
@@ -380,10 +365,9 @@ function RoutingMapContents({
         <Polyline
           positions={activeRoute.points.map(toLatLng)}
           pathOptions={{
-            color: activeRoute.source === "mock" ? "#b45309" : "#064e3b",
+            color: "#064e3b",
             weight: 5,
             opacity: 0.85,
-            dashArray: activeRoute.source === "mock" ? "8 8" : undefined,
           }}
         />
       )}
@@ -426,7 +410,7 @@ export function DeliveryMapPanel({ tracking, onRoutePath }: DeliveryMapPanelProp
   const destinationKey = destination
     ? `${status === "pending" ? "pickup" : "dropoff"}:${destination.lat}:${destination.lng}`
     : status;
-  const center = courier ?? pickup ?? dropoff ?? { lat: 6.9271, lng: 79.8612 };
+  const center = courier ?? pickup ?? dropoff;
   const [routingState, setRoutingState] = useState<RoutingState>(EMPTY_ROUTING_STATE);
   const retryRef = useRef<(() => void) | null>(null);
   const terminal = status === "delivered" || status === "cancelled";
@@ -445,20 +429,14 @@ export function DeliveryMapPanel({ tracking, onRoutePath }: DeliveryMapPanelProp
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold text-foreground">Route & courier location</h3>
         <Badge
-          variant={tracking.location_source === "simulated" ? "secondary" : "outline"}
+          variant="outline"
           className={
-            tracking.location_source === "simulated"
-              ? "border-amber-300 bg-amber-50 text-amber-800"
-              : tracking.location_source === "live"
-                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                : ""
+            tracking.location_source === "live"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+              : ""
           }
         >
-          {tracking.location_source === "simulated"
-            ? "Simulated GPS"
-            : tracking.location_source === "live"
-              ? "Live GPS"
-              : "Waiting for GPS"}
+          {tracking.location_source === "live" ? "Live GPS" : "Waiting for GPS"}
         </Badge>
       </div>
 
@@ -467,29 +445,35 @@ export function DeliveryMapPanel({ tracking, onRoutePath }: DeliveryMapPanelProp
         aria-label="Delivery map showing courier, pickup, and drop-off"
         className="h-72 w-full min-w-0 overflow-hidden rounded-lg bg-muted md:h-96"
       >
-        <MapContainer
-          center={toLatLng(center)}
-          zoom={13}
-          scrollWheelZoom={false}
-          className="h-full w-full"
-        >
-          <TileLayer
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="© OpenStreetMap contributors"
-            maxZoom={19}
-          />
-          <RoutingMapContents
-            tracking={tracking}
-            courier={courier}
-            pickup={pickup}
-            dropoff={dropoff}
-            destination={destination}
-            destinationKey={destinationKey}
-            onRoutePath={onRoutePath}
-            onRoutingState={setRoutingState}
-            retryRef={retryRef}
-          />
-        </MapContainer>
+        {center ? (
+          <MapContainer
+            center={toLatLng(center)}
+            zoom={13}
+            scrollWheelZoom={false}
+            className="h-full w-full"
+          >
+            <TileLayer
+              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution="© OpenStreetMap contributors"
+              maxZoom={19}
+            />
+            <RoutingMapContents
+              tracking={tracking}
+              courier={courier}
+              pickup={pickup}
+              dropoff={dropoff}
+              destination={destination}
+              destinationKey={destinationKey}
+              onRoutePath={onRoutePath}
+              onRoutingState={setRoutingState}
+              retryRef={retryRef}
+            />
+          </MapContainer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Location coordinates are not available for this delivery.
+          </div>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
@@ -528,9 +512,6 @@ export function DeliveryMapPanel({ tracking, onRoutePath }: DeliveryMapPanelProp
               {Math.max(1, Math.round(activeRoute.durationSeconds! / 60))} min. Shortest distance
               may not be the fastest in traffic.
             </p>
-          )}
-          {activeRoute?.source === "mock" && (
-            <p className="text-xs text-amber-800">Mock route · OSRM is currently unavailable.</p>
           )}
           {!terminal && routingState.loading && (
             <p className="text-xs text-muted-foreground">Finding route…</p>

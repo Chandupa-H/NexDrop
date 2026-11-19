@@ -99,14 +99,6 @@ function trackingFixture(
       status === "pending"
         ? "Navigate to pickup location"
         : "Navigate to delivery location",
-    simulation_route:
-      locationSource === "simulated"
-        ? [
-            { lat: 6.9344, lng: 79.8428 },
-            { lat: 6.925, lng: 79.85 },
-            { lat: destination.lat!, lng: destination.lng! },
-          ]
-        : undefined,
   };
 }
 
@@ -302,36 +294,6 @@ describe("DeliveryMapPanel", () => {
     expect(screen.getByText("Route unavailable.")).toBeInTheDocument();
     fireEvent.click(retry);
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-  });
-
-  it("keeps the decoded mock route and moves the courier marker on simulation updates", async () => {
-    fetchMock.mockRejectedValueOnce(new Error("OSRM unavailable"));
-    const tracking = trackingFixture("pending", "simulated");
-    const view = render(
-      <DeliveryMapPanel tracking={tracking} onRoutePath={vi.fn()} />
-    );
-
-    expect(await screen.findByText(/Mock route/)).toBeInTheDocument();
-    expect(await screen.findByTestId("route-polyline")).toBeInTheDocument();
-    view.rerender(
-      <DeliveryMapPanel
-        tracking={{
-          ...tracking,
-          courier_location: {
-            ...tracking.courier_location!,
-            lat: 6.9345,
-            lng: 79.8429,
-          },
-        }}
-        onRoutePath={vi.fn()}
-      />
-    );
-    expect(screen.getByTestId("marker-Courier")).toHaveAttribute(
-      "data-position",
-      "[6.9345,79.8429]"
-    );
-    expect(screen.getByText("Simulated GPS")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
   it.each(["delivered", "cancelled"] as const)(

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -6,6 +9,8 @@ import json
 import time
 from typing import Any
 
+import httpx
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -13,10 +18,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.modules.couriers.models import Courier
+from app.modules.merchants.models import Merchant, ApprovalStatus
 from app.modules.users.models import User, UserRole
 
 bearer_scheme = HTTPBearer(auto_error=False)
+_supabase_verification_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
+_supabase_jwks_clients: dict[str, jwt.PyJWKClient] = {}
+_asymmetric_verification_tasks: dict[
+    str, asyncio.Task[dict[str, Any] | None]
+] = {}
+_verified_token_claims_cache: dict[str, tuple[dict[str, Any], float]] = {}
 
 
 def _unauthorized() -> HTTPException:
@@ -98,18 +109,202 @@ def verify_supabase_access_token(token: str) -> dict[str, Any]:
     return claims
 
 
+def _get_supabase_jwks_client(supabase_url: str) -> jwt.PyJWKClient:
+    client = _supabase_jwks_clients.get(supabase_url)
+    if client is None:
+        client = jwt.PyJWKClient(
+            f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json",
+            cache_jwk_set=True,
+            lifespan=300,
+            timeout=5,
+        )
+        _supabase_jwks_clients[supabase_url] = client
+    return client
+
+
+def _verify_asymmetric_supabase_access_token(token: str) -> dict[str, Any] | None:
+    if not settings.SUPABASE_URL:
+        return None
+
+    try:
+        header = jwt.get_unverified_header(token)
+    except jwt.PyJWTError:
+        return None
+
+    algorithm = header.get("alg")
+    if algorithm not in {"ES256", "RS256"}:
+        return None
+
+    signing_key = _get_supabase_jwks_client(
+        settings.SUPABASE_URL
+    ).get_signing_key_from_jwt(token)
+    claims = jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=[algorithm],
+        audience="authenticated",
+        issuer=f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
+    )
+    if claims.get("role") != "authenticated":
+        raise jwt.InvalidTokenError("Invalid Supabase access token role")
+    if not isinstance(claims.get("email"), str) or not claims["email"]:
+        raise jwt.InvalidTokenError("Supabase access token is missing an email")
+    return claims
+
+
 async def get_verified_token_claims(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> dict[str, Any]:
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise _unauthorized()
-    return verify_supabase_access_token(credentials.credentials)
+
+    try:
+        return verify_supabase_access_token(credentials.credentials)
+    except HTTPException as error:
+        if error.status_code not in (status.HTTP_401_UNAUTHORIZED, status.HTTP_503_SERVICE_UNAVAILABLE):
+            raise
+
+    token_fingerprint = hashlib.sha256(
+        credentials.credentials.encode("utf-8")
+    ).hexdigest()
+    cached_claims = _verified_token_claims_cache.get(token_fingerprint)
+    if cached_claims is not None:
+        claims, expires_at = cached_claims
+        if expires_at > time.monotonic():
+            return claims
+        _verified_token_claims_cache.pop(token_fingerprint, None)
+
+    verification_task = _asymmetric_verification_tasks.get(token_fingerprint)
+    if verification_task is None:
+        verification_task = asyncio.create_task(
+            asyncio.to_thread(
+                _verify_asymmetric_supabase_access_token,
+                credentials.credentials,
+            )
+        )
+        _asymmetric_verification_tasks[token_fingerprint] = verification_task
+
+        def remove_asymmetric_task(
+            completed_task: asyncio.Task[dict[str, Any] | None],
+        ) -> None:
+            if (
+                _asymmetric_verification_tasks.get(token_fingerprint)
+                is completed_task
+            ):
+                _asymmetric_verification_tasks.pop(token_fingerprint, None)
+
+        verification_task.add_done_callback(remove_asymmetric_task)
+
+    try:
+        asymmetric_claims = await asyncio.shield(verification_task)
+        if asymmetric_claims is not None:
+            cache_lifetime = min(
+                30,
+                max(0, int(asymmetric_claims["exp"] - time.time())),
+            )
+            if cache_lifetime:
+                now = time.monotonic()
+                for expired_fingerprint, (_, expires_at) in list(
+                    _verified_token_claims_cache.items()
+                ):
+                    if expires_at <= now:
+                        _verified_token_claims_cache.pop(
+                            expired_fingerprint, None
+                        )
+                # Cache briefly to avoid repeated Supabase lookups without delaying revocation.
+                _verified_token_claims_cache[token_fingerprint] = (
+                    asymmetric_claims,
+                    now + cache_lifetime,
+                )
+            return asymmetric_claims
+    except (httpx.RequestError, jwt.PyJWTError, OSError):
+        # Retain Supabase Auth verification as a fallback for unavailable or rotated signing keys.
+        pass
+
+    task = _supabase_verification_tasks.get(token_fingerprint)
+    if task is None:
+        task = asyncio.create_task(
+            _verify_access_token_with_supabase(credentials.credentials)
+        )
+        _supabase_verification_tasks[token_fingerprint] = task
+
+        def remove_completed_task(
+            completed_task: asyncio.Task[dict[str, Any]],
+        ) -> None:
+            if _supabase_verification_tasks.get(token_fingerprint) is completed_task:
+                _supabase_verification_tasks.pop(token_fingerprint, None)
+
+        task.add_done_callback(remove_completed_task)
+
+    return await asyncio.shield(task)
+
+
+async def _verify_access_token_with_supabase(token: str) -> dict[str, Any]:
+    if not settings.SUPABASE_URL:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase URL is not configured for token verification.",
+        )
+    api_key = settings.SUPABASE_KEY or settings.SUPABASE_SERVICE_ROLE_KEY
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase API key is not configured for token verification.",
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1/user",
+                headers={
+                    "apikey": api_key,
+                    "Authorization": f"Bearer {token}",
+                },
+            )
+    except httpx.RequestError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to verify the access token with Supabase.",
+        ) from error
+
+    if response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+        raise _unauthorized()
+    if response.status_code != status.HTTP_200_OK:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase could not verify the access token right now.",
+        )
+
+    try:
+        user = response.json()
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase returned an invalid token verification response.",
+        ) from error
+
+    user_id = user.get("id") if isinstance(user, dict) else None
+    email = user.get("email") if isinstance(user, dict) else None
+    if not isinstance(user_id, str) or not user_id:
+        raise _unauthorized()
+    if not isinstance(email, str) or not email:
+        raise _unauthorized()
+
+    return {
+        "sub": user_id,
+        "email": email,
+        "aud": "authenticated",
+        "role": "authenticated",
+        "iss": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
+    }
 
 
 async def get_authenticated_courier(
     claims: dict[str, Any] = Depends(get_verified_token_claims),
     session: AsyncSession = Depends(get_db),
 ) -> Courier:
+    from app.modules.couriers.models import Courier
+
     result = await session.execute(
         select(User).where(User.email == claims["email"])
     )
@@ -130,3 +325,34 @@ async def get_authenticated_courier(
             detail="No courier profile is associated with the authenticated user.",
         )
     return courier
+
+
+async def get_authenticated_merchant_profile(
+    claims: dict[str, Any] = Depends(get_verified_token_claims),
+    session: AsyncSession = Depends(get_db),
+) -> Merchant:
+    result = await session.execute(
+        select(User).where(User.email == claims["email"])
+    )
+    user = result.scalars().first()
+    if user is None or not user.is_active or user.role != UserRole.MERCHANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The authenticated user is not an active merchant.",
+        )
+
+    merchant_result = await session.execute(
+        select(Merchant).where(Merchant.user_id == user.id)
+    )
+    merchant = merchant_result.scalars().first()
+    if merchant is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No merchant profile is associated with the authenticated user.",
+        )
+    if merchant.approval_status != ApprovalStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Merchant account must be approved to access the merchant portal.",
+        )
+    return merchant

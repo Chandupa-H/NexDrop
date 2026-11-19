@@ -157,10 +157,10 @@ describe("ProofOfDeliveryPage", () => {
     await screen.findByText("NXD001248");
     fireEvent.click(screen.getByRole("button", { name: "Add Delivery Proof" }));
 
-    expect(await screen.findByText("78 Hill Street, Kandy")).toBeInTheDocument();
+    expect(await screen.findByText("Kandy")).toBeInTheDocument();
     expect(getAssignedParcels).toHaveBeenCalledWith({ status: "out_for_delivery", limit: 100 });
-    expect(getParcelDetail).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("34 Bambalapitiya, Colombo 04")).toBeInTheDocument();
+    expect(getParcelDetail).not.toHaveBeenCalled();
+    expect(screen.getByText("Colombo")).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("textbox", { name: "Search eligible parcels" }), { target: { value: "Kavindu" } });
     expect(screen.queryByText("Amaya Jayasuriya")).not.toBeInTheDocument();
@@ -171,6 +171,31 @@ describe("ProofOfDeliveryPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close parcel details" }));
     expect(await screen.findByRole("textbox", { name: "Search eligible parcels" })).toHaveValue("Kavindu");
     expect(screen.queryByText("Amaya Jayasuriya")).not.toBeInTheDocument();
+  });
+
+  it("explains when there are no parcels ready for delivery proof", async () => {
+    getAssignedParcels.mockResolvedValueOnce({ items: [], total: 0 });
+    render(<ProofOfDeliveryPage />);
+    await screen.findByText("NXD001248");
+    fireEvent.click(screen.getByRole("button", { name: "Add Delivery Proof" }));
+
+    expect(await screen.findByText("No eligible parcels")).toBeInTheDocument();
+    expect(
+      screen.getByText(/There are no parcels currently marked out for delivery/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Go to Assigned Deliveries" }),
+    ).toHaveAttribute("href", "/courier/deliveries");
+  });
+
+  it("shows the parcel request error instead of mistaking it for an empty list", async () => {
+    getAssignedParcels.mockRejectedValueOnce(new Error("Request timeout"));
+    render(<ProofOfDeliveryPage />);
+    await screen.findByText("NXD001248");
+    fireEvent.click(screen.getByRole("button", { name: "Add Delivery Proof" }));
+
+    expect(await screen.findByText("Unable to load eligible parcels")).toBeInTheDocument();
+    expect(screen.getByText("Request timeout")).toBeInTheDocument();
   });
 
   it("uses the existing delivery confirmation upload flow and refreshes proof history after success", async () => {
@@ -185,7 +210,7 @@ describe("ProofOfDeliveryPage", () => {
     render(<ProofOfDeliveryPage />);
     await screen.findByText("NXD001248");
     fireEvent.click(screen.getByRole("button", { name: "Add Delivery Proof" }));
-    await screen.findByText("78 Hill Street, Kandy");
+    await screen.findByText("Kandy");
     fireEvent.click(screen.getAllByRole("button", { name: "Select parcel" })[0]);
     await screen.findByRole("dialog", { name: "NXD001244" });
     fireEvent.change(screen.getByLabelText(/Recipient name/), { target: { value: "Amaya Jayasuriya" } });

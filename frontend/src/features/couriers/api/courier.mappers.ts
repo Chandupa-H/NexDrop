@@ -6,7 +6,7 @@ import {
 } from "@/lib/dashboard/format";
 import type { DonutSegment } from "@/lib/dashboard/types";
 import type {
-  CourierMeDTO,
+  CourierProfileDTO,
   DashboardSummaryDTO,
   ParcelListItemDTO,
   ParcelDetailDTO,
@@ -23,18 +23,18 @@ import type {
   CourierParcelStatus,
 } from "../types";
 
-export function mapCourierProfile(dto: CourierMeDTO): CourierMe {
+export function mapCourierProfile(dto: CourierProfileDTO): CourierMe {
   return {
     id: String(dto.id),
     fullName: dto.full_name,
-    role: dto.role,
+    role: "courier",
   };
 }
 
 const KPI_LABELS: Record<string, string> = {
-  assigned: "Assigned Today",
+  assigned: "Assigned Parcels",
   delivered: "Delivered",
-  in_transit: "Out for Delivery",
+  in_transit: "In Progress",
   pending: "Pending",
 };
 
@@ -50,7 +50,7 @@ export function mapDashboardSummary(dto: DashboardSummaryDTO, todayDate: string)
     key: kpi.key,
     label: KPI_LABELS[kpi.key] || kpi.key,
     value: kpi.value,
-    deltaPct: kpi.delta_pct,
+    ...(kpi.delta_pct === null ? {} : { deltaPct: kpi.delta_pct }),
     tone: KPI_TONES[kpi.key] || "success",
   }));
 
@@ -112,7 +112,7 @@ export function mapParcelDetail(dto: ParcelDetailDTO): ParcelDetail {
     addressLine: dto.address_line,
     status: dto.status as CourierParcelStatus,
     assignedAt: dto.assigned_at,
-    assignedAtDisplay: formatTime(dto.assigned_at),
+    assignedAtDisplay: dto.assigned_at ? formatTime(dto.assigned_at) : "Not available",
     eta: dto.eta,
     notes: dto.notes,
     timeline: dto.timeline.map(mapTimelineEvent),
@@ -145,7 +145,7 @@ export function computeDonutSegments(totals: DashboardSummary["totals"]): DonutS
     },
     {
       key: "in_transit",
-      label: "In Transit",
+      label: "In Progress",
       value: totals.inTransit,
       tone: "info",
     },

@@ -74,5 +74,6 @@ export * from "./types";
 export * from "./data/mock-merchant-data";
 export * from "./config/dashboard.config";
 export { MerchantDashboardView } from "./components/MerchantDashboardView";
+export { MerchantProfileView } from "./components/MerchantProfileView";
 export { MerchantTopbarUser } from "./components/MerchantTopbarUser";
 export { ParcelDetailModal } from "./components/ParcelDetailModal";
