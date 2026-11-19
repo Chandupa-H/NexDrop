@@ -2,7 +2,7 @@ from typing import List, Optional, Literal
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, WebSocket
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
@@ -46,6 +46,8 @@ from app.modules.couriers.cloudinary_service import (
     delete_image as delete_cloudinary_image,
     upload_image as upload_cloudinary_image,
 )
+from app.integrations.rabbitmq.client import rabbitmq_client
+from app.integrations.websockets.manager import ws_manager
 
 router = APIRouter(prefix="/couriers", tags=["Couriers"])
 
@@ -56,6 +58,29 @@ _FAILURE_REASON_LABELS = {
     "damaged_parcel": "Damaged Parcel",
     "other": "Other",
 }
+
+
+async def _publish_parcel_status_event(
+    tracking_id: str,
+    courier_id: int,
+    new_status: str,
+    parcel_id: int,
+) -> None:
+    """Publish parcel.status_changed event to RabbitMQ and broadcast via WebSocket."""
+    payload = {
+        "tracking_id": tracking_id,
+        "parcel_id": parcel_id,
+        "courier_id": courier_id,
+        "new_status": new_status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    # Publish to RabbitMQ (also dispatches to in-process subscribers incl. dispatcher WS)
+    await rabbitmq_client.publish_message("parcel.status.changed", payload)
+    # Broadcast directly to the courier's personal WebSocket channel
+    await ws_manager.broadcast_to_channel(f"courier_{courier_id}", {
+        "type": "PARCEL_STATUS_CHANGED",
+        "data": payload,
+    })
 
 
 def get_courier_service(session: AsyncSession = Depends(get_db)) -> CourierService:
@@ -106,7 +131,6 @@ async def update_location(
             detail=f"Courier with ID {courier_id} not found",
         )
     return CourierResponse.model_validate(courier)
-
 
 
 MAX_PROOF_IMAGE_BYTES = 5 * 1024 * 1024
@@ -220,6 +244,7 @@ async def _parcel_to_detail_response(
         tracking_id=parcel.tracking_number,
         customer_name=parcel.recipient_name,
         customer_phone_masked=masked_phone,
+        customer_phone=parcel.recipient_phone,
         destination=parcel.delivery_city,
         address_line=parcel.delivery_address,
         status=status_str,
@@ -820,6 +845,28 @@ async def get_courier_parcels(
     return ParcelListResponse(items=items, total=total)
 
 
+@router.websocket("/courier/ws")
+async def courier_websocket(
+    websocket: WebSocket,
+    courier: Courier = Depends(get_authenticated_courier),
+) -> None:
+    """
+    WebSocket endpoint for the authenticated courier.
+    Broadcasts live parcel status changes and new assignment events
+    to the courier's personal channel (courier_{id}).
+    """
+    channel = f"courier_{courier.id}"
+    await ws_manager.connect(websocket, channel)
+    try:
+        while True:
+            # Keep the connection alive; server pushes messages via broadcast
+            await websocket.receive_text()
+    except Exception:
+        pass
+    finally:
+        ws_manager.disconnect(websocket, channel)
+
+
 @router.get("/courier/parcels/{tracking_id}", response_model=ParcelDetailResponse, tags=["Courier Dashboard"])
 async def get_parcel_detail(
     tracking_id: str,
@@ -1034,6 +1081,8 @@ async def submit_successful_delivery(
         .order_by(ParcelStatusHistory.occurred_at.asc())
     )
     history = list(history_res.scalars().all())
+    # Publish RabbitMQ event + WebSocket broadcast (delivered)
+    await _publish_parcel_status_event(tracking_id, courier.id, "delivered", parcel.id)
     return await _parcel_to_detail_response(parcel, history, courier.id, session)
 
 
@@ -1091,6 +1140,8 @@ async def submit_failed_delivery(
         .order_by(ParcelStatusHistory.occurred_at.asc())
     )
     history = list(history_res.scalars().all())
+    # Publish RabbitMQ event + WebSocket broadcast (failed/cancelled)
+    await _publish_parcel_status_event(tracking_id, courier.id, "cancelled", parcel.id)
     return await _parcel_to_detail_response(parcel, history, courier.id, session)
 
 
@@ -1153,4 +1204,6 @@ async def update_parcel_status(
         .order_by(ParcelStatusHistory.occurred_at.asc())
     )
     history = list(history_res.scalars().all())
+    # Publish RabbitMQ event + WebSocket broadcast (generic status update)
+    await _publish_parcel_status_event(tracking_id, courier.id, new_status.value, parcel.id)
     return await _parcel_to_detail_response(parcel, history, courier.id, session)

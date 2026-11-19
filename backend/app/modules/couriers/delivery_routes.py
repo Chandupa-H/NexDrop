@@ -2,7 +2,6 @@ from datetime import date, datetime
 import secrets
 import time
 from typing import List, Optional
-from zoneinfo import ZoneInfo
 
 from fastapi import (
     APIRouter,
@@ -87,8 +86,9 @@ async def get_today_courier_deliveries(
     courier: Courier = Depends(get_authenticated_courier),
     service: CourierService = Depends(get_courier_service),
 ) -> List[DeliveryListItem]:
-    today = datetime.now(ZoneInfo("Asia/Colombo")).date()
-    return await service.get_courier_deliveries(courier.id, status, today)
+    # Pass delivery_date=None so ALL assigned deliveries (any date) are returned.
+    # Couriers need to see parcels assigned on previous days that are still active.
+    return await service.get_courier_deliveries(courier.id, status)
 
 
 @router.get("/deliveries/{delivery_id}", response_model=DeliveryDetail)

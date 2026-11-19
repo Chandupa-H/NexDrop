@@ -348,7 +348,7 @@ export function ParcelDetailsDrawer({
             <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Recipient</p>
               <p className="mt-2 break-words font-semibold text-slate-900">{parcel.customerName}</p>
-              <p className="mt-1 text-sm text-slate-600">{parcel.customerPhoneMasked}</p>
+              <p className="mt-1 break-words text-slate-700">{parcel.customerPhone}</p>
             </div>
             <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Drop-off</p>
@@ -432,7 +432,9 @@ export function ParcelDetailsDrawer({
                     ? "Confirm this delivery"
                     : activeAction === "failed"
                       ? "Report a failed attempt"
-                      : "Choose the next step"}
+                      : canConfirmDelivery
+                        ? "Choose the next step"
+                        : "Move to next step"}
                 </h3>
               </div>
 
@@ -442,58 +444,57 @@ export function ParcelDetailsDrawer({
                 </p>
               )}
 
-              {!activeAction ? (
+              {/* ── out_for_delivery: 2-option layout ── */}
+              {canConfirmDelivery && !activeAction && (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {nextStatuses.map((nextStatus) => (
-                    <button
-                      key={nextStatus}
-                      type="button"
-                      onClick={handleUpdateStatus}
-                      disabled={statusSubmitting}
-                      className="flex min-h-14 items-center justify-between rounded-xl bg-emerald-700 px-4 py-3 text-left text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
-                    >
-                      <span>{statusSubmitting ? "Updating…" : getStatusLabel(nextStatus)}</span>
-                      <span aria-hidden="true">→</span>
-                    </button>
-                  ))}
-                  {canConfirmDelivery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResultError(null);
-                        setSelectedAction("delivered");
-                      }}
-                      className="min-h-14 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
-                    >
-                      Mark as delivered
-                    </button>
-                  )}
-                  {canReportFailure && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResultError(null);
-                        setSelectedAction("failed");
-                      }}
-                      className="min-h-14 rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
-                    >
-                      Report failed
-                    </button>
-                  )}
+                  {/* Delivered */}
+                  <button
+                    type="button"
+                    onClick={() => { setResultError(null); setSelectedAction("delivered"); }}
+                    className="flex min-h-14 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-emerald-300 bg-emerald-700 px-4 py-3 text-left transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2"
+                  >
+                    <span className="text-sm font-semibold text-white">Delivered →</span>
+                    <span className="text-xs text-emerald-100">Parcel handed to recipient</span>
+                  </button>
+                  {/* Cancelled */}
+                  <button
+                    type="button"
+                    onClick={() => { setResultError(null); setSelectedAction("failed"); }}
+                    className="flex min-h-14 flex-col items-start justify-center gap-0.5 rounded-xl border-2 border-rose-300 bg-white px-4 py-3 text-left transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
+                  >
+                    <span className="text-sm font-semibold text-rose-700">Cancelled →</span>
+                    <span className="text-xs text-slate-500">Could not complete delivery</span>
+                  </button>
                 </div>
-              ) : (
+              )}
+
+              {/* ── Earlier statuses: single next-step button ── */}
+              {!canConfirmDelivery && !activeAction && nextStatuses.length > 0 && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={handleUpdateStatus}
+                    disabled={statusSubmitting}
+                    className="flex min-h-14 w-full items-center justify-between rounded-xl bg-emerald-700 px-4 py-3 text-left text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    <span>{statusSubmitting ? "Updating…" : getStatusLabel(nextStatuses[0])}</span>
+                    <span aria-hidden="true">→</span>
+                  </button>
+                </div>
+              )}
+
+              {/* ── Step 2: form panels ── */}
+              {activeAction && (
                 <div className="mt-4 space-y-4">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedAction(null);
-                      setResultError(null);
-                    }}
+                    onClick={() => { setSelectedAction(null); setResultError(null); }}
                     className="text-sm font-medium text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-slate-900"
                   >
-                    ← Back to actions
+                    ← Back
                   </button>
 
+                  {/* Delivered — photo upload */}
                   {activeAction === "delivered" && (
                     <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
                       <label className="block">
@@ -507,10 +508,13 @@ export function ParcelDetailsDrawer({
                         />
                       </label>
                       <label className="block">
-                        <span className="mb-1.5 block text-sm font-medium text-slate-700">Proof photo <span className="text-rose-600">*</span></span>
+                        <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                          Proof photo <span className="text-rose-600">*</span>
+                        </span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
+                          capture="environment"
                           onChange={handleProofSelection}
                           disabled={resultSubmitting || proofDeleting}
                           className="block w-full rounded-lg border border-slate-300 bg-white text-sm text-slate-600 file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-2.5 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
@@ -545,11 +549,6 @@ export function ParcelDetailsDrawer({
                           <progress value={uploadProgress} max={100} className="mt-1 w-full accent-emerald-700" />
                         </div>
                       )}
-                      {parcel.proofCleanupPending && (
-                        <p className="rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                          The new proof is saved. Cleanup of the previous image will be retried when delivery is confirmed.
-                        </p>
-                      )}
                       <label className="flex items-start gap-2 text-sm leading-5 text-slate-600">
                         <input
                           type="checkbox"
@@ -565,15 +564,16 @@ export function ParcelDetailsDrawer({
                         disabled={resultSubmitting || proofDeleting}
                         className="w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60"
                       >
-                        {uploadProgress !== null ? `Uploading ${uploadProgress}%…` : resultSubmitting ? "Confirming delivery…" : "Confirm delivered"}
+                        {uploadProgress !== null ? `Uploading ${uploadProgress}%…` : resultSubmitting ? "Confirming delivery…" : "Confirm Delivered"}
                       </button>
                     </div>
                   )}
 
+                  {/* Cancelled — reason */}
                   {activeAction === "failed" && (
                     <div className="space-y-4 rounded-xl border border-rose-200 bg-white p-4">
                       <label className="block">
-                        <span className="mb-1.5 block text-sm font-medium text-slate-700">Reason for failed delivery</span>
+                        <span className="mb-1.5 block text-sm font-medium text-slate-700">Reason for cancellation</span>
                         <select
                           value={failureReason}
                           onChange={(event) => setFailureReason(event.target.value)}
@@ -594,7 +594,7 @@ export function ParcelDetailsDrawer({
                           onChange={(event) => setFailureNote(event.target.value)}
                           rows={3}
                           className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none placeholder:text-slate-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-100"
-                          placeholder="Add details that help explain the delivery attempt."
+                          placeholder="Add any details about the failed delivery attempt."
                         />
                       </label>
                       <label className="flex items-start gap-2 text-sm leading-5 text-slate-600">
@@ -604,7 +604,7 @@ export function ParcelDetailsDrawer({
                           onChange={(event) => setFailureConfirmed(event.target.checked)}
                           className="mt-1 accent-rose-600"
                         />
-                        <span>I confirm this delivery attempt failed for the selected reason.</span>
+                        <span>I confirm this delivery could not be completed.</span>
                       </label>
                       <button
                         type="button"
@@ -612,7 +612,7 @@ export function ParcelDetailsDrawer({
                         disabled={!failureReason || !failureConfirmed || resultSubmitting}
                         className="w-full rounded-xl bg-rose-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {resultSubmitting ? "Saving failed delivery…" : "Confirm failed delivery"}
+                        {resultSubmitting ? "Saving…" : "Confirm Cancellation"}
                       </button>
                     </div>
                   )}

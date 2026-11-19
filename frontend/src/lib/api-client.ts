@@ -67,47 +67,38 @@ async function request<T>(
   if (!headers.has("Content-Type") && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  const endpointPath = endpoint.split("?")[0];
-  const requiresCourierAuth =
-    endpointPath.startsWith("/courier/") ||
-    /^\/deliveries\/[^/]+\/tracking$/.test(endpointPath);
-  if (
-    requiresCourierAuth &&
-    typeof window !== "undefined" &&
-    !headers.has("Authorization")
-  ) {
-    const { supabase } = await import("@/lib/supabase/client");
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      throw new ApiError(401, error.message);
-    }
-    if (data?.session?.access_token) {
-      headers.set("Authorization", `Bearer ${data.session.access_token}`);
-    }
-  }
 
-  if (
-    typeof window !== "undefined" &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-    !headers.has("Authorization")
-  ) {
+  // Resolve the Supabase session once and attach it to Authorization.
+  // The two previous blocks (courier-specific + general) both called
+  // getSession() independently, doubling the async latency before the
+  // actual fetch could start.
+  if (typeof window !== "undefined" && !headers.has("Authorization")) {
     try {
       const { createSupabaseBrowserClient } = await import("@/lib/supabase/client");
       const {
         data: { session },
+        error,
       } = await createSupabaseBrowserClient().auth.getSession();
-      if (session?.access_token) {
+      if (error) {
+        const endpointPath = endpoint.split("?")[0];
+        const requiresCourierAuth =
+          endpointPath.startsWith("/courier/") ||
+          /^\/deliveries\/[^/]+\/tracking$/.test(endpointPath);
+        if (requiresCourierAuth) throw new ApiError(401, error.message);
+      } else if (session?.access_token) {
         headers.set("Authorization", `Bearer ${session.access_token}`);
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
       // Proceed unauthenticated if no browser session is available.
     }
   }
 
-  // Add 8-second timeout
+  // 15-second timeout — gives the backend enough headroom for a cold
+  // connection to the Supabase transaction-mode pooler (~2–4 s) plus
+  // actual query time, while still surfacing genuine hangs quickly.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
     const response = await fetch(url, {
@@ -144,7 +135,7 @@ async function request<T>(
 
     // Handle abort/timeout
     if (error instanceof Error && error.name === "AbortError") {
-      throw new ApiError(408, "Request timeout - server did not respond within 8 seconds");
+      throw new ApiError(408, "Request timeout - server did not respond within 15 seconds");
     }
 
     const rawMsg = (error as Error).message || "";
@@ -160,8 +151,14 @@ async function request<T>(
             cache: options.cache || "no-store",
           });
           if (retryRes.ok) return (await retryRes.json()) as T;
-        } catch {
-          // continue to throw standard ApiError
+          // Surface 4xx/5xx errors from the fallback rather than masking as 503
+          let retryErrorData: ApiErrorResponse = {};
+          try { retryErrorData = await retryRes.json(); } catch { retryErrorData = { message: retryRes.statusText }; }
+          const retryMsg = typeof retryErrorData.detail === "string" ? retryErrorData.detail : retryErrorData.message || `Request failed with status ${retryRes.status}`;
+          throw new ApiError(retryRes.status, retryMsg, retryErrorData);
+        } catch (retryErr) {
+          if (retryErr instanceof ApiError) throw retryErr;
+          // Network error on fallback too — continue to throw standard 503
         }
       }
       throw new ApiError(
@@ -185,13 +182,6 @@ export const apiClient = {
       body: body ? JSON.stringify(body) : undefined,
     }),
 
-  put: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
-    request<T>(endpoint, {
-      ...options,
-      method: "PUT",
-      body: body ? JSON.stringify(body) : undefined,
-    }),
-
   postForm: <T>(
     endpoint: string,
     body: FormData,
@@ -199,38 +189,59 @@ export const apiClient = {
   ) =>
     new Promise<T>((resolve, reject) => {
       const url = `${API_BASE_URL}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", url);
-      xhr.timeout = 120_000;
-      xhr.setRequestHeader("Accept", "application/json");
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onUploadProgress) {
-          onUploadProgress(Math.round((event.loaded / event.total) * 100));
-        }
+
+      // Resolve auth token then fire the XHR so the Bearer header is included.
+      const doSend = (token: string | null) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.timeout = 120_000;
+        xhr.setRequestHeader("Accept", "application/json");
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && onUploadProgress) {
+            onUploadProgress(Math.round((event.loaded / event.total) * 100));
+          }
+        };
+        xhr.onerror = () => reject(new ApiError(500, "Network error communicating with backend"));
+        xhr.ontimeout = () => reject(new ApiError(408, "Proof upload timed out"));
+        xhr.onload = () => {
+          let data: unknown;
+          try {
+            data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+          } catch {
+            data = {};
+          }
+          if (xhr.status < 200 || xhr.status >= 300) {
+            const errorData = data as ApiErrorResponse;
+            const detail = errorData.detail;
+            const message =
+              typeof detail === "string"
+                ? detail
+                : Array.isArray(detail)
+                  ? detail.map((item) => item.msg).join("; ")
+                  : errorData.message || `Request failed with status ${xhr.status}`;
+            reject(new ApiError(xhr.status, message, errorData));
+            return;
+          }
+          resolve(data as T);
+        };
+        xhr.send(body);
       };
-      xhr.onerror = () => reject(new ApiError(500, "Network error communicating with backend"));
-      xhr.ontimeout = () => reject(new ApiError(408, "Proof upload timed out"));
-      xhr.onload = () => {
-        let data: unknown;
-        try {
-          data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-        } catch {
-          data = {};
-        }
-        if (xhr.status < 200 || xhr.status >= 300) {
-          const errorData = data as ApiErrorResponse;
-          const detail = errorData.detail;
-          const message = typeof detail === "string"
-            ? detail
-            : Array.isArray(detail)
-              ? detail.map((item) => item.msg).join("; ")
-              : errorData.message || `Request failed with status ${xhr.status}`;
-          reject(new ApiError(xhr.status, message, errorData));
-          return;
-        }
-        resolve(data as T);
-      };
-      xhr.send(body);
+
+      if (typeof window !== "undefined") {
+        import("@/lib/supabase/client")
+          .then(({ createSupabaseBrowserClient }) =>
+            createSupabaseBrowserClient().auth.getSession()
+          )
+          .then(({ data: { session } }) => {
+            doSend(session?.access_token ?? null);
+          })
+          .catch(() => {
+            doSend(null);
+          });
+      } else {
+        doSend(null);
+      }
     }),
 
   patch: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>

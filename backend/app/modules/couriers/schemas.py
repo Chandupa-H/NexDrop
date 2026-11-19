@@ -169,10 +169,13 @@ class DeliveryResult(BaseModel):
 
 
 class ParcelDetailResponse(BaseModel):
-    """GET /courier/parcels/{tracking_id} - Full parcel details."""
+    """GET /courier/parcels/{tracking_id} - Full parcel details.
+    Includes both masked and raw phone numbers for courier view.
+    """
     tracking_id: str
     customer_name: str
     customer_phone_masked: str  # e.g., "+94 77 *** 4521"
+    customer_phone: str  # Full phone number visible to couriers only
     destination: str
     address_line: str
     status: str

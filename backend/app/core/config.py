@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     # Database (Neon PostgreSQL) - Optional at startup so it runs without DB credentials
     DATABASE_URL: Optional[str] = None
-    DATABASE_POOL_SIZE: int = 5
-    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_SIZE: int = 3
+    DATABASE_MAX_OVERFLOW: int = 7
 
     # RabbitMQ - Optional at startup
     RABBITMQ_URL: Optional[str] = None
