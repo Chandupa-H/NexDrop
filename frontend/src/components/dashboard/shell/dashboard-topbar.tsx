@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Bell, Menu, Search, Home, LogOut, Key, ChevronDown, Package } from "lucide-react";
+import { Bell, Menu, Search, ArrowLeft, Home, LogOut, Key, ChevronDown, Package } from "lucide-react";
 import { getTopbarTitle } from "@/lib/dashboard/topbar";
 import type { DashboardRoleConfig, DashboardUser } from "@/lib/dashboard/types";
 import { logoutAction } from "@/lib/auth/logout";
@@ -25,6 +25,7 @@ export function DashboardTopbar({
   const searchRef = useRef<HTMLInputElement>(null);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     if (mobileSearchOpen) searchRef.current?.focus();
@@ -80,6 +81,13 @@ export function DashboardTopbar({
               if (event.key === "Escape") {
                 event.currentTarget.blur();
                 setMobileSearchOpen(false);
+              } else if (event.key === "Enter") {
+                const term = event.currentTarget.value.trim();
+                if (term) {
+                  if (config.role === "customer") {
+                    router.push(`/customer/track?id=${encodeURIComponent(term)}`);
+                  }
+                }
               }
             }}
           />

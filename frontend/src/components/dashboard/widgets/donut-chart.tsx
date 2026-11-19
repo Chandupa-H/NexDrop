@@ -13,11 +13,13 @@ export function DonutChart({
   segments,
   total,
   centerLabel,
+  className,
   compact = false,
 }: {
   segments: DonutSegment[];
   total?: number;
   centerLabel: string;
+  className?: string;
   compact?: boolean;
 }) {
   const percentages = calculatePercentages(segments.map((s) => s.value));
@@ -47,8 +49,8 @@ export function DonutChart({
       className={`flex items-center ${
         compact
           ? "flex-col gap-3"
-          : "flex-col gap-6 lg:flex-row"
-      }`}
+          : "flex-col gap-6 lg:flex-row h-full min-h-[260px] my-auto justify-center"
+      } ${className ?? ""}`.trim()}
     >
       <div
         className={`relative shrink-0 ${

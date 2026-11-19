@@ -9,13 +9,21 @@ const toneClasses: Record<Tone, { bg: string; text: string }> = {
   neutral: { bg: "bg-[var(--dashboard-neutral-bg)]", text: "text-[var(--dashboard-neutral-text)]" },
 };
 
-export function StatusBadge({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
+export function StatusBadge({
+  label,
+  tone = "neutral",
+  showDot = false,
+}: {
+  label: string;
+  tone?: Tone;
+  showDot?: boolean;
+}) {
   const classes = toneClasses[tone];
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium ${classes.bg} ${classes.text}`}
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
+      {showDot && <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />}
       {label}
     </span>
   );
