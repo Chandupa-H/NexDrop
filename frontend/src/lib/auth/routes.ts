@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import apiClient from "@/lib/api-client";
 
 export type UserRole = "admin" | "courier" | "merchant" | "customer" | "dispatcher" | "unassigned";
 
@@ -183,6 +184,31 @@ export async function resolveUserRole(
             }
           }
         } catch { }
+      }
+
+      // Check backend for merchant application by authenticated user email
+      const { data: authData } = await supabase.auth.getUser();
+      const email = authData?.user?.email;
+      if (email) {
+        try {
+          const statusData = await apiClient.getMerchantStatus(email);
+          if (statusData?.merchant_id) {
+            localStorage.setItem("nexdrop_user_role", "merchant");
+            localStorage.setItem(
+              "nexdrop_merchant_application",
+              JSON.stringify({
+                merchant_id: statusData.merchant_id,
+                business_name: statusData.business_name,
+                email,
+                approval_status: statusData.approval_status,
+              })
+            );
+            document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+            if (statusData.approval_status === "approved") {
+              return "merchant";
+            }
+          }
+        } catch {}
       }
     }
   } catch {

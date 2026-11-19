@@ -535,7 +535,7 @@ export default function MerchantRegisterPage() {
     // 2. Check Supabase session
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
+      .then(async ({ data: { session } }) => {
         if (session?.user) {
           const email = session.user.email || "";
           const name =
@@ -548,6 +548,23 @@ export default function MerchantRegisterPage() {
             email: prev.email || email,
             full_name: prev.full_name || name,
           }));
+
+          if (email) {
+            try {
+              const statusData = await apiClient.getMerchantStatus(email);
+              if (statusData?.merchant_id) {
+                const restored = {
+                  merchant_id: statusData.merchant_id,
+                  business_name: statusData.business_name,
+                  email,
+                  approval_status: statusData.approval_status,
+                };
+                localStorage.setItem("nexdrop_merchant_application", JSON.stringify(restored));
+                localStorage.setItem("nexdrop_user_role", "merchant");
+                setExistingApp(restored);
+              }
+            } catch {}
+          }
         }
       })
       .catch(() => {})
