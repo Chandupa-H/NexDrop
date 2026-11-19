@@ -4,11 +4,12 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 
 from app.core.config import settings
 from app.db.session import get_db, get_optional_db
 from app.modules.merchants.models import Merchant, ApprovalStatus
+from app.modules.parcels.models import Parcel, ParcelStatus, DeliveryMethod, CurrentLocationType
 from app.modules.merchants.schemas import (
     MerchantApprovalUpdate,
     MerchantRegisterRequest,
@@ -608,10 +609,37 @@ async def verify_merchant_api_key(
 async def create_delivery_via_api(
     payload: MerchantDeliveryCreate,
     merchant: Merchant = Depends(get_authenticated_merchant),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantDeliveryResponse:
     """Create delivery programmatically, tied to authenticated merchant."""
     tracking_number = f"ND-LK-{secrets.randbelow(900000) + 100000}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if session:
+        try:
+            db_parcel = Parcel(
+                tracking_number=tracking_number,
+                sender_id=merchant.user_id or merchant.id,
+                merchant_id=merchant.id,
+                recipient_name=payload.recipient_name.strip(),
+                recipient_phone=payload.recipient_phone.strip(),
+                delivery_address=payload.delivery_address.strip(),
+                delivery_city=payload.delivery_city.strip(),
+                pickup_address=merchant.business_address,
+                weight_kg=float(payload.weight_kg),
+                dimensions=payload.dimensions or "20x15x10 cm",
+                status=ParcelStatus.PENDING,
+                cod_amount=float(payload.cod_amount),
+                is_prepaid=payload.cod_amount <= 0.0,
+                special_instructions=payload.special_instructions,
+                delivery_method=DeliveryMethod.DIRECT,
+                current_location_type=CurrentLocationType.SENDER,
+            )
+            session.add(db_parcel)
+            await session.commit()
+            await session.refresh(db_parcel)
+        except Exception as exc:
+            pass
 
     delivery_record = {
         "tracking_number": tracking_number,
@@ -648,8 +676,38 @@ async def create_delivery_via_api(
 )
 async def list_merchant_deliveries(
     merchant: Merchant = Depends(get_authenticated_merchant),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> List[MerchantDeliveryResponse]:
     """Return all parcels created by the authenticated merchant."""
+    if session:
+        try:
+            stmt = select(Parcel).where(
+                or_(
+                    Parcel.merchant_id == merchant.id,
+                    Parcel.sender_id == (merchant.user_id or merchant.id),
+                )
+            ).order_by(Parcel.created_at.desc())
+            res = await session.execute(stmt)
+            db_parcels = res.scalars().all()
+            if db_parcels:
+                return [
+                    MerchantDeliveryResponse(
+                        tracking_number=p.tracking_number,
+                        status="created" if p.status == ParcelStatus.PENDING else (p.status.value if hasattr(p.status, "value") else str(p.status)),
+                        recipient_name=p.recipient_name,
+                        recipient_phone=p.recipient_phone,
+                        delivery_address=p.delivery_address,
+                        delivery_city=p.delivery_city,
+                        weight_kg=float(p.weight_kg),
+                        cod_amount=float(getattr(p, "cod_amount", 0.0) or 0.0),
+                        special_instructions=p.special_instructions,
+                        created_at=p.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(p, "created_at") and p.created_at else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                    for p in db_parcels
+                ]
+        except Exception:
+            pass
+
     records = [d for d in _MERCHANT_DELIVERIES if d["sender_id"] == merchant.id]
     return [MerchantDeliveryResponse(**d) for d in records]
 
@@ -662,8 +720,36 @@ async def list_merchant_deliveries(
 async def get_merchant_delivery(
     tracking_number: str,
     merchant: Merchant = Depends(get_authenticated_merchant),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantDeliveryResponse:
     """Retrieve delivery detail and status for authenticated merchant."""
+    if session:
+        try:
+            stmt = select(Parcel).where(
+                func.lower(Parcel.tracking_number) == tracking_number.strip().lower(),
+                or_(
+                    Parcel.merchant_id == merchant.id,
+                    Parcel.sender_id == (merchant.user_id or merchant.id),
+                )
+            )
+            res = await session.execute(stmt)
+            p = res.scalars().first()
+            if p:
+                return MerchantDeliveryResponse(
+                    tracking_number=p.tracking_number,
+                    status="created" if p.status == ParcelStatus.PENDING else (p.status.value if hasattr(p.status, "value") else str(p.status)),
+                    recipient_name=p.recipient_name,
+                    recipient_phone=p.recipient_phone,
+                    delivery_address=p.delivery_address,
+                    delivery_city=p.delivery_city,
+                    weight_kg=float(p.weight_kg),
+                    cod_amount=float(getattr(p, "cod_amount", 0.0) or 0.0),
+                    special_instructions=p.special_instructions,
+                    created_at=p.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(p, "created_at") and p.created_at else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                )
+        except Exception:
+            pass
+
     match = next(
         (d for d in _MERCHANT_DELIVERIES if d["tracking_number"] == tracking_number and d["sender_id"] == merchant.id),
         None,
