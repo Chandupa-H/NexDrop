@@ -143,22 +143,7 @@ export async function resolveUserRole(
       metaRole.toLowerCase() !== "authenticated" &&
       metaRole.toLowerCase() !== "anon"
     ) {
-      const normalizedMeta = metaRole.trim().toLowerCase();
-      if (normalizedMeta === "merchant") {
-        if (typeof window !== "undefined") {
-          try {
-            const stored = localStorage.getItem("nexdrop_merchant_application");
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (parsed?.approval_status === "approved") {
-                return "merchant";
-              }
-            }
-          } catch {}
-          return "unassigned";
-        }
-      }
-      return normalizedMeta;
+      return metaRole.trim().toLowerCase();
     }
   } catch {
     // Continue to database profiles fallback

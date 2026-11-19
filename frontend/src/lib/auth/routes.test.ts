@@ -38,7 +38,7 @@ describe("auth routes", () => {
   it("maps known roles to their dashboard paths", () => {
     expect(getDashboardPathForRole("admin")).toBe("/admin/dashboard");
     expect(getDashboardPathForRole("courier")).toBe("/courier/dashboard");
-    expect(getDashboardPathForRole("merchant")).toBe("/merchant");
+    expect(getDashboardPathForRole("merchant")).toBe("/merchant/dashboard");
     expect(getDashboardPathForRole("dispatcher")).toBe("/dispatcher/dashboard");
     expect(getDashboardPathForRole("customer")).toBe("/");
     expect(getDashboardPathForRole(null)).toBe(DEFAULT_AUTHENTICATED_REDIRECT);
@@ -49,9 +49,10 @@ describe("auth routes", () => {
     expect(isProtectedRoute("/admin/dashboard")).toBe(true);
     expect(isProtectedRoute("/courier/dashboard")).toBe(true);
     expect(isProtectedRoute("/dispatcher/dashboard")).toBe(true);
-    expect(isProtectedRoute("/merchant")).toBe(true);
-    expect(isProtectedRoute("/merchant/orders")).toBe(true);
+    expect(isProtectedRoute("/merchant/dashboard")).toBe(true);
+    expect(isProtectedRoute("/merchant/dashboard/orders")).toBe(true);
 
+    expect(isProtectedRoute("/merchant")).toBe(false);
     expect(isProtectedRoute("/merchant/register")).toBe(false);
     expect(isProtectedRoute("/customer/register")).toBe(false);
     expect(isProtectedRoute("/register")).toBe(false);
@@ -66,13 +67,13 @@ describe("auth routes", () => {
     expect(isRouteAllowedForRole("/admin/dashboard", "admin")).toBe(true);
     expect(isRouteAllowedForRole("/courier/dashboard", "admin")).toBe(true);
     expect(isRouteAllowedForRole("/dispatcher/dashboard", "admin")).toBe(true);
-    expect(isRouteAllowedForRole("/merchant", "admin")).toBe(true);
+    expect(isRouteAllowedForRole("/merchant/dashboard", "admin")).toBe(true);
 
     // Courier access
     expect(isRouteAllowedForRole("/courier/dashboard", "courier")).toBe(true);
     expect(isRouteAllowedForRole("/admin/dashboard", "courier")).toBe(false);
     expect(isRouteAllowedForRole("/dispatcher/dashboard", "courier")).toBe(false);
-    expect(isRouteAllowedForRole("/merchant", "courier")).toBe(false);
+    expect(isRouteAllowedForRole("/merchant/dashboard", "courier")).toBe(false);
 
     // Dispatcher access
     expect(isRouteAllowedForRole("/dispatcher/dashboard", "dispatcher")).toBe(true);
@@ -80,7 +81,7 @@ describe("auth routes", () => {
     expect(isRouteAllowedForRole("/courier/dashboard", "dispatcher")).toBe(false);
 
     // Merchant access
-    expect(isRouteAllowedForRole("/merchant", "merchant")).toBe(true);
+    expect(isRouteAllowedForRole("/merchant/dashboard", "merchant")).toBe(true);
     expect(isRouteAllowedForRole("/admin/dashboard", "merchant")).toBe(false);
     expect(isRouteAllowedForRole("/courier/dashboard", "merchant")).toBe(false);
 
