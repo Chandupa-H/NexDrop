@@ -304,6 +304,10 @@ export interface CourierLocationWebSocketTicketDTO {
   ticket: string;
 }
 
+export interface CourierWebSocketTicketDTO {
+  ticket: string;
+}
+
 export interface DeliveryStatusUpdateDTO {
   status: import("../types").DeliveryStatus;
   proof_reference?: string;

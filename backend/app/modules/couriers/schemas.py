@@ -379,6 +379,10 @@ class CourierLocationWebSocketTicketResponse(BaseModel):
     ticket: str
 
 
+class CourierWebSocketTicketResponse(BaseModel):
+    ticket: str
+
+
 class DeliveryDestination(BaseModel):
     address: str
     lat: Optional[float] = None
