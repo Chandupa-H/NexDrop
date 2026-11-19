@@ -1,3 +1,4 @@
+# NexDrop FastAPI Entrypoint - Reload with updated Groq environment
 import logging
 import math
 from contextlib import asynccontextmanager
