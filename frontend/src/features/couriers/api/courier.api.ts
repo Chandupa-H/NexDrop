@@ -23,6 +23,7 @@ import type {
   CourierLocationUpdateDTO,
   CourierLocationUpdateResponseDTO,
   CourierLocationWebSocketTicketDTO,
+  CourierWebSocketTicketDTO,
   DeliveryProofUploadDTO,
   SuccessfulDeliveryRequestDTO,
   FailedDeliveryRequestDTO,
@@ -239,6 +240,10 @@ export async function createCourierLocationWebSocketTicket(): Promise<CourierLoc
   return apiClient.post<CourierLocationWebSocketTicketDTO>(
     "/courier/location/ws-ticket"
   );
+}
+
+export async function createCourierWebSocketTicket(): Promise<CourierWebSocketTicketDTO> {
+  return apiClient.post<CourierWebSocketTicketDTO>("/couriers/courier/ws-ticket");
 }
 
 /**

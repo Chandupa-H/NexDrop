@@ -1,8 +1,19 @@
 from typing import List, Optional, Literal
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
+import secrets
+import time as time_module
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, WebSocket
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    status,
+    UploadFile,
+    WebSocket,
+)
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
@@ -35,6 +46,7 @@ from app.modules.couriers.schemas import (
     FailedDeliveryListResponse,
     FailedDeliveryRecord,
     FailedDeliverySummary,
+    CourierWebSocketTicketResponse,
 )
 from app.modules.couriers.models import Courier
 from app.modules.couriers.repository import CourierRepository
@@ -58,6 +70,7 @@ _FAILURE_REASON_LABELS = {
     "damaged_parcel": "Damaged Parcel",
     "other": "Other",
 }
+_courier_websocket_tickets: dict[str, tuple[int, float]] = {}
 
 
 async def _publish_parcel_status_event(
@@ -845,17 +858,47 @@ async def get_courier_parcels(
     return ParcelListResponse(items=items, total=total)
 
 
+def _issue_courier_websocket_ticket(courier_id: int) -> CourierWebSocketTicketResponse:
+    now = time_module.monotonic()
+    expired_tickets = [
+        ticket
+        for ticket, (_, expires_at) in _courier_websocket_tickets.items()
+        if expires_at <= now
+    ]
+    for ticket in expired_tickets:
+        _courier_websocket_tickets.pop(ticket, None)
+
+    ticket = secrets.token_urlsafe(32)
+    _courier_websocket_tickets[ticket] = (courier_id, now + 30)
+    return CourierWebSocketTicketResponse(ticket=ticket)
+
+
+@router.post(
+    "/courier/ws-ticket",
+    response_model=CourierWebSocketTicketResponse,
+)
+async def create_courier_websocket_ticket(
+    courier: Courier = Depends(get_authenticated_courier),
+) -> CourierWebSocketTicketResponse:
+    return _issue_courier_websocket_ticket(courier.id)
+
+
 @router.websocket("/courier/ws")
 async def courier_websocket(
     websocket: WebSocket,
-    courier: Courier = Depends(get_authenticated_courier),
 ) -> None:
     """
     WebSocket endpoint for the authenticated courier.
     Broadcasts live parcel status changes and new assignment events
     to the courier's personal channel (courier_{id}).
     """
-    channel = f"courier_{courier.id}"
+    ticket = websocket.query_params.get("ticket")
+    ticket_data = _courier_websocket_tickets.pop(ticket, None) if ticket else None
+    if ticket_data is None or ticket_data[1] <= time_module.monotonic():
+        await websocket.close(code=1008, reason="Authentication is required.")
+        return
+
+    channel = f"courier_{ticket_data[0]}"
     await ws_manager.connect(websocket, channel)
     try:
         while True:
@@ -875,7 +918,7 @@ async def get_parcel_detail(
 ) -> ParcelDetailResponse:
     """Get full parcel details. Verifies the parcel is assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
+    parcel = await repo.get_parcel_by_tracking(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     # Confirm this parcel belongs to the authenticated courier
@@ -909,7 +952,7 @@ async def upload_delivery_proof(
 ) -> DeliveryProofResponse:
     """Upload a proof-of-delivery photo. Parcel must be assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
+    parcel = await repo.get_parcel_by_tracking(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -966,7 +1009,7 @@ async def delete_delivery_proof(
 ) -> ParcelDetailResponse:
     """Delete a proof photo. Only the assigned courier may delete it, and only before delivery."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
+    parcel = await repo.get_parcel_by_tracking(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -1020,7 +1063,7 @@ async def submit_successful_delivery(
 ) -> ParcelDetailResponse:
     """Mark a parcel as delivered. The parcel must be assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
+    parcel = await repo.get_parcel_by_tracking(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -1099,7 +1142,7 @@ async def submit_failed_delivery(
 ) -> ParcelDetailResponse:
     """Mark a parcel delivery as failed. Parcel must be assigned to the authenticated courier."""
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
+    parcel = await repo.get_parcel_by_tracking(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     assignment_res = await session.execute(
@@ -1157,7 +1200,7 @@ async def update_parcel_status(
     Courier identity comes exclusively from the validated token.
     """
     repo = CourierRepository(session)
-    parcel = await repo.get_parcel_by_tracking_number(tracking_id)
+    parcel = await repo.get_parcel_by_tracking(tracking_id)
     if not parcel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parcel not found.")
     # Verify the parcel belongs to this courier
