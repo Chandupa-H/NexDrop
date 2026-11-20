@@ -45,7 +45,7 @@ export default function MerchantPage() {
                   document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
                   setSavedApp(restored);
                 }
-              } catch {}
+              } catch { }
             }
           });
         }

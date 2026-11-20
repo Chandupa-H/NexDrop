@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/button";
 import apiClient from "@/lib/api-client";
 
 interface WebhooksTabProps {
+  merchantId?: string;
   initialConfig: WebhookConfig;
   initialLogs: WebhookDeliveryLog[];
 }
 
-export function WebhooksTab({ initialConfig, initialLogs }: WebhooksTabProps) {
+export function WebhooksTab({ merchantId, initialConfig, initialLogs }: WebhooksTabProps) {
   const [config, setConfig] = useState(initialConfig);
   const [targetUrl, setTargetUrl] = useState(initialConfig.targetUrl);
   const [logs, setLogs] = useState(initialLogs);
@@ -75,7 +76,7 @@ export function WebhooksTab({ initialConfig, initialLogs }: WebhooksTabProps) {
 
     setConfig((prev) => ({ ...prev, targetUrl: targetUrl.trim() }));
     try {
-      await apiClient.updateMerchantWebhooks("me", {
+      await apiClient.updateMerchantWebhooks(merchantId || "me", {
         targetUrl: targetUrl.trim(),
         subscribedEvents: config.subscribedEvents,
         isActive: config.isActive,
@@ -92,7 +93,7 @@ export function WebhooksTab({ initialConfig, initialLogs }: WebhooksTabProps) {
     setPingSuccess(null);
 
     try {
-      const res = await apiClient.testMerchantWebhook("me");
+      const res = await apiClient.testMerchantWebhook(merchantId || "me");
       setLogs((prev) => [res.log, ...prev]);
       setPingSuccess(`HTTP ${res.log.status} ${res.log.statusText} — Delivered in ${res.log.durationMs}ms`);
     } catch {
@@ -171,11 +172,10 @@ export function WebhooksTab({ initialConfig, initialLogs }: WebhooksTabProps) {
                   if (urlError) setUrlError(null);
                 }}
                 placeholder="https://yourstore.com/api/webhooks/nexdrop"
-                className={`w-full text-xs font-mono px-3 py-2 border rounded-lg focus:outline-none ${
-                  urlError
+                className={`w-full text-xs font-mono px-3 py-2 border rounded-lg focus:outline-none ${urlError
                     ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                     : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                }`}
+                  }`}
               />
               <Button
                 variant="primary"
@@ -244,11 +244,10 @@ export function WebhooksTab({ initialConfig, initialLogs }: WebhooksTabProps) {
                 return (
                   <label
                     key={ev.id}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
-                      isChecked
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer ${isChecked
                         ? "bg-[#F0FDF4] border-emerald-300"
                         : "bg-white border-[#E5E7EB] opacity-70"
-                    }`}
+                      }`}
                   >
                     <input
                       type="checkbox"

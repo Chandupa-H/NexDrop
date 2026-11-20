@@ -83,8 +83,13 @@ _MOCK_WEBHOOK_LOGS: List[Dict[str, Any]] = []
 
 
 class MerchantService:
-    def __init__(self, repository: Optional[MerchantRepository] = None):
+    def __init__(
+        self,
+        repository: Optional[MerchantRepository] = None,
+        current_user_email: Optional[str] = None,
+    ):
         self.repository = repository
+        self.current_user_email = current_user_email
 
     # ------------------------------------------------------------------
     # ID Resolution Helper
@@ -208,10 +213,8 @@ class MerchantService:
                 return m
 
         numeric_id = self._resolve_merchant_id(identifier)
-        if numeric_id and numeric_id in _MOCK_MERCHANTS:
-            return _MOCK_MERCHANTS[numeric_id]
 
-        # Check DB
+        # Check DB first — the mock store may have stale / fake IDs
         if self.repository and numeric_id:
             try:
                 db_m = await self.repository.get_by_id(numeric_id)
@@ -219,6 +222,35 @@ class MerchantService:
                     return self._format_merchant_dict(db_m)
             except Exception:
                 pass
+
+        # For "me", resolve by authenticated user's email first
+        if identifier == "me":
+            if self.current_user_email and self.repository:
+                try:
+                    user_repo = UserRepository(self.repository.session)
+                    user = await user_repo.get_by_email(self.current_user_email.strip().lower())
+                    if user:
+                        db_m = await self.repository.get_by_user_id(user.id)
+                        if db_m:
+                            return self._format_merchant_dict(db_m)
+                except Exception:
+                    pass
+
+            # Fallback if no email token available: try to find latest merchant in DB
+            if self.repository:
+                try:
+                    from sqlalchemy import select as _sel
+                    stmt = _sel(Merchant).order_by(Merchant.id.desc()).limit(1)
+                    res = await self.repository.session.execute(stmt)
+                    db_m = res.scalars().first()
+                    if db_m:
+                        return self._format_merchant_dict(db_m)
+                except Exception:
+                    pass
+
+        # Fallback to in-memory mock store
+        if numeric_id and numeric_id in _MOCK_MERCHANTS:
+            return _MOCK_MERCHANTS[numeric_id]
 
         if identifier == "me" and _MOCK_MERCHANTS:
             return list(_MOCK_MERCHANTS.values())[-1]
@@ -426,20 +458,20 @@ class MerchantService:
         Queries PostgreSQL parcels table first when DB session is active,
         falling back to in-memory mock store.
         """
+        merchant_record = await self.get_merchant_by_identifier(merchant_id)
+        numeric_id = (
+            merchant_record.get("id")
+            if merchant_record
+            else self._resolve_merchant_id(merchant_id)
+        )
+
         if self.repository and self.repository.session:
             try:
-                numeric_id = self._resolve_merchant_id(merchant_id)
-                merchant_record = await self.get_merchant_by_identifier(merchant_id)
-                if not numeric_id and merchant_record:
-                    numeric_id = merchant_record.get("id")
-
                 stmt = select(Parcel)
-                conditions = []
                 if numeric_id is not None:
-                    conditions.append(Parcel.merchant_id == numeric_id)
-                    if merchant_record and merchant_record.get("user_id"):
-                        conditions.append(Parcel.sender_id == merchant_record["user_id"])
-                    stmt = stmt.where(or_(*conditions))
+                    stmt = stmt.where(Parcel.merchant_id == numeric_id)
+                elif merchant_record and merchant_record.get("id"):
+                    stmt = stmt.where(Parcel.merchant_id == merchant_record["id"])
 
                 if status and status.lower() != "all":
                     st = status.lower()
@@ -463,12 +495,16 @@ class MerchantService:
                 stmt = stmt.order_by(Parcel.created_at.desc()).offset(skip).limit(limit)
                 res = await self.repository.session.execute(stmt)
                 db_parcels = res.scalars().all()
-                if db_parcels:
-                    return [self._parcel_to_order_response(p) for p in db_parcels]
+                # Return isolated DB parcels for this merchant (even if empty [])
+                return [self._parcel_to_order_response(p) for p in db_parcels]
             except Exception as exc:
                 logger.warning("DB get_orders query failed, falling back to mock: %s", exc)
 
-        orders = list(_MOCK_ORDERS)
+        # Fallback to in-memory mock store only when DB is offline
+        orders = [
+            o for o in _MOCK_ORDERS
+            if numeric_id is None or o.get("merchant_id") == numeric_id or str(o.get("merchant_id")) == str(numeric_id)
+        ]
 
         # Filter by status
         if status and status != "all":
@@ -531,9 +567,12 @@ class MerchantService:
 
         # Lookup merchant details for sender_id and pickup_address
         merchant_record = await self.get_merchant_by_identifier(merchant_id)
-        numeric_merchant_id = self._resolve_merchant_id(merchant_id)
-        if not numeric_merchant_id and merchant_record:
-            numeric_merchant_id = merchant_record.get("id")
+        # Prefer the DB-resolved merchant record ID over mock resolution
+        numeric_merchant_id = (
+            merchant_record.get("id")
+            if merchant_record
+            else self._resolve_merchant_id(merchant_id)
+        )
 
         sender_id = (
             (merchant_record.get("user_id") or numeric_merchant_id or 1)
@@ -571,11 +610,17 @@ class MerchantService:
                 await self.repository.session.commit()
                 await self.repository.session.refresh(db_parcel)
                 order_id = str(db_parcel.id)
+                logger.info("Parcel %s persisted to DB with id=%s, merchant_id=%s", tracking_number, db_parcel.id, numeric_merchant_id)
             except Exception as exc:
                 logger.warning("DB parcel creation failed, persisting in memory: %s", exc)
+                try:
+                    await self.repository.session.rollback()
+                except Exception:
+                    pass
 
         order_dict: Dict[str, Any] = {
             "id": order_id,
+            "merchant_id": numeric_merchant_id,
             "tracking_number": tracking_number,
             "recipient_name": payload.recipient_name.strip(),
             "recipient_phone": payload.recipient_phone.strip(),

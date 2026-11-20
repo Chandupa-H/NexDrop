@@ -1,8 +1,10 @@
 import secrets
+import base64
+import json
 import httpx
 from typing import List, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
@@ -56,9 +58,28 @@ router = APIRouter(prefix="/merchants", tags=["Merchants"])
 # Dependency
 # ---------------------------------------------------------------------------
 
-def get_merchant_service(session: Optional[AsyncSession] = Depends(get_optional_db)) -> MerchantService:
+def _extract_email_from_auth_header(authorization: Optional[str]) -> Optional[str]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.replace("Bearer ", "", 1).strip()
+    try:
+        parts = token.split(".")
+        if len(parts) >= 2:
+            padding = "=" * (-len(parts[1]) % 4)
+            payload_json = json.loads(base64.urlsafe_b64decode(parts[1] + padding))
+            return payload_json.get("email")
+    except Exception:
+        pass
+    return None
+
+
+def get_merchant_service(
+    session: Optional[AsyncSession] = Depends(get_optional_db),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> MerchantService:
     repo = MerchantRepository(session) if session else None
-    return MerchantService(repo)
+    email = _extract_email_from_auth_header(authorization)
+    return MerchantService(repo, current_user_email=email)
 
 
 # In-memory deliveries store for merchant API orders (offline / persistent runtime)
