@@ -269,9 +269,18 @@ export const apiClient = {
   registerMerchant: (data: MerchantRegisterRequest) =>
     apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
 
-  /** Check an applicant's approval status by their merchant ID. */
+  /** Check an applicant's approval status by their merchant ID or email. */
   getMerchantStatus: (merchantId: number | string) =>
     apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
+
+  /**
+   * Check the authenticated user's own merchant status via their JWT.
+   * Uses GET /merchants/me/status — requires a valid Supabase session.
+   * More reliable than getMerchantStatus(email) because it doesn't depend
+   * on the email string being present in the backend users table.
+   */
+  getMerchantStatusMe: () =>
+    apiClient.get<MerchantStatusResponse>(`/merchants/me/status`),
 
   /** List all registered merchants (Admin review). */
   listAdminMerchants: (params?: { skip?: number; limit?: number }) => {

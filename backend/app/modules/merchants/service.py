@@ -184,6 +184,21 @@ class MerchantService:
                             return self._format_merchant_dict(db_m)
                 except Exception:
                     pass
+                # Fallback: direct JOIN on merchants → users by email (handles
+                # case where the backend users row exists but is_active=False
+                # or was stored with a slightly different casing)
+                try:
+                    stmt = (
+                        select(Merchant)
+                        .join(User, Merchant.user_id == User.id)
+                        .where(func.lower(User.email) == ident_lower)
+                    )
+                    res = await self.repository.session.execute(stmt)
+                    db_m = res.scalars().first()
+                    if db_m:
+                        return self._format_merchant_dict(db_m)
+                except Exception:
+                    pass
             return None
 
         # Check by code

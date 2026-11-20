@@ -45,7 +45,7 @@ from app.modules.merchants.security import (
     generate_oauth_token,
     MOCK_APPROVED_MERCHANT,
 )
-from app.modules.auth.dependencies import get_authenticated_merchant_profile
+from app.modules.auth.dependencies import get_authenticated_merchant_profile, get_verified_token_claims
 from app.modules.users.models import User
 from app.modules.webhooks.service import WebhookService
 
@@ -309,6 +309,47 @@ async def change_my_merchant_password(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Supabase could not update the password.",
         )
+
+
+# ---------------------------------------------------------------------------
+# Authenticated — Status check by JWT (no email lookup needed)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/me/status",
+    response_model=MerchantStatusResponse,
+    summary="Check own merchant application status (authenticated)",
+    description=(
+        "Returns the approval status of the authenticated merchant's application "
+        "using their Supabase JWT. Works even when is_active=False (pending approval)."
+    ),
+)
+async def get_my_merchant_status(
+    claims: dict = Depends(get_verified_token_claims),
+    session: Optional[AsyncSession] = Depends(get_optional_db),
+) -> MerchantStatusResponse:
+    email = claims.get("email", "").strip().lower()
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to determine email from token.",
+        )
+
+    repo = MerchantRepository(session) if session else None
+    service = MerchantService(repo)
+
+    merchant = await service.get_merchant_by_identifier(email)
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No merchant application found for the authenticated account.",
+        )
+    return MerchantStatusResponse(
+        merchant_id=merchant["id"],
+        business_name=merchant["business_name"],
+        approval_status=merchant["approval_status"],
+        rejection_reason=merchant.get("rejection_reason"),
+    )
 
 
 # ---------------------------------------------------------------------------
