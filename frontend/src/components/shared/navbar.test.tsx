@@ -39,6 +39,8 @@ describe("Navbar", () => {
         email: "alex@nexdrop.io",
         user_metadata: { full_name: "Alex Vance" },
       },
+      role: "admin",
+      isDashboardAccessible: true,
       dashboardHref: "/admin/dashboard",
       isLoading: false,
       signOut,
@@ -56,6 +58,25 @@ describe("Navbar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /sign out/i }));
     expect(signOut).toHaveBeenCalledOnce();
+  });
+
+  it("hides Dashboard button when user has not registered into an account yet", () => {
+    mockUseAuthUser.mockReturnValue({
+      user: {
+        id: "user-2",
+        email: "new@example.com",
+      },
+      role: "unassigned",
+      isDashboardAccessible: false,
+      dashboardHref: "/register",
+      isLoading: false,
+      signOut: vi.fn(),
+    });
+
+    render(<Navbar backendHealthy={true} />);
+
+    expect(screen.queryByRole("link", { name: /dashboard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /dashboard/i })).not.toBeInTheDocument();
   });
 });
 

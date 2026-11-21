@@ -8,7 +8,7 @@ beforeEach(() => vi.clearAllMocks());
 
 it.each([
   ["admin", "/admin/dashboard"], ["courier", "/courier/dashboard"],
-  ["dispatcher", "/dispatcher/dashboard"], ["merchant", "/merchant/dashboard"], ["customer", "/"],
+  ["dispatcher", "/dispatcher/dashboard"], ["merchant", "/merchant/dashboard"], ["customer", "/customer/dashboard"],
 ])("redirects a direct registration visit for %s", async (role, destination) => {
   getUser.mockResolvedValue({ data: { user: { id: "u1", app_metadata: { role } } } });
   const response = await updateSession(new NextRequest("http://localhost/register?source=login"));

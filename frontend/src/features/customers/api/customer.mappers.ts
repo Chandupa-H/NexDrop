@@ -102,6 +102,7 @@ export function mapCustomerParcelListItem(
     estimatedFee: dto.estimated_fee,
     weightKg: dto.weight_kg,
     eta: dto.eta,
+    deliveryPasscode: dto.delivery_passcode,
   };
 }
 
@@ -123,6 +124,7 @@ export function mapCustomerParcelDetail(
   return {
     trackingId: dto.tracking_id,
     recipientName: dto.recipient_name,
+    recipientPhone: dto.recipient_phone,
     recipientPhoneMasked: dto.recipient_phone_masked,
     senderName: dto.sender_name,
     deliveryAddress: dto.delivery_address,
@@ -132,6 +134,8 @@ export function mapCustomerParcelDetail(
     status: dto.status as CustomerParcelStatus,
     createdAt: dto.created_at,
     createdAtDisplay: formatDateTime(dto.created_at),
+    deliveredAt: dto.delivered_at,
+    deliveredAtDisplay: dto.delivered_at ? formatDateTime(dto.delivered_at) : undefined,
     eta: dto.eta,
     fee: dto.fee,
     weightKg: dto.weight_kg,
@@ -139,6 +143,8 @@ export function mapCustomerParcelDetail(
     specialInstructions: dto.special_instructions,
     notes: dto.notes,
     timeline: dto.timeline.map(mapCustomerTimelineEvent),
+    deliveryPasscode: dto.delivery_passcode,
+    deliveryPasscodeVerified: dto.delivery_passcode_verified ?? false,
   };
 }
 

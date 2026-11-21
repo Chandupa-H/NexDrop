@@ -5,7 +5,6 @@ import { SectionCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import { ThemedSelect } from "@/components/ui/themed-select";
 import { Calculator, Truck, ArrowRight, CheckCircle2, X, RotateCcw, Info } from "lucide-react";
-import apiClient from "@/lib/api-client";
 import { SRI_LANKA_HUBS } from "../constants/destinations";
 
 interface HubOption {
@@ -68,41 +67,33 @@ export function QuickEstimatorCard() {
   useEffect(() => {
     let active = true;
 
-    async function compute() {
+    function compute() {
       if (!selectedCity) {
         setEstimatedCost(null);
         setLoading(false);
         return;
       }
-      try {
-        setLoading(true);
-        const res = await apiClient.getPricingEstimate({
-          distance_km: distanceKm,
-          weight_kg: weightKg,
-        });
-        if (active) {
-          const lkrFee = Math.max(250, Math.round(res.total_price * 15));
-          setEstimatedCost(lkrFee);
-        }
-      } catch {
-        if (active) {
-          const cost = baseRate + distanceCharge + weightCharge;
-          setEstimatedCost(Math.round(cost));
-        }
-      } finally {
-        if (active) setLoading(false);
+      setLoading(true);
+      // Customer delivery pricing formula:
+      // Base Pickup & Booking Fee (Rs. 250.00)
+      // + Distance Charge (Distance km * Rs. 3.50/km)
+      // + Weight Charge (Weight kg * Rs. 80.00/kg)
+      const cost = Math.max(250, baseRate + distanceCharge + weightCharge);
+      if (active) {
+        setEstimatedCost(cost);
+        setLoading(false);
       }
     }
 
     const timer = setTimeout(() => {
       compute();
-    }, 200);
+    }, 150);
 
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [selectedCity, weightKg, distanceKm, distanceCharge, weightCharge]);
+  }, [selectedCity, weightKg, distanceKm, distanceCharge, weightCharge, baseRate]);
 
   const handleReset = () => {
     setSelectedCity("");

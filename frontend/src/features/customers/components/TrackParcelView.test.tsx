@@ -47,6 +47,12 @@ describe("TrackParcelView", () => {
     expect(screen.getByText("Consignment Details")).toBeInTheDocument();
     expect(screen.getAllByText("Order Created").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Delivered").length).toBeGreaterThanOrEqual(1);
+
+    const receiptLink = screen.getByRole("link", { name: /view delivery receipt/i });
+    expect(receiptLink).toHaveAttribute(
+      "href",
+      "/customer/history/receipt?trackingId=NXD-CUS-101&from=track"
+    );
   });
 
   it("submits the tracking input form and updates route query", async () => {
@@ -59,5 +65,22 @@ describe("TrackParcelView", () => {
     fireEvent.click(trackBtn);
 
     expect(mockReplace).toHaveBeenCalledWith("/customer/track?id=NXD-CUS-102");
+  });
+
+  it("renders live updates indicator and refresh button for active shipments", async () => {
+    mockSearchParams = new URLSearchParams("id=NXD-CUS-102");
+
+    render(<TrackParcelView />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "NXD-CUS-102" })
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Live Updates")).toBeInTheDocument();
+    const refreshBtn = screen.getByRole("button", { name: /refresh/i });
+    expect(refreshBtn).toBeInTheDocument();
+    fireEvent.click(refreshBtn);
   });
 });

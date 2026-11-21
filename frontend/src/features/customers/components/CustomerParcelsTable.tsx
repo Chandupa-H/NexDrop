@@ -15,7 +15,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Search, Eye } from "lucide-react";
 import { getCustomerStatusLabel, getCustomerStatusTone } from "../lib/status";
-import { isCustomerReceiptEligible } from "../lib/receipt";
 import type { CustomerParcelListItem, CustomerTableFilter } from "../types";
 
 const filterTabs: Array<{ key: CustomerTableFilter; label: string }> = [
@@ -89,7 +88,7 @@ export function CustomerParcelsTable({
           </div>
 
           <div className="w-full min-w-0 sm:w-80 md:w-96 sm:shrink-0">
-            <label htmlFor={searchId} className="mb-1 block text-sm text-muted-foreground">Search this page</label>
+            <label htmlFor={searchId} className="mb-1 block text-sm font-medium text-foreground">Search this page</label>
             <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--dashboard-muted)]" />
             <input
@@ -145,7 +144,14 @@ export function CustomerParcelsTable({
                 >
                   Clear Filters
                 </Button>
-              ) : <Link href="/customer/book" className="text-primary underline">Book Delivery</Link>
+              ) : (
+                <Link
+                  href="/customer/book"
+                  className="inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 bg-[#064E3B] text-white hover:bg-[#085a44] shadow-sm text-sm px-4 py-2 gap-2 cursor-pointer"
+                >
+                  Book Delivery
+                </Link>
+              )
             }
           />
         ) : (
@@ -213,28 +219,20 @@ export function CustomerParcelsTable({
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectParcel(parcel.trackingId);
-                        }}
-                        className="h-8 gap-1 text-xs font-medium text-[var(--dashboard-primary)] hover:text-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-control-bg)] mx-auto"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        Details
-                      </Button>
-                      {showReceipts && isCustomerReceiptEligible(parcel.status, parcel.trackingId) && (
-                        <Link
-                          href={`/customer/history/receipt?trackingId=${encodeURIComponent(parcel.trackingId)}`}
-                          onClick={(event) => event.stopPropagation()}
-                          className="inline-flex min-h-10 items-center px-3 text-sm font-medium text-primary underline"
-                          aria-label={`View shipment receipt for ${parcel.trackingId}`}
+                      <div className="flex items-center justify-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectParcel(parcel.trackingId);
+                          }}
+                          className="h-8 px-2.5 gap-1 text-xs font-medium text-[var(--dashboard-primary)] hover:text-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-control-bg)] rounded-lg transition-colors cursor-pointer"
                         >
-                          View Receipt
-                        </Link>
-                      )}
+                          <Eye className="h-3.5 w-3.5" />
+                          Details
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

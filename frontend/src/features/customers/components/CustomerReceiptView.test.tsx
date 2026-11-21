@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CustomerReceiptView } from "./CustomerReceiptView";
-import { CustomerParcelsTable } from "./CustomerParcelsTable";
+import { CustomerParcelDrawer } from "./CustomerParcelDrawer";
 import { getCustomerParcelDetail } from "../api/customer.api";
 import type { CustomerParcelDetailDTO } from "../api/customer.dto";
 import type { CustomerParcelStatus } from "../types";
@@ -32,22 +32,13 @@ describe("customer shipment receipts", () => {
     expect(formatReceiptEstimate(0)).toBe("Rs. 0.00");
   });
 
-  it("shows a history receipt link only for delivered rows, preserving default dashboard actions", () => {
-    const props = {
-      parcels: statuses.map((status) => ({ trackingId: `ND-${status}`, status, recipientName: "Test recipient",
-        destination: "Test city", createdAt: shipment.created_at, createdAtDisplay: "Test date",
-        estimatedFee: 400, weightKg: 1, eta: null })),
-      total: statuses.length, filter: "all" as const, onFilterChange: vi.fn(), onSelectParcel: vi.fn(),
-    };
-    const { rerender } = render(<CustomerParcelsTable {...props} />);
-    expect(screen.queryByRole("link", { name: /view shipment receipt/i })).not.toBeInTheDocument();
-    rerender(<CustomerParcelsTable {...props} showReceipts />);
-    const links = screen.getAllByRole("link", { name: /view shipment receipt/i });
-    expect(links).toHaveLength(1);
-    expect(links[0]).toHaveAttribute("href", "/customer/history/receipt?trackingId=ND-delivered");
-    links[0].addEventListener("click", (event) => event.preventDefault());
-    fireEvent.click(links[0]);
-    expect(props.onSelectParcel).not.toHaveBeenCalled();
+  it("shows a receipt link next to Full Tracking Page for delivered shipments in drawer", async () => {
+    getDetail.mockResolvedValueOnce(shipment);
+    render(<CustomerParcelDrawer trackingId="ND-TEST" onClose={vi.fn()} onParcelUpdated={vi.fn()} />);
+    await screen.findByText("Parcel Specifications");
+    const link = screen.getByRole("link", { name: /view shipment receipt/i });
+    expect(link).toHaveAttribute("href", "/customer/history/receipt?trackingId=ND-TEST");
+    expect(screen.getByRole("link", { name: /full tracking page/i })).toBeInTheDocument();
   });
 
   it("renders shipment information and labels the estimate without claiming payment", async () => {
@@ -60,12 +51,29 @@ describe("customer shipment receipts", () => {
     expect(article).toHaveTextContent("Test recipient");
     expect(article).toHaveTextContent("*** 1234");
     expect(article).toHaveTextContent("Test destination, Test city");
-    expect(article).toHaveTextContent("Estimated delivery fee (unverified)");
+    expect(article).toHaveTextContent("Delivery fee");
     expect(article).toHaveTextContent("Rs. 400.00");
-    expect(article).toHaveTextContent("not proof of payment");
-    expect(article).toHaveTextContent("Confirmed payment amountNot available");
+    expect(article).toHaveTextContent("NexDrop");
+    expect(article).toHaveTextContent("Official Delivery Receipt");
+    expect(article).toHaveTextContent("Verified Proof of Delivery");
+    expect(article).toHaveTextContent("Thank you for shipping with NexDrop!");
+    expect(article).not.toHaveTextContent("not proof of payment");
     expect(article).not.toHaveTextContent("Transaction ID");
     expect(article).not.toHaveTextContent("Receipt number");
+    expect(article).not.toHaveTextContent("—");
+  });
+
+  it("displays confirmed delivery date fetched from delivered_at or timeline without em dashes", async () => {
+    getDetail.mockResolvedValueOnce({
+      ...shipment,
+      recipient_phone: "+94779876543",
+      delivered_at: "2026-11-08T15:45:00Z",
+    });
+    render(<CustomerReceiptView trackingId="ND-TEST" />);
+    const article = await screen.findByRole("article");
+    expect(article).toHaveTextContent("Confirmed delivery date");
+    expect(article).toHaveTextContent("+94779876543");
+    expect(article).not.toHaveTextContent("—");
   });
 
   it("handles missing fields, invalid dates and missing fees without fabricating values", async () => {
@@ -73,7 +81,7 @@ describe("customer shipment receipts", () => {
       recipient_phone_masked: "", created_at: "invalid", fee: undefined as unknown as number });
     render(<CustomerReceiptView trackingId="ND-TEST" />);
     const article = await screen.findByRole("article");
-    expect(article).toHaveTextContent("Estimated delivery fee (unverified)Not available");
+    expect(article).toHaveTextContent("Delivery feeNot available");
     expect(article).toHaveTextContent("Booked on (Asia/Colombo)Not available");
     expect(article).not.toHaveTextContent("NaN");
     expect(article).not.toHaveTextContent("Invalid Date");
@@ -99,7 +107,7 @@ describe("customer shipment receipts", () => {
     const button = await screen.findByRole("button", { name: "Print / Save as PDF" });
     fireEvent.click(button);
     expect(print).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/choose Save as PDF/)).toBeInTheDocument();
+    expect(screen.queryByText(/choose Save as PDF/)).not.toBeInTheDocument();
     print.mockImplementationOnce(() => { throw new Error("Unavailable"); });
     fireEvent.click(button);
     expect(screen.getByRole("alert")).toHaveTextContent("Printing could not be opened");
@@ -126,5 +134,19 @@ describe("customer shipment receipts", () => {
     await screen.findByRole("article");
     await act(async () => resolve(shipment));
     expect(screen.getByRole("article")).toHaveTextContent("ND-NEW");
+  });
+
+  it("shows Back to Delivery History by default or when from is not track", async () => {
+    render(<CustomerReceiptView trackingId="ND-TEST" />);
+    await screen.findByRole("article");
+    const backLink = screen.getByRole("link", { name: /back to delivery history/i });
+    expect(backLink).toHaveAttribute("href", "/customer/history");
+  });
+
+  it("shows Back to Track Parcel when redirected from track parcel page", async () => {
+    render(<CustomerReceiptView trackingId="ND-TEST" from="track" />);
+    await screen.findByRole("article");
+    const backLink = screen.getByRole("link", { name: /back to track parcel/i });
+    expect(backLink).toHaveAttribute("href", "/customer/track?id=ND-TEST");
   });
 });

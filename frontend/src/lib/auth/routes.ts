@@ -6,7 +6,7 @@ const ROLE_DASHBOARD_MAP: Record<string, string> = {
   admin: "/admin/dashboard",
   courier: "/courier/dashboard",
   merchant: "/merchant/dashboard",
-  customer: "/",
+  customer: "/customer/dashboard",
   dispatcher: "/dispatcher/dashboard",
 };
 
@@ -67,7 +67,9 @@ export function isProtectedRoute(pathname: string): boolean {
     pathname === "/merchant/dashboard" ||
     pathname.startsWith("/merchant/dashboard") ||
     pathname === "/dispatcher" ||
-    pathname.startsWith("/dispatcher/")
+    pathname.startsWith("/dispatcher/") ||
+    pathname === "/customer" ||
+    pathname.startsWith("/customer/")
   );
 }
 
@@ -115,6 +117,17 @@ export function isRouteAllowedForRole(pathname: string, role?: string | null): b
       return true;
     }
     return normalizedRole === "merchant" || normalizedRole === "admin";
+  }
+
+  // Customer section: customer or admin
+  if (pathname === "/customer" || pathname.startsWith("/customer/")) {
+    if (
+      pathname === "/customer/register" ||
+      pathname.startsWith("/customer/register")
+    ) {
+      return true;
+    }
+    return normalizedRole === "customer" || normalizedRole === "admin";
   }
 
   // All other routes (e.g. public pages, /register, /customer/register, home) are open

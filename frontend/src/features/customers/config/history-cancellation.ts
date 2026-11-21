@@ -5,6 +5,6 @@
  * Both the drawer and the history server action check this policy.
  */
 export const historyCancellationPolicy = {
-  enabled: false,
+  enabled: true,
   message: "Live cancellation is unavailable until the backend verifies customer ownership. You can review the confirmation, but cannot submit it.",
 } as const;

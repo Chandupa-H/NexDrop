@@ -10,9 +10,9 @@ vi.mock("./parcels", () => ({ cancelCustomerParcelAction: vi.fn() }));
 
 describe("history cancellation server guard", () => {
   beforeEach(() => { vi.resetAllMocks(); policy.enabled = false; });
-  it("ships with the actual production feature gate disabled", async () => {
+  it("ships with the actual production feature gate enabled", async () => {
     const actual = await vi.importActual<typeof import("../config/history-cancellation")>("../config/history-cancellation");
-    expect(actual.historyCancellationPolicy.enabled).toBe(false);
+    expect(actual.historyCancellationPolicy.enabled).toBe(true);
   });
   it("blocks requests at the server boundary while the production gate is closed", async () => {
     expect(await cancelCustomerHistoryParcelAction("ND-TEST", "Reason")).toEqual({ ok: false, message: policy.message });

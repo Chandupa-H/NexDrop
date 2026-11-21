@@ -96,6 +96,7 @@ class CustomerParcelListItem(BaseModel):
     estimated_fee: float
     weight_kg: float
     eta: Optional[str] = None
+    delivery_passcode: Optional[str] = None
 
 
 class CustomerParcelListResponse(BaseModel):
@@ -116,6 +117,7 @@ class CustomerParcelDetailResponse(BaseModel):
     """GET /customer/parcels/{tracking_id} - Full parcel details for customer."""
     tracking_id: str
     recipient_name: str
+    recipient_phone: Optional[str] = None
     recipient_phone_masked: str
     sender_name: str
     delivery_address: str
@@ -124,6 +126,7 @@ class CustomerParcelDetailResponse(BaseModel):
     pickup_city: str
     status: str
     created_at: str  # ISO 8601 with timezone
+    delivered_at: Optional[str] = None
     eta: Optional[str] = None
     fee: float
     weight_kg: float
@@ -131,11 +134,20 @@ class CustomerParcelDetailResponse(BaseModel):
     special_instructions: Optional[str] = None
     notes: List[str] = Field(default_factory=list)
     timeline: List[CustomerTimelineEvent]
+    delivery_passcode: Optional[str] = None
+    delivery_passcode_verified: Optional[bool] = False
 
 
 class CustomerCancelParcelRequest(BaseModel):
     """POST /customer/parcels/{tracking_id}/cancel - Cancel pending delivery."""
     reason: Optional[str] = None
+
+
+class CustomerParcelStatusUpdateRequest(BaseModel):
+    """PATCH /customer/parcels/{tracking_id}/status - Advance or update parcel status."""
+    status: str
+    note: Optional[str] = None
+    location: Optional[str] = None
 
 
 class CustomerCreateParcelRequest(BaseModel):
@@ -150,6 +162,7 @@ class CustomerCreateParcelRequest(BaseModel):
     dimensions: Optional[str] = None
     special_instructions: Optional[str] = None
     fee: Optional[float] = None
+    delivery_passcode: Optional[str] = None
 
 
 # ── Customer Address Schemas ───────────────────────────────────────
