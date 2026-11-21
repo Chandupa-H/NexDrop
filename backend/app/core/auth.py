@@ -154,7 +154,26 @@ def decode_and_verify_token(token: str) -> dict:
     return payload
 
 
-def get_current_user(
+async def _decode_authenticated_token(
+    token: str,
+    credentials: HTTPAuthorizationCredentials,
+) -> dict:
+    parts = token.split(".")
+    if len(parts) == 3:
+        try:
+            header = json.loads(_b64decode_url(parts[0]).decode("utf-8"))
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+            header = None
+
+        if isinstance(header, dict) and header.get("alg") in {"ES256", "RS256"}:
+            from app.modules.auth.dependencies import get_verified_token_claims
+
+            return await get_verified_token_claims(credentials)
+
+    return decode_and_verify_token(token)
+
+
+async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
 ) -> AuthenticatedUser:
     """
@@ -169,7 +188,7 @@ def get_current_user(
         )
 
     token = credentials.credentials
-    payload = decode_and_verify_token(token)
+    payload = await _decode_authenticated_token(token, credentials)
 
     sub = str(payload.get("sub") or "")
     if not sub:
@@ -205,7 +224,7 @@ def get_current_user(
     )
 
 
-def get_optional_current_user(
+async def get_optional_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
 ) -> Optional[AuthenticatedUser]:
     """
@@ -217,7 +236,7 @@ def get_optional_current_user(
 
     try:
         token = credentials.credentials
-        payload = decode_and_verify_token(token)
+        payload = await _decode_authenticated_token(token, credentials)
         sub = str(payload.get("sub") or "")
         if not sub:
             return None

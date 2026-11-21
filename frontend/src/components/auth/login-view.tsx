@@ -61,23 +61,23 @@ export function LoginView() {
       } else {
         supabase.auth.getUser().then(async ({ data }) => {
           if (data.user) {
-            if (data.user.email) {
-              try {
-                const statusData = await apiClient.getMerchantStatus(data.user.email);
-                if (statusData?.merchant_id) {
-                  localStorage.setItem("nexdrop_user_role", "merchant");
-                  localStorage.setItem(
-                    "nexdrop_merchant_application",
-                    JSON.stringify({
-                      merchant_id: statusData.merchant_id,
-                      business_name: statusData.business_name,
-                      email: data.user.email,
-                      approval_status: statusData.approval_status,
-                    })
-                  );
-                  document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
-                }
-              } catch {}
+            try {
+              const statusData = await apiClient.getMerchantStatusMe();
+              if (statusData?.merchant_id) {
+                localStorage.setItem("nexdrop_user_role", "merchant");
+                localStorage.setItem(
+                  "nexdrop_merchant_application",
+                  JSON.stringify({
+                    merchant_id: statusData.merchant_id,
+                    business_name: statusData.business_name,
+                    email: data.user.email,
+                    approval_status: statusData.approval_status,
+                  })
+                );
+                document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+              }
+            } catch {
+              // Accounts without a backend merchant application continue through normal role resolution.
             }
             const target = await resolveUserDashboardPath(
               supabase,

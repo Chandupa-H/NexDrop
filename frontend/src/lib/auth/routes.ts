@@ -142,7 +142,8 @@ export async function resolveUserRole(
     if (
       metaRole &&
       metaRole.toLowerCase() !== "authenticated" &&
-      metaRole.toLowerCase() !== "anon"
+      metaRole.toLowerCase() !== "anon" &&
+      metaRole.trim().toLowerCase() !== "merchant"
     ) {
       return metaRole.trim().toLowerCase();
     }
@@ -161,7 +162,9 @@ export async function resolveUserRole(
     if (!error && data) {
       const rolesValue = (data as { roles?: { name?: string } | Array<{ name?: string }> | null }).roles;
       const roleName = Array.isArray(rolesValue) ? rolesValue[0]?.name : rolesValue?.name;
-      if (roleName) return roleName.trim().toLowerCase();
+      if (roleName && roleName.trim().toLowerCase() !== "merchant") {
+        return roleName.trim().toLowerCase();
+      }
     }
   } catch {
     // Continue to browser fallback
@@ -172,46 +175,31 @@ export async function resolveUserRole(
     if (typeof window !== "undefined") {
       const localRole = localStorage.getItem("nexdrop_user_role");
       if (localRole && ["admin", "courier", "dispatcher", "customer", "merchant"].includes(localRole.toLowerCase())) {
-        // For merchant role, verify cached approval status before trusting it
-        if (localRole.toLowerCase() === "merchant") {
-          try {
-            const stored = localStorage.getItem("nexdrop_merchant_application");
-            if (stored) {
-              const parsed = JSON.parse(stored);
-              if (parsed?.approval_status === "approved") {
-                return "merchant";
-              }
-            }
-          } catch { }
-          // Merchant role in localStorage but no approved cached data — fall through to backend check
-        } else {
+        if (localRole.toLowerCase() !== "merchant") {
           return localRole.trim().toLowerCase();
         }
       }
 
-      // Check backend for merchant application by authenticated user email
       const { data: authData } = await supabase.auth.getUser();
       const email = authData?.user?.email;
-      if (email) {
-        try {
-          const statusData = await apiClient.getMerchantStatus(email);
-          if (statusData?.merchant_id) {
-            localStorage.setItem("nexdrop_user_role", "merchant");
-            localStorage.setItem(
-              "nexdrop_merchant_application",
-              JSON.stringify({
-                merchant_id: statusData.merchant_id,
-                business_name: statusData.business_name,
-                email,
-                approval_status: statusData.approval_status,
-              })
-            );
-            document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
-            if (statusData.approval_status === "approved") {
-              return "merchant";
-            }
-          }
-        } catch {}
+      try {
+        const statusData = await apiClient.getMerchantStatusMe();
+        if (statusData?.merchant_id) {
+          localStorage.setItem("nexdrop_user_role", "merchant");
+          localStorage.setItem(
+            "nexdrop_merchant_application",
+            JSON.stringify({
+              merchant_id: statusData.merchant_id,
+              business_name: statusData.business_name,
+              email,
+              approval_status: statusData.approval_status,
+            })
+          );
+          document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+          return "merchant";
+        }
+      } catch {
+        // A missing backend mapping must not be inferred from cached or email-based data.
       }
     }
   } catch {

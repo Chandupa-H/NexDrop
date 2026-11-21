@@ -89,23 +89,23 @@ export function AuthForm({
 
         if (data.session) {
           const userEmail = data.user?.email || email;
-          if (userEmail) {
-            try {
-              const statusData = await apiClient.getMerchantStatus(userEmail);
-              if (statusData?.merchant_id) {
-                localStorage.setItem("nexdrop_user_role", "merchant");
-                localStorage.setItem(
-                  "nexdrop_merchant_application",
-                  JSON.stringify({
-                    merchant_id: statusData.merchant_id,
-                    business_name: statusData.business_name,
-                    email: userEmail,
-                    approval_status: statusData.approval_status,
-                  })
-                );
-                document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
-              }
-            } catch {}
+          try {
+            const statusData = await apiClient.getMerchantStatusMe();
+            if (statusData?.merchant_id) {
+              localStorage.setItem("nexdrop_user_role", "merchant");
+              localStorage.setItem(
+                "nexdrop_merchant_application",
+                JSON.stringify({
+                  merchant_id: statusData.merchant_id,
+                  business_name: statusData.business_name,
+                  email: userEmail,
+                  approval_status: statusData.approval_status,
+                })
+              );
+              document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+            }
+          } catch {
+            // Accounts without a backend merchant application continue through normal role resolution.
           }
 
           const target = await resolveUserDashboardPath(
@@ -117,8 +117,10 @@ export function AuthForm({
           router.refresh();
         }
       } else {
-        // Sign Up Flow - brand new accounts redirect to /register to choose Customer or Merchant
-        const signUpDestination = "/register";
+        const signUpDestination =
+          onSuccessRedirect?.startsWith("/") && !onSuccessRedirect.startsWith("//")
+            ? onSuccessRedirect
+            : "/register";
         const callbackUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(signUpDestination)}`;
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,

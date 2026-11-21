@@ -3,11 +3,29 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Bell, Menu, Search, ArrowLeft, Home, LogOut, Key, ChevronDown, Package } from "lucide-react";
 import { getTopbarTitle } from "@/lib/dashboard/topbar";
 import type { DashboardRoleConfig, DashboardUser } from "@/lib/dashboard/types";
 import { logoutAction } from "@/lib/auth/logout";
+
+function TopbarLogoutSubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 font-semibold transition-colors text-left"
+      role="menuitem"
+    >
+      <LogOut className="w-4 h-4 text-red-600" />
+      <span>{pending ? "Signing out..." : "Log out"}</span>
+    </button>
+  );
+}
 
 export function DashboardTopbar({
   config,
@@ -187,7 +205,6 @@ export function TopbarProfileLink({
   profileHref: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoggingOut, startTransition] = useTransition();
   const rootRef = useRef<HTMLDivElement>(null);
 
   const initials = user.name
@@ -218,13 +235,10 @@ export function TopbarProfileLink({
     };
   }, [isOpen]);
 
-  const handleLogout = () => {
+  const handleLogoutSubmit = () => {
     try {
       localStorage.removeItem("nexdrop_merchant_application");
     } catch {}
-    startTransition(async () => {
-      await logoutAction();
-    });
   };
 
   return (
@@ -319,16 +333,9 @@ export function TopbarProfileLink({
           <div className="border-t border-[#E5E7EB] my-1" />
 
           {/* Sign Out Action */}
-          <button
-            type="button"
-            disabled={isLoggingOut}
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 font-semibold transition-colors text-left"
-            role="menuitem"
-          >
-            <LogOut className="w-4 h-4 text-red-600" />
-            <span>{isLoggingOut ? "Signing out..." : "Log out"}</span>
-          </button>
+          <form action={logoutAction} onSubmit={handleLogoutSubmit}>
+            <TopbarLogoutSubmitButton />
+          </form>
         </div>
       )}
     </div>

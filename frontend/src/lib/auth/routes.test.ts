@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import apiClient from "@/lib/api-client";
 import {
   DEFAULT_AUTHENTICATED_REDIRECT,
   getDashboardPathForRole,
@@ -11,11 +12,28 @@ import {
   isRegistrationRoute,
 } from "./routes";
 
+vi.mock("@/lib/api-client", () => ({
+  default: {
+    getMerchantStatusMe: vi.fn(),
+  },
+}));
+
+beforeEach(() => {
+  vi.mocked(apiClient.getMerchantStatusMe).mockReset();
+});
+
 describe("auth routes", () => {
   it.each(["admin", "courier", "merchant", "dispatcher", "customer"])(
     "redirects assigned %s users away from registration destinations",
     async (role) => {
       const client = { auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { app_metadata: { role } } } }) } } as unknown as SupabaseClient;
+      if (role === "merchant") {
+        vi.mocked(apiClient.getMerchantStatusMe).mockResolvedValue({
+          merchant_id: 7,
+          business_name: "Test business",
+          approval_status: "approved",
+        });
+      }
       for (const path of ["/register", "/register?next=home", "/customer/register", "/merchant/register"]) {
         expect(await resolveUserDashboardPath(client, "assigned-user", path)).toBe(getDashboardPathForRole(role));
       }
@@ -127,6 +145,24 @@ describe("auth routes", () => {
     expect(await resolveUserDashboardPath(mockErrorClient, "user-123")).toBe(
       DEFAULT_AUTHENTICATED_REDIRECT
     );
+  });
+
+  it("does not grant merchant routing from cached or self-reported role metadata alone", async () => {
+    vi.mocked(apiClient.getMerchantStatusMe).mockRejectedValue(new Error("not linked"));
+    localStorage.setItem("nexdrop_user_role", "merchant");
+    localStorage.setItem(
+      "nexdrop_merchant_application",
+      JSON.stringify({ merchant_id: 7, approval_status: "approved" })
+    );
+    const client = {
+      auth: {
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { app_metadata: { role: "merchant" } } },
+        }),
+      },
+    } as unknown as SupabaseClient;
+
+    expect(await resolveUserRole(client, "unlinked-user")).toBeNull();
   });
 
   it("preserves preferred path if authorized, or falls back to role dashboard if forbidden", async () => {

@@ -5,10 +5,11 @@ import json
 import secrets
 import sys
 from pathlib import Path
+from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.session import get_session_factory
@@ -32,24 +33,73 @@ async def run(apply=False):
     if factory is None:
         raise RuntimeError("Application database is not configured")
     async with factory() as session:
-        existing = set((await session.execute(select(func.lower(User.email)))).scalars())
-        missing = [u for u in accounts if u.get("email") and u["email"].strip().lower() not in existing]
-        imported = []
-        for identity in missing:
-            email = identity["email"].strip().lower()
-            metadata = identity.get("user_metadata") or {}
-            name = metadata.get("full_name") or metadata.get("name") or email.split("@")[0]
-            if apply:
-                result = await session.execute(insert(User).values(
-                    email=email, full_name=str(name)[:255],
-                    hashed_password="supabase-managed:" + secrets.token_hex(32),
-                    role=UserRole.UNASSIGNED, is_active=True,
-                ).on_conflict_do_nothing(index_elements=[User.email]).returning(User.email))
-                if result.scalar_one_or_none():
-                    imported.append(email)
+        rows = (await session.execute(select(User.email, User.supabase_user_id))).all()
+        existing_by_email = {}
+        existing_subjects = set()
+        for email, supabase_user_id in rows:
+            existing_by_email.setdefault(email.strip().lower(), []).append(
+                supabase_user_id
+            )
+            if supabase_user_id is not None:
+                existing_subjects.add(supabase_user_id)
+
+        missing = []
+        already_linked = 0
+        existing_unlinked = 0
+        conflicts = 0
+        for identity in accounts:
+            email = identity.get("email")
+            subject = identity.get("id")
+            if not isinstance(email, str) or not email.strip():
+                conflicts += 1
+                continue
+            try:
+                supabase_user_id = UUID(subject)
+            except (TypeError, ValueError):
+                conflicts += 1
+                continue
+
+            email_key = email.strip().lower()
+            email_rows = existing_by_email.get(email_key, [])
+            if email_rows:
+                if len(email_rows) == 1 and email_rows[0] == supabase_user_id:
+                    already_linked += 1
+                elif len(email_rows) == 1 and email_rows[0] is None:
+                    existing_unlinked += 1
+                else:
+                    conflicts += 1
+                continue
+            if supabase_user_id in existing_subjects:
+                conflicts += 1
+                continue
+            missing.append((identity, email_key, supabase_user_id))
+
+        imported = 0
         if apply:
+            for identity, email, supabase_user_id in missing:
+                metadata = identity.get("user_metadata") or {}
+                name = metadata.get("full_name") or metadata.get("name") or email.split("@")[0]
+                result = await session.execute(insert(User).values(
+                    supabase_user_id=supabase_user_id,
+                    email=email,
+                    full_name=str(name)[:255],
+                    hashed_password="supabase-managed:" + secrets.token_urlsafe(32),
+                    role=UserRole.UNASSIGNED,
+                    is_active=True,
+                ).on_conflict_do_nothing().returning(User.id))
+                if result.scalar_one_or_none():
+                    imported += 1
+
             await session.commit()
-        print(json.dumps({"mode": "applied" if apply else "dry-run", "missing": [u["email"] for u in missing], "imported": imported}, indent=2))
+
+        print(json.dumps({
+            "mode": "applied" if apply else "dry-run",
+            "missing_backend_users": len(missing),
+            "already_linked": already_linked,
+            "existing_unlinked_requires_verified_signup": existing_unlinked,
+            "conflicts_or_invalid_supabase_ids": conflicts,
+            "imported": imported,
+        }, indent=2))
 
 
 if __name__ == "__main__":

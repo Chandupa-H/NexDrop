@@ -8,6 +8,7 @@ import hmac
 import json
 import time
 from typing import Any
+from uuid import UUID
 
 import httpx
 import jwt
@@ -44,6 +45,15 @@ def _decode_segment(segment: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("JWT segment must contain an object")
     return value
+
+
+def _parse_supabase_subject(value: Any) -> UUID:
+    if not isinstance(value, str):
+        raise _unauthorized()
+    try:
+        return UUID(value)
+    except ValueError:
+        raise _unauthorized() from None
 
 
 def verify_supabase_access_token(token: str) -> dict[str, Any]:
@@ -105,6 +115,7 @@ def verify_supabase_access_token(token: str) -> dict[str, Any]:
 
     if not isinstance(claims.get("email"), str) or not claims["email"]:
         raise _unauthorized()
+    claims["sub"] = str(_parse_supabase_subject(claims.get("sub")))
 
     return claims
 
@@ -149,6 +160,10 @@ def _verify_asymmetric_supabase_access_token(token: str) -> dict[str, Any] | Non
         raise jwt.InvalidTokenError("Invalid Supabase access token role")
     if not isinstance(claims.get("email"), str) or not claims["email"]:
         raise jwt.InvalidTokenError("Supabase access token is missing an email")
+    try:
+        claims["sub"] = str(UUID(claims.get("sub")))
+    except (TypeError, ValueError):
+        raise jwt.InvalidTokenError("Supabase access token has an invalid subject") from None
     return claims
 
 
@@ -289,14 +304,19 @@ async def _verify_access_token_with_supabase(token: str) -> dict[str, Any]:
         raise _unauthorized()
     if not isinstance(email, str) or not email:
         raise _unauthorized()
+    subject = _parse_supabase_subject(user_id)
 
-    return {
-        "sub": user_id,
+    claims = {
+        "sub": str(subject),
         "email": email,
         "aud": "authenticated",
         "role": "authenticated",
         "iss": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
     }
+    app_metadata = user.get("app_metadata")
+    if isinstance(app_metadata, dict):
+        claims["app_metadata"] = app_metadata
+    return claims
 
 
 async def get_authenticated_courier(
@@ -331,8 +351,9 @@ async def get_authenticated_merchant_profile(
     claims: dict[str, Any] = Depends(get_verified_token_claims),
     session: AsyncSession = Depends(get_db),
 ) -> Merchant:
+    subject = _parse_supabase_subject(claims.get("sub"))
     result = await session.execute(
-        select(User).where(User.email == claims["email"])
+        select(User).where(User.supabase_user_id == subject)
     )
     user = result.scalars().first()
     if user is None or not user.is_active or user.role != UserRole.MERCHANT:

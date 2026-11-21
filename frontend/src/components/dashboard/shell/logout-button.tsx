@@ -1,25 +1,29 @@
 "use client";
 
-import { useTransition } from "react";
+import { useFormStatus } from "react-dom";
 import { LogOut } from "lucide-react";
 import { logoutAction } from "@/lib/auth/logout";
 
-export function LogoutButton() {
-  const [isPending, startTransition] = useTransition();
+function LogoutSubmitButton() {
+  const { pending } = useFormStatus();
 
   return (
     <button
-      type="button"
+      type="submit"
       className="dashboard-logout-button"
-      aria-busy={isPending}
-      onClick={() =>
-        startTransition(async () => {
-          await logoutAction();
-        })
-      }
+      aria-busy={pending}
+      disabled={pending}
     >
       <LogOut aria-hidden="true" />
-      <span>{isPending ? "Signing out..." : "Log out"}</span>
+      <span>{pending ? "Signing out..." : "Log out"}</span>
     </button>
+  );
+}
+
+export function LogoutButton() {
+  return (
+    <form action={logoutAction}>
+      <LogoutSubmitButton />
+    </form>
   );
 }
