@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import apiClient from "@/lib/api-client";
 
 interface ApiTabProps {
-  merchantId?: string;
   credentials: ApiCredentials;
   onKeyRegenerated?: (newCreds: ApiCredentials) => void;
 }
 
-export function ApiTab({ merchantId, credentials, onKeyRegenerated }: ApiTabProps) {
+export function ApiTab({ credentials, onKeyRegenerated }: ApiTabProps) {
   const [showLiveKey, setShowLiveKey] = useState(false);
   const [showSecret, setShowSecret] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -24,7 +23,7 @@ export function ApiTab({ merchantId, credentials, onKeyRegenerated }: ApiTabProp
     if (!confirm(`Are you sure you want to regenerate your ${keyType} API key? Existing integrations will stop working until updated.`)) return;
     setIsRegenerating(true);
     try {
-      const updated = await apiClient.regenerateApiKey(merchantId || "me", keyType);
+      const updated = await apiClient.regenerateApiKey("me", keyType);
       if (onKeyRegenerated) onKeyRegenerated(updated);
     } catch {
       // offline fallback
@@ -312,8 +311,9 @@ console.log('Shipment Created:', data.tracking_number);`;
           <div className="flex items-center gap-2 text-xs font-semibold text-gray-600">
             <span>{isDocsOpen ? "Hide Examples" : "Show Examples"}</span>
             <ChevronDown
-              className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isDocsOpen ? "rotate-180" : ""
-                }`}
+              className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                isDocsOpen ? "rotate-180" : ""
+              }`}
             />
           </div>
         </button>
@@ -336,10 +336,11 @@ console.log('Shipment Created:', data.tracking_number);`;
                   <button
                     key={lang}
                     onClick={() => setActiveSnippetLang(lang)}
-                    className={`px-3 py-1 rounded text-xs font-semibold capitalize transition-all ${activeSnippetLang === lang
+                    className={`px-3 py-1 rounded text-xs font-semibold capitalize transition-all ${
+                      activeSnippetLang === lang
                         ? "bg-[#064E3B] text-white"
                         : "text-gray-600 hover:text-black"
-                      }`}
+                    }`}
                   >
                     {lang === "node" ? "Node.js" : lang === "python" ? "Python" : "cURL"}
                   </button>
@@ -355,8 +356,8 @@ console.log('Shipment Created:', data.tracking_number);`;
                     activeSnippetLang === "curl"
                       ? curlSnippet
                       : activeSnippetLang === "python"
-                        ? pythonSnippet
-                        : nodeSnippet;
+                      ? pythonSnippet
+                      : nodeSnippet;
                   copyToClipboard(code, "snippet");
                 }}
                 className="absolute top-3 right-3 px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-white text-[11px] transition-colors"

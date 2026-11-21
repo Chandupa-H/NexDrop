@@ -1,10 +1,11 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.modules.parcels.schemas import ParcelResponse, ParcelCreate, ParcelStatusUpdate
 from app.modules.parcels.repository import ParcelRepository
 from app.modules.parcels.service import ParcelService
+from app.modules.webhooks.service import WebhookService
 
 router = APIRouter(prefix="/parcels", tags=["Parcels"])
 
@@ -26,9 +27,19 @@ async def list_parcels(
 @router.post("", response_model=ParcelResponse, status_code=status.HTTP_201_CREATED)
 async def create_parcel(
     payload: ParcelCreate,
+    background_tasks: BackgroundTasks,
     service: ParcelService = Depends(get_parcel_service),
 ) -> ParcelResponse:
     parcel = await service.create_parcel(payload)
+    await service.repository.session.commit()
+    WebhookService.schedule_parcel_event(
+        background_tasks=background_tasks,
+        merchant_id=parcel.merchant_id,
+        tracking_number=parcel.tracking_number,
+        status_value="created",
+        location=parcel.delivery_city,
+        note=parcel.special_instructions,
+    )
     return ParcelResponse.model_validate(parcel)
 
 
@@ -50,23 +61,26 @@ async def track_parcel(
 async def update_parcel_status(
     parcel_id: int,
     payload: ParcelStatusUpdate,
+    background_tasks: BackgroundTasks,
     service: ParcelService = Depends(get_parcel_service),
 ) -> ParcelResponse:
+    existing = await service.get_parcel(parcel_id)
+    previous_status = existing.status if existing else None
     parcel = await service.update_status(parcel_id, payload)
     if not parcel:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Parcel with ID {parcel_id} not found",
         )
-    # Part 5: Automatically send webhook update to merchant
-    try:
-        from app.modules.webhooks.service import WebhookService
-        webhook_svc = WebhookService()
-        await webhook_svc.trigger_parcel_status_webhook(
+    await service.repository.session.commit()
+    if previous_status != parcel.status:
+        WebhookService.schedule_parcel_event(
+            background_tasks=background_tasks,
+            merchant_id=parcel.merchant_id,
             tracking_number=parcel.tracking_number,
-            status=payload.status.value if hasattr(payload.status, "value") else str(payload.status),
-            merchant_id=parcel.sender_id,
+            status_value=payload.status.value if hasattr(payload.status, "value") else str(payload.status),
+            location=parcel.delivery_city,
+            note=parcel.special_instructions,
+            failure_reason=parcel.failure_reason,
         )
-    except Exception:
-        pass
     return ParcelResponse.model_validate(parcel)

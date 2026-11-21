@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -153,6 +154,7 @@ async def test_profile_patch_rejects_invalid_fields(merchant_profile_dependencie
 async def test_profile_authentication_requires_an_active_approved_merchant():
     user = SimpleNamespace(
         id=27,
+        supabase_user_id=UUID("12b5615d-bd97-4f57-abdf-25ce768d0b93"),
         email="merchant@example.com",
         is_active=True,
         role="merchant",
@@ -180,18 +182,36 @@ async def test_profile_authentication_requires_an_active_approved_merchant():
             return ScalarResult(next(self.values))
 
     result = await get_authenticated_merchant_profile(
-        {"email": user.email},
+        {"sub": str(user.supabase_user_id), "email": user.email},
         ProfileSession([user, merchant]),
     )
     assert result is merchant
 
+    pending_merchant = SimpleNamespace(
+        user_id=user.id,
+        approval_status=ApprovalStatus.PENDING,
+    )
+    with pytest.raises(HTTPException) as pending_error:
+        await get_authenticated_merchant_profile(
+            {"sub": str(user.supabase_user_id), "email": user.email},
+            ProfileSession([user, pending_merchant]),
+        )
+    assert pending_error.value.status_code == 403
+
     inactive_user = SimpleNamespace(**{**vars(user), "is_active": False})
     with pytest.raises(HTTPException) as error:
         await get_authenticated_merchant_profile(
-            {"email": user.email},
+            {"sub": str(user.supabase_user_id), "email": user.email},
             ProfileSession([inactive_user]),
         )
     assert error.value.status_code == 403
+
+    with pytest.raises(HTTPException) as unmapped_error:
+        await get_authenticated_merchant_profile(
+            {"sub": "77777777-7777-4777-8777-777777777777", "email": user.email},
+            ProfileSession([None]),
+        )
+    assert unmapped_error.value.status_code == 403
 
 
 @pytest.mark.asyncio

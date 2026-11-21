@@ -104,7 +104,7 @@ async def get_authenticated_merchant(
         MOCK_APPROVED_MERCHANT["api_key"],
         MOCK_APPROVED_MERCHANT["test_api_key"],
     ]
-    if token_candidate in mock_keys or token_candidate.startswith("nd_live_") or token_candidate.startswith("nd_test_"):
+    if token_candidate in mock_keys:
         # Create a mock merchant instance for offline development
         mock_m = Merchant(
             id=MOCK_APPROVED_MERCHANT["id"],

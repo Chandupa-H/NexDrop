@@ -1,9 +1,6 @@
 import type {
   MerchantOrder,
   MerchantKpis,
-  ApiCredentials,
-  WebhookConfig,
-  WebhookDeliveryLog,
 } from "../types";
 
 export const INITIAL_ORDERS: MerchantOrder[] = [];
@@ -32,23 +29,3 @@ export function calculateMerchantKpis(orders: MerchantOrder[]): MerchantKpis {
     successRate,
   };
 }
-
-export const MOCK_API_CREDENTIALS: ApiCredentials = {
-  merchantId: "",
-  businessName: "",
-  liveKey: "",
-  testKey: "",
-  clientId: "",
-  clientSecret: "",
-  rateLimitPerDay: 10000,
-  usedToday: 0,
-};
-
-export const MOCK_WEBHOOK_CONFIG: WebhookConfig = {
-  targetUrl: "",
-  secretKey: "",
-  isActive: false,
-  subscribedEvents: [],
-};
-
-export const MOCK_WEBHOOK_LOGS: WebhookDeliveryLog[] = [];

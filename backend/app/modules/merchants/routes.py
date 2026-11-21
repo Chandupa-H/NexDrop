@@ -1,10 +1,10 @@
 import secrets
-import base64
-import json
 import httpx
 from typing import List, Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from uuid import UUID
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 
@@ -38,6 +38,7 @@ from app.modules.merchants.schemas import (
     WebhookDeliveryLogResponse,
     WebhookTestRequest,
     WebhookTestResponse,
+    WebhookSecretRotationResponse,
     MerchantDashboardSummaryResponse,
 )
 from app.modules.merchants.repository import MerchantRepository
@@ -49,7 +50,14 @@ from app.modules.merchants.security import (
 )
 from app.modules.auth.dependencies import get_authenticated_merchant_profile, get_verified_token_claims
 from app.modules.users.models import User
-from app.modules.webhooks.service import WebhookService
+from app.modules.webhooks.service import (
+    WebhookService,
+    authorize_merchant_path,
+    get_webhook_service,
+)
+from app.modules.webhooks.schemas import WebhookConfigSchema
+from app.core.auth import require_role
+from app.modules.users.models import UserRole
 
 router = APIRouter(prefix="/merchants", tags=["Merchants"])
 
@@ -58,28 +66,9 @@ router = APIRouter(prefix="/merchants", tags=["Merchants"])
 # Dependency
 # ---------------------------------------------------------------------------
 
-def _extract_email_from_auth_header(authorization: Optional[str]) -> Optional[str]:
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.replace("Bearer ", "", 1).strip()
-    try:
-        parts = token.split(".")
-        if len(parts) >= 2:
-            padding = "=" * (-len(parts[1]) % 4)
-            payload_json = json.loads(base64.urlsafe_b64decode(parts[1] + padding))
-            return payload_json.get("email")
-    except Exception:
-        pass
-    return None
-
-
-def get_merchant_service(
-    session: Optional[AsyncSession] = Depends(get_optional_db),
-    authorization: Optional[str] = Header(None, alias="Authorization"),
-) -> MerchantService:
+def get_merchant_service(session: Optional[AsyncSession] = Depends(get_optional_db)) -> MerchantService:
     repo = MerchantRepository(session) if session else None
-    email = _extract_email_from_auth_header(authorization)
-    return MerchantService(repo, current_user_email=email)
+    return MerchantService(repo)
 
 
 # In-memory deliveries store for merchant API orders (offline / persistent runtime)
@@ -127,7 +116,7 @@ _MERCHANT_DELIVERIES: List[dict] = [
 
 
 # ---------------------------------------------------------------------------
-# Public — Registration
+# Authenticated — Registration
 # ---------------------------------------------------------------------------
 
 @router.post(
@@ -136,31 +125,44 @@ _MERCHANT_DELIVERIES: List[dict] = [
     status_code=status.HTTP_201_CREATED,
     summary="Submit merchant registration application",
     description=(
-        "Creates a new User (role=merchant, inactive) and a Merchant profile "
-        "(approval_status=pending). Supported by persistent DB or resilient in-memory mode."
+        "Requires a verified Supabase session and creates a subject-mapped backend user "
+        "and pending merchant application."
     ),
 )
 async def register_merchant(
     payload: MerchantRegisterRequest,
-    session: Optional[AsyncSession] = Depends(get_optional_db),
+    claims: dict = Depends(get_verified_token_claims),
+    session: AsyncSession = Depends(get_db),
 ) -> MerchantRegistrationResponse:
-    repo = MerchantRepository(session) if session else None
+    verified_email = claims["email"].strip().lower()
+    if str(payload.email).strip().lower() != verified_email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration email must match the authenticated Supabase account.",
+        )
+
+    repo = MerchantRepository(session)
     service = MerchantService(repo)
     try:
-        merchant = await service.register_merchant(payload, session)
-        if session:
-            try:
-                await session.commit()
-            except Exception:
-                pass
+        merchant = await service.register_merchant(
+            payload,
+            supabase_user_id=UUID(claims["sub"]),
+            authenticated_email=verified_email,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
+    except IntegrityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A matching account or application was registered concurrently. Retry the request.",
+        ) from exc
+
     return MerchantRegistrationResponse(
-        merchant_id=merchant["id"] if isinstance(merchant, dict) else merchant.id,
-        approval_status=merchant["approval_status"] if isinstance(merchant, dict) else merchant.approval_status,
+        merchant_id=merchant.id,
+        approval_status=merchant.approval_status,
         message=(
             "Your application has been submitted successfully. "
             "You will be notified once an admin reviews your account."
@@ -347,29 +349,33 @@ async def change_my_merchant_password(
 )
 async def get_my_merchant_status(
     claims: dict = Depends(get_verified_token_claims),
-    session: Optional[AsyncSession] = Depends(get_optional_db),
+    session: AsyncSession = Depends(get_db),
 ) -> MerchantStatusResponse:
-    email = claims.get("email", "").strip().lower()
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unable to determine email from token.",
-        )
-
-    repo = MerchantRepository(session) if session else None
-    service = MerchantService(repo)
-
-    merchant = await service.get_merchant_by_identifier(email)
-    if not merchant:
+    subject = UUID(claims["sub"])
+    user_result = await session.execute(
+        select(User).where(User.supabase_user_id == subject)
+    )
+    user = user_result.scalars().first()
+    if user is None or user.role != UserRole.MERCHANT:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No merchant application found for the authenticated account.",
         )
+    merchant_result = await session.execute(
+        select(Merchant).where(Merchant.user_id == user.id)
+    )
+    merchant = merchant_result.scalars().first()
+    if merchant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No merchant application found for the authenticated account.",
+        )
+
     return MerchantStatusResponse(
-        merchant_id=merchant["id"],
-        business_name=merchant["business_name"],
-        approval_status=merchant["approval_status"],
-        rejection_reason=merchant.get("rejection_reason"),
+        merchant_id=merchant.id,
+        business_name=merchant.business_name,
+        approval_status=merchant.approval_status,
+        rejection_reason=merchant.rejection_reason,
     )
 
 
@@ -381,12 +387,19 @@ async def get_my_merchant_status(
     "/{merchant_id}/status",
     response_model=MerchantStatusResponse,
     summary="Check merchant application status",
-    description="Allows an applicant to check if their registration is approved, pending, or rejected.",
+    description="Allows an applicant to check status by merchant ID or merchant code.",
 )
 async def get_merchant_status(
     merchant_id: str,
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantStatusResponse:
+    # This endpoint is public: only numeric IDs / MER codes are accepted, never
+    # emails or the "me" alias (use GET /merchants/me/status when authenticated).
+    if "@" in merchant_id or merchant_id.strip().lower() == "me":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No merchant application found with ID '{merchant_id}'.",
+        )
     merchant = await service.get_merchant_by_identifier(merchant_id)
     if not merchant:
         raise HTTPException(
@@ -413,9 +426,11 @@ async def get_merchant_status(
 )
 async def get_dashboard_summary(
     merchant_id: str = "me",
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantDashboardSummaryResponse:
-    return await service.get_dashboard_summary(merchant_id)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    return await service.get_dashboard_summary(str(owned_id))
 
 
 @router.get(
@@ -426,9 +441,11 @@ async def get_dashboard_summary(
 )
 async def get_merchant_kpis(
     merchant_id: str = "me",
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantKpisResponse:
-    return await service.get_kpis(merchant_id)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    return await service.get_kpis(str(owned_id))
 
 
 # ---------------------------------------------------------------------------
@@ -447,10 +464,12 @@ async def list_merchant_orders(
     search: Optional[str] = Query(default=None, description="Search by tracking number, recipient name, city, or phone"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=100),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> List[MerchantOrderResponse]:
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
     return await service.get_orders(
-        merchant_id=merchant_id,
+        merchant_id=str(owned_id),
         status=status,
         search=search,
         skip=skip,
@@ -467,10 +486,17 @@ async def list_merchant_orders(
 )
 async def create_merchant_order(
     payload: MerchantOrderCreate,
+    background_tasks: BackgroundTasks,
     merchant_id: str = "me",
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantOrderResponse:
-    return await service.create_order(merchant_id=merchant_id, payload=payload)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    return await service.create_order(
+        merchant_id=str(owned_id),
+        payload=payload,
+        background_tasks=background_tasks,
+    )
 
 
 @router.get(
@@ -481,9 +507,11 @@ async def create_merchant_order(
 async def get_merchant_order(
     merchant_id: str,
     order_id: str,
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantOrderResponse:
-    order = await service.get_order_by_id_or_tracking(order_id)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    order = await service.get_order_by_id_or_tracking(order_id, merchant_id=owned_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -501,9 +529,11 @@ async def update_merchant_order_status(
     merchant_id: str,
     order_id: str,
     payload: MerchantOrderStatusUpdate,
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantOrderResponse:
-    order = await service.update_order_status(order_id, payload)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    order = await service.update_order_status(order_id, payload, merchant_id=owned_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -523,9 +553,11 @@ async def update_merchant_order_status(
 )
 async def get_merchant_credentials(
     merchant_id: str = "me",
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> ApiCredentialsResponse:
-    return await service.get_credentials(merchant_id)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    return await service.get_credentials(str(owned_id))
 
 
 @router.post(
@@ -536,9 +568,11 @@ async def get_merchant_credentials(
 async def regenerate_api_key(
     payload: RegenerateKeyRequest,
     merchant_id: str = "me",
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
     service: MerchantService = Depends(get_merchant_service),
 ) -> ApiCredentialsResponse:
-    return await service.regenerate_key(merchant_id=merchant_id, key_type=payload.key_type)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    return await service.regenerate_key(merchant_id=str(owned_id), key_type=payload.key_type)
 
 
 # ---------------------------------------------------------------------------
@@ -670,38 +704,35 @@ async def verify_merchant_api_key(
 )
 async def create_delivery_via_api(
     payload: MerchantDeliveryCreate,
+    background_tasks: BackgroundTasks,
     merchant: Merchant = Depends(get_authenticated_merchant),
-    session: Optional[AsyncSession] = Depends(get_optional_db),
+    session: AsyncSession = Depends(get_db),
 ) -> MerchantDeliveryResponse:
     """Create delivery programmatically, tied to authenticated merchant."""
     tracking_number = f"ND-LK-{secrets.randbelow(900000) + 100000}"
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if session:
-        try:
-            db_parcel = Parcel(
-                tracking_number=tracking_number,
-                sender_id=merchant.user_id or merchant.id,
-                merchant_id=merchant.id,
-                recipient_name=payload.recipient_name.strip(),
-                recipient_phone=payload.recipient_phone.strip(),
-                delivery_address=payload.delivery_address.strip(),
-                delivery_city=payload.delivery_city.strip(),
-                pickup_address=merchant.business_address,
-                weight_kg=float(payload.weight_kg),
-                dimensions=payload.dimensions or "20x15x10 cm",
-                status=ParcelStatus.PENDING,
-                cod_amount=float(payload.cod_amount),
-                is_prepaid=payload.cod_amount <= 0.0,
-                special_instructions=payload.special_instructions,
-                delivery_method=DeliveryMethod.DIRECT,
-                current_location_type=CurrentLocationType.SENDER,
-            )
-            session.add(db_parcel)
-            await session.commit()
-            await session.refresh(db_parcel)
-        except Exception as exc:
-            pass
+    db_parcel = Parcel(
+        tracking_number=tracking_number,
+        sender_id=merchant.user_id or merchant.id,
+        merchant_id=merchant.id,
+        recipient_name=payload.recipient_name.strip(),
+        recipient_phone=payload.recipient_phone.strip(),
+        delivery_address=payload.delivery_address.strip(),
+        delivery_city=payload.delivery_city.strip(),
+        pickup_address=merchant.business_address,
+        weight_kg=float(payload.weight_kg),
+        dimensions=payload.dimensions or "20x15x10 cm",
+        status=ParcelStatus.PENDING,
+        cod_amount=float(payload.cod_amount),
+        is_prepaid=payload.cod_amount <= 0.0,
+        special_instructions=payload.special_instructions,
+        delivery_method=DeliveryMethod.DIRECT,
+        current_location_type=CurrentLocationType.SENDER,
+    )
+    session.add(db_parcel)
+    await session.commit()
+    await session.refresh(db_parcel)
 
     delivery_record = {
         "tracking_number": tracking_number,
@@ -718,14 +749,13 @@ async def create_delivery_via_api(
     }
     _MERCHANT_DELIVERIES.insert(0, delivery_record)
 
-    # Part 5: Automatically trigger the 'order.created' webhook
-    webhook_svc = WebhookService()
-    await webhook_svc.trigger_parcel_status_webhook(
-        tracking_number=tracking_number,
-        status="created",
+    WebhookService.schedule_parcel_event(
+        background_tasks=background_tasks,
         merchant_id=merchant.id,
-        location=payload.delivery_city,
-        note=payload.special_instructions,
+        tracking_number=db_parcel.tracking_number,
+        status_value=db_parcel.status.value,
+        location=db_parcel.delivery_city,
+        note=db_parcel.special_instructions,
     )
 
     return MerchantDeliveryResponse(**delivery_record)
@@ -835,9 +865,17 @@ async def get_merchant_delivery(
 )
 async def get_webhook_config(
     merchant_id: str = "me",
-    service: MerchantService = Depends(get_merchant_service),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
 ) -> WebhookConfigResponse:
-    return await service.get_webhook_config(merchant_id)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    config = await service.get_merchant_config(owned_id)
+    return WebhookConfigResponse(
+        target_url=config.target_url,
+        is_active=config.is_active,
+        subscribed_events=config.subscribed_events,
+        secret_configured=bool(config.secret_key),
+    )
 
 
 @router.put(
@@ -848,9 +886,30 @@ async def get_webhook_config(
 async def update_webhook_config(
     payload: WebhookConfigUpdate,
     merchant_id: str = "me",
-    service: MerchantService = Depends(get_merchant_service),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
 ) -> WebhookConfigResponse:
-    return await service.update_webhook_config(merchant_id=merchant_id, payload=payload)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    current = await service.get_merchant_config(owned_id)
+    config = await service.save_merchant_config(
+        owned_id,
+        WebhookConfigSchema(
+            target_url=payload.target_url if payload.target_url is not None else current.target_url,
+            secret_key=current.secret_key,
+            is_active=payload.is_active if payload.is_active is not None else current.is_active,
+            subscribed_events=(
+                payload.subscribed_events
+                if payload.subscribed_events is not None
+                else current.subscribed_events
+            ),
+        ),
+    )
+    return WebhookConfigResponse(
+        target_url=config.target_url,
+        is_active=config.is_active,
+        subscribed_events=config.subscribed_events,
+        secret_configured=bool(config.secret_key),
+    )
 
 
 @router.post(
@@ -860,14 +919,51 @@ async def update_webhook_config(
     description="Dispatches a test HMAC-SHA256 signed webhook ping and logs the delivery attempt.",
 )
 async def test_webhook(
-    payload: WebhookTestRequest = WebhookTestRequest(),
+    background_tasks: BackgroundTasks,
+    payload: WebhookTestRequest = Body(default_factory=WebhookTestRequest),
     merchant_id: str = "me",
-    service: MerchantService = Depends(get_merchant_service),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
 ) -> WebhookTestResponse:
-    return await service.send_test_webhook(
-        merchant_id=merchant_id,
-        event_type=payload.event_type,
-        tracking_number=payload.tracking_number,
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    ping = await service.send_test_ping(
+        merchant_id=owned_id,
+        event=payload.event_type,
+        background_tasks=background_tasks,
+    )
+    return WebhookTestResponse(
+        log=WebhookDeliveryLogResponse(
+            id=ping.delivery_id,
+            event=payload.event_type,
+            tracking_number=str(ping.payload_sent["data"]["tracking_number"]),
+            status=ping.status_code,
+            status_text=ping.status_text,
+            timestamp=str(ping.payload_sent["timestamp"]),
+            duration_ms=ping.duration_ms,
+            delivery_status=ping.delivery_status,
+            attempt_number=ping.attempt_number,
+            error_message=None if ping.success else ping.message,
+            payload_summary='{"test":true}',
+        ),
+        message=ping.message,
+    )
+
+
+@router.post(
+    "/{merchant_id}/webhooks/secret/rotate",
+    response_model=WebhookSecretRotationResponse,
+    summary="Rotate merchant webhook signing secret",
+)
+async def rotate_webhook_secret(
+    merchant_id: str = "me",
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
+) -> WebhookSecretRotationResponse:
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    secret = await service.rotate_secret(owned_id)
+    return WebhookSecretRotationResponse(
+        secret_key=secret,
+        message="Copy this signing secret now; it will not be shown again.",
     )
 
 
@@ -879,9 +975,27 @@ async def test_webhook(
 async def get_webhook_logs(
     merchant_id: str = "me",
     limit: int = Query(default=50, ge=1, le=100),
-    service: MerchantService = Depends(get_merchant_service),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
 ) -> List[WebhookDeliveryLogResponse]:
-    return await service.get_webhook_logs(merchant_id=merchant_id, limit=limit)
+    owned_id = authorize_merchant_path(merchant_id, merchant.id)
+    logs = await service.list_merchant_logs(owned_id, limit)
+    return [
+        WebhookDeliveryLogResponse(
+            id=log.id,
+            event=log.event,
+            tracking_number=log.tracking_number or "",
+            status=log.status,
+            status_text=log.status_text,
+            timestamp=log.timestamp,
+            duration_ms=log.duration_ms,
+            delivery_status=log.delivery_status,
+            attempt_number=log.attempt_number,
+            error_message=log.error_message,
+            payload_summary=log.payload_summary or "",
+        )
+        for log in logs
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -896,6 +1010,7 @@ async def get_webhook_logs(
 async def list_merchants(
     skip: int = 0,
     limit: int = 50,
+    _admin: dict = Depends(require_role(UserRole.ADMIN)),
     service: MerchantService = Depends(get_merchant_service),
 ) -> List[MerchantResponse]:
     merchants = await service.list_merchants(skip=skip, limit=limit)
@@ -930,6 +1045,7 @@ async def list_merchants(
 async def list_pending_merchants(
     skip: int = 0,
     limit: int = 50,
+    _admin: dict = Depends(require_role(UserRole.ADMIN)),
     service: MerchantService = Depends(get_merchant_service),
 ) -> List[MerchantResponse]:
     merchants = await service.get_pending_merchants(skip=skip, limit=limit)
@@ -963,6 +1079,7 @@ async def list_pending_merchants(
 )
 async def get_merchant(
     merchant_id: int,
+    _admin: dict = Depends(require_role(UserRole.ADMIN)),
     service: MerchantService = Depends(get_merchant_service),
 ) -> MerchantResponse:
     merchant = await service.get_merchant(merchant_id)
@@ -982,6 +1099,7 @@ async def get_merchant(
 async def update_merchant_approval(
     merchant_id: int,
     payload: MerchantApprovalUpdate,
+    _admin: dict = Depends(require_role(UserRole.ADMIN)),
     session: Optional[AsyncSession] = Depends(get_optional_db),
 ) -> MerchantResponse:
     repo = MerchantRepository(session) if session else None

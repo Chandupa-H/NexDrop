@@ -80,18 +80,21 @@ export interface ApiCredentials {
 
 export interface WebhookConfig {
   targetUrl: string;
-  secretKey: string;
   isActive: boolean;
   subscribedEvents: string[];
+  secretConfigured: boolean;
 }
 
 export interface WebhookDeliveryLog {
   id: string;
   event: string;
   trackingNumber: string;
-  status: number;
+  status: number | null;
   statusText: string;
   timestamp: string;
   durationMs: number;
+  deliveryStatus: "pending" | "retrying" | "delivered" | "failed" | string;
+  attemptNumber: number;
+  errorMessage?: string | null;
   payloadSummary: string;
 }

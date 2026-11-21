@@ -276,15 +276,14 @@ export const apiClient = {
   registerMerchant: (data: MerchantRegisterRequest) =>
     apiClient.post<MerchantRegistrationResponse>("/merchants/register", data),
 
-  /** Check an applicant's approval status by their merchant ID or email. */
+  /** Check an applicant's approval status by their merchant ID or merchant code. */
   getMerchantStatus: (merchantId: number | string) =>
     apiClient.get<MerchantStatusResponse>(`/merchants/${merchantId}/status`),
 
   /**
    * Check the authenticated user's own merchant status via their JWT.
    * Uses GET /merchants/me/status — requires a valid Supabase session.
-   * More reliable than getMerchantStatus(email) because it doesn't depend
-   * on the email string being present in the backend users table.
+   * Uses the verified Supabase subject rather than an email-based lookup.
    */
   getMerchantStatusMe: () =>
     apiClient.get<MerchantStatusResponse>(`/merchants/me/status`),
@@ -376,6 +375,12 @@ export const apiClient = {
   /** Update merchant webhook configuration. */
   updateMerchantWebhooks: (merchantId: number | string = "me", config: Partial<WebhookConfig>) =>
     apiClient.put<WebhookConfig>(`/merchants/${merchantId}/webhooks`, config),
+
+  /** Rotate the merchant webhook signing secret; the returned value is shown once. */
+  rotateMerchantWebhookSecret: (merchantId: number | string = "me") =>
+    apiClient.post<{ secretKey: string; message: string }>(
+      `/merchants/${merchantId}/webhooks/secret/rotate`,
+    ),
 
   /** Send test webhook ping event. */
   testMerchantWebhook: (merchantId: number | string = "me", eventType: string = "order.in_transit") =>

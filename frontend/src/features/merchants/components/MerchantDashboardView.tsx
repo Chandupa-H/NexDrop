@@ -6,9 +6,6 @@ import { CheckCircle2, LayoutDashboard, Package, PlusCircle, Key, Webhook, X } f
 import type { MerchantOrder, ApiCredentials, WebhookConfig, WebhookDeliveryLog } from "../types";
 import {
   INITIAL_ORDERS,
-  MOCK_API_CREDENTIALS,
-  MOCK_WEBHOOK_CONFIG,
-  MOCK_WEBHOOK_LOGS,
   calculateMerchantKpis,
 } from "../data/mock-merchant-data";
 import apiClient from "@/lib/api-client";
@@ -26,35 +23,38 @@ export function MerchantDashboardView() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Read initial tab from search param
-  const initialTabParam = searchParams.get("tab") as ActiveTab | null;
-  const [activeTab, setActiveTab] = useState<ActiveTab>(
-    initialTabParam && ["overview", "orders", "create", "api", "webhooks", "profile"].includes(initialTabParam)
-      ? initialTabParam
-      : "overview"
-  );
-
-  // Sync state if query changes
-  useEffect(() => {
-    const tabParam = searchParams.get("tab") as ActiveTab | null;
-    if (tabParam && ["overview", "orders", "create", "api", "webhooks", "profile"].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
+  const tabParam = searchParams.get("tab");
+  const validTabs: ActiveTab[] = ["overview", "orders", "create", "api", "webhooks", "profile"];
+  const activeTab = validTabs.includes(tabParam as ActiveTab)
+    ? (tabParam as ActiveTab)
+    : "overview";
 
   const handleTabChange = (tab: ActiveTab) => {
-    setActiveTab(tab);
     router.replace(`/merchant/dashboard?tab=${tab}`, { scroll: false });
   };
 
   // State: Orders, Credentials, Webhooks, Selected Order for Modal
   const [orders, setOrders] = useState<MerchantOrder[]>(INITIAL_ORDERS);
-  const [credentials, setCredentials] = useState<ApiCredentials>(MOCK_API_CREDENTIALS);
-  const [webhookConfig, setWebhookConfig] = useState<WebhookConfig>(MOCK_WEBHOOK_CONFIG);
-  const [webhookLogs, setWebhookLogs] = useState<WebhookDeliveryLog[]>(MOCK_WEBHOOK_LOGS);
+  const [credentials, setCredentials] = useState<ApiCredentials>({
+    merchantId: "",
+    businessName: "",
+    liveKey: "",
+    testKey: "",
+    clientId: "",
+    clientSecret: "",
+    rateLimitPerDay: 0,
+    usedToday: 0,
+  });
+  const [webhookConfig, setWebhookConfig] = useState<WebhookConfig>({
+    targetUrl: "",
+    isActive: false,
+    subscribedEvents: [],
+    secretConfigured: false,
+  });
+  const [webhookLogs, setWebhookLogs] = useState<WebhookDeliveryLog[]>([]);
+  const [merchantId, setMerchantId] = useState<string>("me");
   const [selectedOrder, setSelectedOrder] = useState<MerchantOrder | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
-  const [merchantId, setMerchantId] = useState<string>("me");
 
   // Dynamic Merchant details resolution (from login/registration or API)
   const [merchantProfile, setMerchantProfile] = useState<{
@@ -66,42 +66,42 @@ export function MerchantDashboardView() {
   });
 
   useEffect(() => {
-    let merchantIdToFetch = "me";
-    try {
-      const stored = localStorage.getItem("nexdrop_merchant_application");
-      if (!stored) {
-        // Not registered -> redirect to registration form
-        router.replace("/merchant/register");
-        return;
-      }
-      const parsed = JSON.parse(stored);
-      if (parsed.approval_status !== "approved") {
-        // Registered but not approved yet -> redirect to status page
-        router.replace(
-          parsed.merchant_id
-            ? `/merchant/application-status?id=${parsed.merchant_id}`
-            : "/merchant/application-status"
-        );
-        return;
-      }
-      if (parsed.business_name) {
-        setMerchantProfile({
-          businessName: parsed.business_name,
-          businessAddress: parsed.business_address || "Colombo, Sri Lanka",
-        });
-      }
-      if (parsed.merchant_id) {
-        const mId = String(parsed.merchant_id);
-        merchantIdToFetch = mId;
-        setMerchantId(mId);
-      }
-    } catch {
-      // Ignore localStorage parse errors
-    }
-
     let isMounted = true;
 
     async function loadLiveData() {
+      await Promise.resolve();
+      let merchantIdToFetch = "me";
+      try {
+        const stored = localStorage.getItem("nexdrop_merchant_application");
+        if (!stored) {
+          router.replace("/merchant/register");
+          return;
+        }
+        const parsed = JSON.parse(stored);
+        if (parsed.approval_status !== "approved") {
+          router.replace(
+            parsed.merchant_id
+              ? `/merchant/application-status?id=${parsed.merchant_id}`
+              : "/merchant/application-status"
+          );
+          return;
+        }
+        if (!isMounted) return;
+        if (parsed.business_name) {
+          setMerchantProfile({
+            businessName: parsed.business_name,
+            businessAddress: parsed.business_address || "Colombo, Sri Lanka",
+          });
+        }
+        if (parsed.merchant_id) {
+          merchantIdToFetch = String(parsed.merchant_id);
+          setMerchantId(merchantIdToFetch);
+        }
+      } catch {
+        // Ignore localStorage parse errors
+      }
+
+      if (!isMounted) return;
       try {
         const [liveOrders, liveCreds, liveWh, liveLogs] = await Promise.allSettled([
           apiClient.getMerchantOrders(merchantIdToFetch),
@@ -124,23 +124,23 @@ export function MerchantDashboardView() {
             }));
           }
         }
-        if (liveWh.status === "fulfilled" && liveWh.value?.targetUrl) {
+        if (liveWh.status === "fulfilled") {
           setWebhookConfig(liveWh.value);
         }
         if (liveLogs.status === "fulfilled" && Array.isArray(liveLogs.value)) {
           setWebhookLogs(liveLogs.value);
         }
       } catch {
-        // Retain initial seed data if backend is unreachable
+        // Keep the empty webhook state if the backend is unreachable.
       }
     }
 
-    loadLiveData();
+    void loadLiveData();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [router]);
 
   const kpis = useMemo(() => calculateMerchantKpis(orders), [orders]);
 
@@ -171,79 +171,85 @@ export function MerchantDashboardView() {
 
       {activeTab !== "profile" && (
         <div className="bg-white border border-[#E5E7EB] rounded-xl p-1.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              onClick={() => handleTabChange("overview")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "overview"
-                  ? "bg-[#064E3B] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-                }`}
+        <div className="flex flex-wrap items-center gap-1">
+          <button
+            onClick={() => handleTabChange("overview")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "overview"
+                ? "bg-[#064E3B] text-white shadow-sm"
+                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Overview</span>
+          </button>
+
+          <button
+            onClick={() => handleTabChange("orders")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "orders"
+                ? "bg-[#064E3B] text-white shadow-sm"
+                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>All Shipments</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                activeTab === "orders"
+                  ? "bg-white/20 text-white"
+                  : "bg-gray-200 text-gray-700"
+              }`}
             >
-              <LayoutDashboard className="w-3.5 h-3.5" />
-              <span>Overview</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange("orders")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "orders"
-                  ? "bg-[#064E3B] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-                }`}
-            >
-              <Package className="w-3.5 h-3.5" />
-              <span>All Shipments</span>
-              <span
-                className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTab === "orders"
-                    ? "bg-white/20 text-white"
-                    : "bg-gray-200 text-gray-700"
-                  }`}
-              >
-                {orders.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange("create")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "create"
-                  ? "bg-[#064E3B] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-                }`}
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>New Shipment</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange("api")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "api"
-                  ? "bg-[#064E3B] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-                }`}
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>API Keys & Docs</span>
-            </button>
-
-            <button
-              onClick={() => handleTabChange("webhooks")}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "webhooks"
-                  ? "bg-[#064E3B] text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-                }`}
-            >
-              <Webhook className="w-3.5 h-3.5" />
-              <span>Webhooks</span>
-            </button>
-
-          </div>
-
-          <div className="hidden sm:flex items-center gap-2 pr-3">
-            <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse" />
-            <span className="text-[11px] font-medium text-[#064E3B]">
-              Fleet System Online
+              {orders.length}
             </span>
-          </div>
+          </button>
+
+          <button
+            onClick={() => handleTabChange("create")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "create"
+                ? "bg-[#064E3B] text-white shadow-sm"
+                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+            }`}
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>New Shipment</span>
+          </button>
+
+          <button
+            onClick={() => handleTabChange("api")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "api"
+                ? "bg-[#064E3B] text-white shadow-sm"
+                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+            }`}
+          >
+            <Key className="w-3.5 h-3.5" />
+            <span>API Keys & Docs</span>
+          </button>
+
+          <button
+            onClick={() => handleTabChange("webhooks")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "webhooks"
+                ? "bg-[#064E3B] text-white shadow-sm"
+                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+            }`}
+          >
+            <Webhook className="w-3.5 h-3.5" />
+            <span>Webhooks</span>
+          </button>
+
         </div>
+
+        <div className="hidden sm:flex items-center gap-2 pr-3">
+          <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse" />
+          <span className="text-[11px] font-medium text-[#064E3B]">
+            Fleet System Online
+          </span>
+        </div>
+      </div>
       )}
 
       {/* Active Tab View */}
@@ -269,7 +275,6 @@ export function MerchantDashboardView() {
 
       {activeTab === "create" && (
         <CreateOrderTab
-          merchantId={merchantId}
           onOrderCreated={handleOrderCreated}
           onCancel={() => handleTabChange("orders")}
         />
@@ -277,7 +282,6 @@ export function MerchantDashboardView() {
 
       {activeTab === "api" && (
         <ApiTab
-          merchantId={merchantId}
           credentials={credentials}
           onKeyRegenerated={(newCreds) => setCredentials(newCreds)}
         />
@@ -288,6 +292,8 @@ export function MerchantDashboardView() {
           merchantId={merchantId}
           initialConfig={webhookConfig}
           initialLogs={webhookLogs}
+          onConfigChange={setWebhookConfig}
+          onLogsChange={setWebhookLogs}
         />
       )}
 

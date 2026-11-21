@@ -23,36 +23,29 @@ export default function MerchantPage() {
   const [savedApp, setSavedApp] = useState<SavedApplication | null>(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    let active = true;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session?.user) return;
       try {
-        const item = localStorage.getItem("nexdrop_merchant_application");
-        if (item) {
-          setSavedApp(JSON.parse(item));
-        } else {
-          supabase.auth.getSession().then(async ({ data: { session } }) => {
-            if (session?.user?.email) {
-              try {
-                const statusData = await apiClient.getMerchantStatus(session.user.email);
-                if (statusData?.merchant_id) {
-                  const restored = {
-                    merchant_id: statusData.merchant_id,
-                    business_name: statusData.business_name,
-                    email: session.user.email,
-                    approval_status: statusData.approval_status,
-                  };
-                  localStorage.setItem("nexdrop_merchant_application", JSON.stringify(restored));
-                  localStorage.setItem("nexdrop_user_role", "merchant");
-                  document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
-                  setSavedApp(restored);
-                }
-              } catch { }
-            }
-          });
-        }
+        const statusData = await apiClient.getMerchantStatusMe();
+        if (!active || !statusData?.merchant_id) return;
+        const restored = {
+          merchant_id: statusData.merchant_id,
+          business_name: statusData.business_name,
+          email: session.user.email || undefined,
+          approval_status: statusData.approval_status,
+        };
+        localStorage.setItem("nexdrop_merchant_application", JSON.stringify(restored));
+        localStorage.setItem("nexdrop_user_role", "merchant");
+        document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+        setSavedApp(restored);
       } catch {
-        // ignore storage parse errors
+        // The authenticated account has no merchant application.
       }
-    }
+    });
+    return () => {
+      active = false;
+    };
   }, []);
 
   return (

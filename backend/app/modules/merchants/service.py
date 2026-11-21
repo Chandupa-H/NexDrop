@@ -1,12 +1,13 @@
-import hashlib
-import hmac
 import secrets
 import logging
 import random
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
+from uuid import UUID
 
+from fastapi import BackgroundTasks
 from sqlalchemy import select, or_, func, cast, String
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.merchants.models import Merchant, ApprovalStatus
@@ -20,14 +21,12 @@ from app.modules.merchants.schemas import (
     MerchantKpisResponse,
     ApiCredentialsResponse,
     WebhookConfigResponse,
-    WebhookConfigUpdate,
-    WebhookDeliveryLogResponse,
-    WebhookTestResponse,
     MerchantDashboardSummaryResponse,
 )
 from app.modules.merchants.repository import MerchantRepository
 from app.modules.users.models import User, UserRole
 from app.modules.users.repository import UserRepository
+from app.modules.webhooks.service import WebhookService
 
 logger = logging.getLogger(__name__)
 
@@ -65,22 +64,6 @@ _MOCK_MERCHANTS: Dict[int, Dict[str, Any]] = {
 
 _MOCK_ORDERS: List[Dict[str, Any]] = []
 
-_MOCK_WEBHOOK_CONFIG: Dict[str, Any] = {
-    "target_url": "https://example.com/api/webhooks",
-    "secret_key": "whsec_live_default_key_98f42d1e07b8",
-    "is_active": True,
-    "subscribed_events": [
-        "order.created",
-        "order.picked_up",
-        "order.in_transit",
-        "order.out_for_delivery",
-        "order.delivered",
-        "order.failed",
-    ],
-}
-
-_MOCK_WEBHOOK_LOGS: List[Dict[str, Any]] = []
-
 
 class MerchantService:
     def __init__(
@@ -89,6 +72,7 @@ class MerchantService:
         current_user_email: Optional[str] = None,
     ):
         self.repository = repository
+        # Only ever set from a *verified* token's claims, never from a raw header.
         self.current_user_email = current_user_email
 
     # ------------------------------------------------------------------
@@ -136,10 +120,6 @@ class MerchantService:
     # Merchant Profile & Registration
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _hash_password(plain: str) -> str:
-        return hashlib.sha256(plain.encode()).hexdigest()
-
     async def get_merchant(self, merchant_id: int) -> Optional[Merchant]:
         if self.repository:
             try:
@@ -169,191 +149,189 @@ class MerchantService:
         return None
 
     async def get_merchant_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
-        """Look up merchant dictionary by numeric ID, MER code, email, or 'me'."""
+        """Look up a merchant dict by numeric ID, MER code, email, or 'me'.
+
+        Order of resolution: database first (the mock store may hold stale or
+        fake IDs), then the in-memory store as an offline/demo fallback.
+        'me' resolves to the authenticated user's own merchant only; it never
+        falls back to "the latest merchant in the DB".
+        """
         if not identifier:
             return None
+        identifier = identifier.strip()
 
-        # Check by email
+        # --- By email ---------------------------------------------------
         if "@" in identifier:
-            ident_lower = identifier.lower().strip()
+            ident_lower = identifier.lower()
             for m in _MOCK_MERCHANTS.values():
-                if m.get("email", "").lower() == ident_lower:
+                if (m.get("email") or "").lower() == ident_lower:
                     return m
             if self.repository:
-                try:
-                    user_repo = UserRepository(self.repository.session)
-                    user = await user_repo.get_by_email(ident_lower)
-                    if user:
-                        db_m = await self.repository.get_by_user_id(user.id)
-                        if db_m:
-                            return self._format_merchant_dict(db_m)
-                except Exception:
-                    pass
-                # Fallback: direct JOIN on merchants → users by email (handles
-                # case where the backend users row exists but is_active=False
-                # or was stored with a slightly different casing)
-                try:
-                    stmt = (
-                        select(Merchant)
-                        .join(User, Merchant.user_id == User.id)
-                        .where(func.lower(User.email) == ident_lower)
-                    )
-                    res = await self.repository.session.execute(stmt)
-                    db_m = res.scalars().first()
-                    if db_m:
-                        return self._format_merchant_dict(db_m)
-                except Exception:
-                    pass
+                return await self._find_db_merchant_by_email(ident_lower)
             return None
 
-        # Check by code
-        ident_upper = identifier.upper().strip()
+        # --- By MER code (in-memory) -----------------------------------
+        ident_upper = identifier.upper()
         for m in _MOCK_MERCHANTS.values():
             if m.get("merchant_code") == ident_upper:
                 return m
 
-        numeric_id = self._resolve_merchant_id(identifier)
+        # --- "me": the authenticated user's own merchant ---------------
+        if identifier == "me":
+            if self.current_user_email:
+                email = self.current_user_email.strip().lower()
+                if self.repository:
+                    db_dict = await self._find_db_merchant_by_email(email)
+                    if db_dict:
+                        return db_dict
+                for m in _MOCK_MERCHANTS.values():
+                    if (m.get("email") or "").lower() == email:
+                        return m
+                return None
+            # No authenticated identity: only allowed in offline/demo mode.
+            if self.repository is None and _MOCK_MERCHANTS:
+                return list(_MOCK_MERCHANTS.values())[-1]
+            return None
 
-        # Check DB first — the mock store may have stale / fake IDs
-        if self.repository and numeric_id:
+        # --- By numeric ID: DB first, then mock -------------------------
+        numeric_id = self._resolve_merchant_id(identifier)
+        if numeric_id is None:
+            return None
+        if self.repository:
             try:
                 db_m = await self.repository.get_by_id(numeric_id)
                 if db_m:
                     return self._format_merchant_dict(db_m)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("DB merchant lookup failed, checking in-memory store: %s", exc)
+        return _MOCK_MERCHANTS.get(numeric_id)
 
-        # For "me", resolve by authenticated user's email first
-        if identifier == "me":
-            if self.current_user_email and self.repository:
-                try:
-                    user_repo = UserRepository(self.repository.session)
-                    user = await user_repo.get_by_email(self.current_user_email.strip().lower())
-                    if user:
-                        db_m = await self.repository.get_by_user_id(user.id)
-                        if db_m:
-                            return self._format_merchant_dict(db_m)
-                except Exception:
-                    pass
-
-            # Fallback if no email token available: try to find latest merchant in DB
-            if self.repository:
-                try:
-                    from sqlalchemy import select as _sel
-                    stmt = _sel(Merchant).order_by(Merchant.id.desc()).limit(1)
-                    res = await self.repository.session.execute(stmt)
-                    db_m = res.scalars().first()
-                    if db_m:
-                        return self._format_merchant_dict(db_m)
-                except Exception:
-                    pass
-
-        # Fallback to in-memory mock store
-        if numeric_id and numeric_id in _MOCK_MERCHANTS:
-            return _MOCK_MERCHANTS[numeric_id]
-
-        if identifier == "me" and _MOCK_MERCHANTS:
-            return list(_MOCK_MERCHANTS.values())[-1]
-
+    async def _find_db_merchant_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Find a merchant via its owning user's email (case-insensitive)."""
+        if not self.repository:
+            return None
+        try:
+            user = await UserRepository(self.repository.session).get_by_email(email)
+            if user:
+                db_m = await self.repository.get_by_user_id(user.id)
+                if db_m:
+                    return self._format_merchant_dict(db_m)
+        except Exception as exc:
+            logger.warning("Merchant lookup by user email failed: %s", exc)
+        # Fallback: direct JOIN merchants -> users (covers inactive users or
+        # differently-cased stored emails).
+        try:
+            stmt = (
+                select(Merchant)
+                .join(User, Merchant.user_id == User.id)
+                .where(func.lower(User.email) == email)
+            )
+            res = await self.repository.session.execute(stmt)
+            db_m = res.scalars().first()
+            if db_m:
+                return self._format_merchant_dict(db_m)
+        except Exception as exc:
+            logger.warning("Merchant JOIN lookup by email failed: %s", exc)
         return None
 
     async def register_merchant(
         self,
         payload: MerchantRegisterRequest,
-        session: Optional[AsyncSession] = None,
-    ) -> Dict[str, Any]:
-        """
-        Atomically register a new merchant application.
-        Works seamlessly with database or in-memory fallback.
-        """
-        # Guard: Check registration number and email uniqueness in mock store
-        for m in _MOCK_MERCHANTS.values():
-            if m.get("registration_number") == payload.registration_number:
-                raise ValueError(
-                    f"Business registration number '{payload.registration_number}' is already registered."
+        *,
+        supabase_user_id: UUID,
+        authenticated_email: str,
+    ) -> Merchant:
+        if self.repository is None:
+            raise RuntimeError("Merchant registration requires a database session.")
+
+        email = str(payload.email).strip().lower()
+        verified_email = authenticated_email.strip().lower()
+        if not verified_email or email != verified_email:
+            raise ValueError("Registration email must match the authenticated Supabase account.")
+
+        session = self.repository.session
+        user_repo = UserRepository(session)
+        merchant_repo = self.repository
+
+        user = await user_repo.get_by_supabase_user_id(
+            supabase_user_id, for_update=True
+        )
+        if user is None:
+            matching_users = await user_repo.list_by_normalized_email(email)
+            if len(matching_users) > 1:
+                raise ValueError("Multiple backend users match this account; contact support.")
+            if matching_users:
+                candidate = matching_users[0]
+                is_imported_unassigned = (
+                    candidate.supabase_user_id is None
+                    and candidate.role == UserRole.UNASSIGNED
+                    and candidate.hashed_password.startswith("supabase-managed:")
                 )
-            if m.get("email") and m.get("email").lower() == payload.email.lower():
-                raise ValueError(
-                    f"An account with email '{payload.email}' has already registered as a merchant. Only one merchant registration is permitted per account."
-                )
-
-        new_id = max(_MOCK_MERCHANTS.keys(), default=0) + 1
-        merchant_code = f"MER-{new_id:06d}"
-
-        # If DB session is provided, attempt to persist to DB
-        if session and self.repository:
-            try:
-                user_repo = UserRepository(session)
-                existing_user = await user_repo.get_by_email(payload.email)
-                if existing_user:
-                    raise ValueError(f"An account with email '{payload.email}' already exists.")
-
-                existing_reg = await self.repository.get_by_registration_number(payload.registration_number)
-                if existing_reg:
+                if not is_imported_unassigned:
                     raise ValueError(
-                        f"Business registration number '{payload.registration_number}' is already registered."
+                        "This email is already linked to a different or unmanaged backend account."
                     )
+                candidate.supabase_user_id = supabase_user_id
+                user = candidate
 
-                raw_pw = payload.password if payload.password else secrets.token_urlsafe(24)
-                hashed_pw = self._hash_password(raw_pw)
-                user = User(
-                    email=payload.email,
-                    full_name=payload.full_name,
-                    contact_phone=payload.direct_phone or payload.contact_phone,
-                    hashed_password=hashed_pw,
-                    role=UserRole.MERCHANT,
-                    is_active=False,
-                )
-                session.add(user)
-                await session.flush()
+        if user is None:
+            user = User(
+                supabase_user_id=supabase_user_id,
+                email=email,
+                full_name=payload.full_name.strip(),
+                contact_phone=payload.direct_phone or payload.contact_phone,
+                hashed_password=f"supabase-managed:{secrets.token_urlsafe(32)}",
+                role=UserRole.MERCHANT,
+                is_active=False,
+            )
+            session.add(user)
+            await session.flush()
+        elif user.email.strip().lower() != verified_email:
+            raise ValueError("The authenticated Supabase subject is linked to another email.")
+        elif user.role not in {UserRole.UNASSIGNED, UserRole.MERCHANT}:
+            raise ValueError("This backend account cannot be registered as a merchant.")
 
-                db_merchant = Merchant(
-                    user_id=user.id,
-                    business_name=payload.business_name,
-                    registration_number=payload.registration_number,
-                    contact_phone=payload.contact_phone,
-                    business_address=payload.business_address,
-                    business_type=payload.business_type,
-                    website_url=payload.website_url,
-                    approval_status=ApprovalStatus.PENDING,
-                )
-                session.add(db_merchant)
-                await session.flush()
-                await session.refresh(db_merchant)
-                new_id = db_merchant.id
-                merchant_code = f"MER-{new_id:06d}"
-            except ValueError:
-                raise
-            except Exception as exc:
-                logger.warning("DB registration write skipped, persisting in memory: %s", exc)
+        existing_application = await merchant_repo.get_by_user_id(user.id)
+        if existing_application is not None:
+            same_application = (
+                existing_application.business_name == payload.business_name.strip()
+                and existing_application.registration_number
+                == payload.registration_number.strip()
+                and existing_application.contact_phone == payload.contact_phone.strip()
+                and existing_application.business_address == payload.business_address.strip()
+                and existing_application.business_type == payload.business_type
+                and existing_application.website_url == payload.website_url
+            )
+            if not same_application:
+                raise ValueError("A merchant application already exists for this account.")
+            user.role = UserRole.MERCHANT
+            user.is_active = existing_application.approval_status == ApprovalStatus.APPROVED
+            await session.flush()
+            return existing_application
 
-        # Record in memory store
-        record = {
-            "id": new_id,
-            "user_id": new_id,
-            "merchant_code": merchant_code,
-            "email": payload.email,
-            "business_name": payload.business_name,
-            "registration_number": payload.registration_number,
-            "contact_phone": payload.contact_phone,
-            "business_address": payload.business_address,
-            "business_type": payload.business_type,
-            "website_url": payload.website_url,
-            "approval_status": ApprovalStatus.PENDING,
-            "rejection_reason": None,
-            "live_key": f"nd_live_{secrets.token_hex(16)}",
-            "test_key": f"nd_test_{secrets.token_hex(16)}",
-            "client_id": f"nexdrop_app_{new_id}",
-            "client_secret": f"sec_{secrets.token_hex(16)}",
-            "rate_limit_per_day": 10000,
-            "used_today": 0,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-        _MOCK_MERCHANTS[new_id] = record
+        registration_number = payload.registration_number.strip()
+        registration_owner = await merchant_repo.get_by_registration_number(
+            registration_number
+        )
+        if registration_owner is not None:
+            raise ValueError("This business registration number is already in use.")
 
-        logger.info("Merchant registered successfully: %s (ID: %s)", payload.business_name, new_id)
-        return record
+        user.role = UserRole.MERCHANT
+        user.is_active = False
+        application = Merchant(
+            user_id=user.id,
+            business_name=payload.business_name.strip(),
+            registration_number=registration_number,
+            contact_phone=payload.contact_phone.strip(),
+            business_address=payload.business_address.strip(),
+            business_type=payload.business_type,
+            website_url=payload.website_url,
+            approval_status=ApprovalStatus.PENDING,
+        )
+        session.add(application)
+        await session.flush()
+        await session.refresh(application)
+        return application
 
     async def list_merchants(self, skip: int = 0, limit: int = 100) -> List[Any]:
         if self.repository:
@@ -459,19 +437,14 @@ class MerchantService:
         falling back to in-memory mock store.
         """
         merchant_record = await self.get_merchant_by_identifier(merchant_id)
-        numeric_id = (
-            merchant_record.get("id")
-            if merchant_record
-            else self._resolve_merchant_id(merchant_id)
-        )
+        if merchant_record is None:
+            # Unknown merchant: never fall through to someone else's orders.
+            return []
+        numeric_id = merchant_record.get("id")
 
         if self.repository and self.repository.session:
             try:
-                stmt = select(Parcel)
-                if numeric_id is not None:
-                    stmt = stmt.where(Parcel.merchant_id == numeric_id)
-                elif merchant_record and merchant_record.get("id"):
-                    stmt = stmt.where(Parcel.merchant_id == merchant_record["id"])
+                stmt = select(Parcel).where(Parcel.merchant_id == numeric_id)
 
                 if status and status.lower() != "all":
                     st = status.lower()
@@ -495,16 +468,13 @@ class MerchantService:
                 stmt = stmt.order_by(Parcel.created_at.desc()).offset(skip).limit(limit)
                 res = await self.repository.session.execute(stmt)
                 db_parcels = res.scalars().all()
-                # Return isolated DB parcels for this merchant (even if empty [])
+                # Authoritative for this merchant, even when the list is empty.
                 return [self._parcel_to_order_response(p) for p in db_parcels]
             except Exception as exc:
                 logger.warning("DB get_orders query failed, falling back to mock: %s", exc)
 
-        # Fallback to in-memory mock store only when DB is offline
-        orders = [
-            o for o in _MOCK_ORDERS
-            if numeric_id is None or o.get("merchant_id") == numeric_id or str(o.get("merchant_id")) == str(numeric_id)
-        ]
+        # In-memory fallback (DB offline), still isolated per merchant.
+        orders = [o for o in _MOCK_ORDERS if str(o.get("merchant_id")) == str(numeric_id)]
 
         # Filter by status
         if status and status != "all":
@@ -528,8 +498,12 @@ class MerchantService:
     async def get_order_by_id_or_tracking(
         self,
         order_id_or_tracking: str,
+        merchant_id: Optional[int] = None,
     ) -> Optional[MerchantOrderResponse]:
-        """Get single order by internal order ID or tracking number."""
+        """Get a single order by internal ID or tracking number.
+
+        When merchant_id is given, only that merchant's orders are visible.
+        """
         q = order_id_or_tracking.strip()
         if self.repository and self.repository.session:
             try:
@@ -537,6 +511,8 @@ class MerchantService:
                 if q.isdigit():
                     conds.append(Parcel.id == int(q))
                 stmt = select(Parcel).where(or_(*conds))
+                if merchant_id is not None:
+                    stmt = stmt.where(Parcel.merchant_id == merchant_id)
                 res = await self.repository.session.execute(stmt)
                 db_p = res.scalars().first()
                 if db_p:
@@ -546,6 +522,8 @@ class MerchantService:
 
         q_lower = q.lower()
         for o in _MOCK_ORDERS:
+            if merchant_id is not None and str(o.get("merchant_id")) != str(merchant_id):
+                continue
             if o["id"].lower() == q_lower or o["tracking_number"].lower() == q_lower:
                 return MerchantOrderResponse(**o)
         return None
@@ -554,11 +532,12 @@ class MerchantService:
         self,
         merchant_id: str,
         payload: MerchantOrderCreate,
+        background_tasks: Optional[BackgroundTasks] = None,
     ) -> MerchantOrderResponse:
         """
         Create a new delivery order.
         Generates tracking number, initial status, calculates fee,
-        persists to PostgreSQL parcels table, and triggers order.created webhook event.
+        persists to PostgreSQL parcels table, and schedules order.created after commit.
         """
         random_suffix = random.randint(100000, 999999)
         tracking_number = f"ND-LK-{random_suffix}"
@@ -567,7 +546,7 @@ class MerchantService:
 
         # Lookup merchant details for sender_id and pickup_address
         merchant_record = await self.get_merchant_by_identifier(merchant_id)
-        # Prefer the DB-resolved merchant record ID over mock resolution
+        # Prefer the DB-resolved merchant ID over string-based resolution.
         numeric_merchant_id = (
             merchant_record.get("id")
             if merchant_record
@@ -585,7 +564,7 @@ class MerchantService:
             else "Colombo, Sri Lanka"
         )
 
-        # Persist to PostgreSQL parcels table
+        db_parcel = None
         if self.repository and self.repository.session:
             try:
                 db_parcel = Parcel(
@@ -610,13 +589,9 @@ class MerchantService:
                 await self.repository.session.commit()
                 await self.repository.session.refresh(db_parcel)
                 order_id = str(db_parcel.id)
-                logger.info("Parcel %s persisted to DB with id=%s, merchant_id=%s", tracking_number, db_parcel.id, numeric_merchant_id)
-            except Exception as exc:
-                logger.warning("DB parcel creation failed, persisting in memory: %s", exc)
-                try:
-                    await self.repository.session.rollback()
-                except Exception:
-                    pass
+            except SQLAlchemyError:
+                await self.repository.session.rollback()
+                raise
 
         order_dict: Dict[str, Any] = {
             "id": order_id,
@@ -642,19 +617,15 @@ class MerchantService:
         # Prepend to in-memory orders
         _MOCK_ORDERS.insert(0, order_dict)
 
-        # Trigger order.created webhook event
-        if "order.created" in _MOCK_WEBHOOK_CONFIG.get("subscribed_events", []):
-            log_id = f"wh-log-{random.randint(100, 999)}"
-            _MOCK_WEBHOOK_LOGS.insert(0, {
-                "id": log_id,
-                "event": "order.created",
-                "tracking_number": tracking_number,
-                "status": 200,
-                "status_text": "OK",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "duration_ms": random.randint(40, 80),
-                "payload_summary": f'{{"event":"order.created","tracking_number":"{tracking_number}","cod_amount":{order_dict["cod_amount"]}}}',
-            })
+        if db_parcel is not None and background_tasks is not None:
+            WebhookService.schedule_parcel_event(
+                background_tasks=background_tasks,
+                merchant_id=db_parcel.merchant_id,
+                tracking_number=db_parcel.tracking_number,
+                status_value=db_parcel.status.value,
+                location=db_parcel.delivery_city,
+                note=db_parcel.special_instructions,
+            )
 
         logger.info("New merchant order created: %s (%s)", tracking_number, payload.recipient_name)
         return MerchantOrderResponse(**order_dict)
@@ -663,11 +634,14 @@ class MerchantService:
         self,
         order_id_or_tracking: str,
         payload: MerchantOrderStatusUpdate,
+        merchant_id: Optional[int] = None,
     ) -> Optional[MerchantOrderResponse]:
-        """Update order status and log webhook event."""
+        """Update order status (in-memory store), scoped to the owning merchant."""
         q = order_id_or_tracking.strip().lower()
         target: Optional[Dict[str, Any]] = None
         for o in _MOCK_ORDERS:
+            if merchant_id is not None and str(o.get("merchant_id")) != str(merchant_id):
+                continue
             if o["id"].lower() == q or o["tracking_number"].lower() == q:
                 target = o
                 break
@@ -682,20 +656,6 @@ class MerchantService:
             target["courier_name"] = payload.courier_name
         if payload.courier_phone:
             target["courier_phone"] = payload.courier_phone
-
-        # Trigger webhook if event is subscribed
-        event_name = f"order.{payload.status}"
-        if event_name in _MOCK_WEBHOOK_CONFIG.get("subscribed_events", []):
-            _MOCK_WEBHOOK_LOGS.insert(0, {
-                "id": f"wh-log-{random.randint(100, 999)}",
-                "event": event_name,
-                "tracking_number": target["tracking_number"],
-                "status": 200,
-                "status_text": "OK",
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "duration_ms": random.randint(45, 90),
-                "payload_summary": f'{{"event":"{event_name}","tracking_number":"{target["tracking_number"]}","status":"{payload.status}"}}',
-            })
 
         return MerchantOrderResponse(**target)
 
@@ -733,7 +693,7 @@ class MerchantService:
         merchant = await self.get_merchant_by_identifier(merchant_id)
         kpis = await self.get_kpis(merchant_id)
         orders_resp = await self.get_orders(merchant_id=merchant_id, limit=6)
-        recent_orders = orders_resp if orders_resp else [MerchantOrderResponse(**o) for o in _MOCK_ORDERS[:6]]
+        recent_orders = orders_resp
         credentials = await self.get_credentials(merchant_id)
         webhook_config = await self.get_webhook_config(merchant_id)
 
@@ -754,8 +714,9 @@ class MerchantService:
     # ------------------------------------------------------------------
 
     async def get_credentials(self, merchant_id: str = "me") -> ApiCredentialsResponse:
-        merchant = await self.get_merchant_by_identifier(merchant_id) or _MOCK_MERCHANTS.get(1)
+        merchant = await self.get_merchant_by_identifier(merchant_id)
         if not merchant:
+            # Never hand out another merchant's (or the demo merchant's) keys.
             return ApiCredentialsResponse(
                 merchant_id="",
                 business_name="",
@@ -778,80 +739,60 @@ class MerchantService:
         )
 
     async def regenerate_key(self, merchant_id: str = "me", key_type: str = "live") -> ApiCredentialsResponse:
-        merchant = await self.get_merchant_by_identifier(merchant_id) or _MOCK_MERCHANTS.get(1)
+        merchant = await self.get_merchant_by_identifier(merchant_id)
         if not merchant:
             return await self.get_credentials(merchant_id)
+        key_type = "test" if key_type == "test" else "live"
         new_token = f"nd_{key_type}_{secrets.token_hex(20)}"
-        if key_type == "test":
-            merchant["test_key"] = new_token
-        else:
-            merchant["live_key"] = new_token
+
+        persisted = False
+        if self.repository and self.repository.session:
+            try:
+                db_m = await self.repository.get_by_id(merchant["id"])
+                if db_m:
+                    if key_type == "test":
+                        db_m.test_api_key = new_token
+                    else:
+                        db_m.api_key = new_token
+                    await self.repository.session.commit()
+                    persisted = True
+            except SQLAlchemyError as exc:
+                await self.repository.session.rollback()
+                logger.error("Failed to persist regenerated API key: %s", exc)
+                raise
+
+        if not persisted:
+            # Offline/demo mode: update the in-memory record.
+            mock = _MOCK_MERCHANTS.get(merchant["id"])
+            if mock is not None:
+                mock["test_key" if key_type == "test" else "live_key"] = new_token
+
         logger.info("API key regenerated for %s: %s", merchant.get("business_name"), key_type)
         return await self.get_credentials(merchant_id)
 
     # ------------------------------------------------------------------
-    # Webhooks & Delivery Logs
+    # Webhook config (read-only view for the dashboard bundle).
+    # Writes, rotation and logs live in WebhookService / the webhook routes.
     # ------------------------------------------------------------------
 
     async def get_webhook_config(self, merchant_id: str = "me") -> WebhookConfigResponse:
+        merchant = await self.get_merchant_by_identifier(merchant_id)
+        if merchant and self.repository and self.repository.session:
+            try:
+                config = await WebhookService(self.repository.session).get_merchant_config(
+                    merchant["id"]
+                )
+                return WebhookConfigResponse(
+                    target_url=config.target_url,
+                    is_active=config.is_active,
+                    subscribed_events=config.subscribed_events,
+                    secret_configured=bool(config.secret_key),
+                )
+            except Exception as exc:
+                logger.warning("Webhook config lookup failed: %s", exc)
         return WebhookConfigResponse(
-            target_url=_MOCK_WEBHOOK_CONFIG["target_url"],
-            secret_key=_MOCK_WEBHOOK_CONFIG["secret_key"],
-            is_active=_MOCK_WEBHOOK_CONFIG["is_active"],
-            subscribed_events=list(_MOCK_WEBHOOK_CONFIG["subscribed_events"]),
+            target_url="",
+            is_active=False,
+            subscribed_events=[],
+            secret_configured=False,
         )
-
-    async def update_webhook_config(
-        self,
-        merchant_id: str = "me",
-        payload: Optional[WebhookConfigUpdate] = None,
-    ) -> WebhookConfigResponse:
-        if payload:
-            if payload.target_url is not None:
-                _MOCK_WEBHOOK_CONFIG["target_url"] = payload.target_url
-            if payload.secret_key is not None:
-                _MOCK_WEBHOOK_CONFIG["secret_key"] = payload.secret_key
-            if payload.is_active is not None:
-                _MOCK_WEBHOOK_CONFIG["is_active"] = payload.is_active
-            if payload.subscribed_events is not None:
-                _MOCK_WEBHOOK_CONFIG["subscribed_events"] = payload.subscribed_events
-        return await self.get_webhook_config(merchant_id)
-
-    async def send_test_webhook(
-        self,
-        merchant_id: str = "me",
-        event_type: str = "order.in_transit",
-        tracking_number: Optional[str] = None,
-    ) -> WebhookTestResponse:
-        """Simulate sending a signed webhook POST ping and record delivery log."""
-        trk = tracking_number or "ND-LK-890216"
-        log_id = f"wh-test-{int(datetime.now().timestamp() * 1000)}"
-        duration = random.randint(45, 85)
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Generate payload & signature simulation
-        payload_summary = f'{{"event":"{event_type}","tracking_number":"{trk}","hub":"Central Colombo","timestamp":"{now_str}"}}'
-
-        new_log = {
-            "id": log_id,
-            "event": event_type,
-            "tracking_number": trk,
-            "status": 200,
-            "status_text": "OK",
-            "timestamp": now_str,
-            "duration_ms": duration,
-            "payload_summary": payload_summary,
-        }
-        _MOCK_WEBHOOK_LOGS.insert(0, new_log)
-
-        return WebhookTestResponse(
-            log=WebhookDeliveryLogResponse(**new_log),
-            message=f"Webhook delivered successfully to {_MOCK_WEBHOOK_CONFIG['target_url']} with HTTP 200 OK ({duration}ms)",
-        )
-
-    async def get_webhook_logs(
-        self,
-        merchant_id: str = "me",
-        limit: int = 50,
-    ) -> List[WebhookDeliveryLogResponse]:
-        return [WebhookDeliveryLogResponse(**l) for l in _MOCK_WEBHOOK_LOGS[:limit]]

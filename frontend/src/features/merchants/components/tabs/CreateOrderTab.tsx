@@ -5,33 +5,8 @@ import { AlertCircle, CheckCircle2 } from "lucide-react";
 import type { MerchantOrder } from "../../types";
 import { Button } from "@/components/ui/button";
 import apiClient from "@/lib/api-client";
-import { SRI_LANKA_HUBS, type DeliveryDestination } from "@/features/customers/constants/destinations";
-
-const CITY_ALIASES: Record<string, string> = {
-  Colombo: "Colombo Local",
-  Negombo: "Greater Colombo / Gampaha",
-};
-
-function getHubForCity(cityName: string): DeliveryDestination | undefined {
-  if (!cityName) return undefined;
-  const target = CITY_ALIASES[cityName] || cityName;
-  const normalized = target.toLowerCase().trim();
-  return (
-    SRI_LANKA_HUBS.find((h) => h.city.toLowerCase() === normalized) ||
-    SRI_LANKA_HUBS.find((h) => h.city.toLowerCase().includes(normalized)) ||
-    SRI_LANKA_HUBS.find((h) => normalized.includes(h.city.toLowerCase())) ||
-    SRI_LANKA_HUBS.find((h) => h.district && h.district.toLowerCase() === normalized) ||
-    SRI_LANKA_HUBS.find(
-      (h) =>
-        h.district &&
-        (h.district.toLowerCase().includes(normalized) ||
-          normalized.includes(h.district.toLowerCase()))
-    )
-  );
-}
 
 interface CreateOrderTabProps {
-  merchantId?: string;
   onOrderCreated: (newOrder: MerchantOrder) => void;
   onCancel: () => void;
 }
@@ -45,15 +20,13 @@ interface FormErrors {
   codAmount?: string;
 }
 
-export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateOrderTabProps) {
+export function CreateOrderTab({ onOrderCreated, onCancel }: CreateOrderTabProps) {
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("+94 ");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryCity, setDeliveryCity] = useState("Colombo");
   const [weightKg, setWeightKg] = useState<number>(1.0);
-  const [lengthCm, setLengthCm] = useState("");
-  const [widthCm, setWidthCm] = useState("");
-  const [heightCm, setHeightCm] = useState("");
+  const [dimensions, setDimensions] = useState("");
   const [isCod, setIsCod] = useState(false);
   const [codAmount, setCodAmount] = useState<number>(0);
   const [specialInstructions, setSpecialInstructions] = useState("");
@@ -63,13 +36,8 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
   // Field touch tracking for inline error triggers
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  // Dynamic fee calculation matching platform pricing model (BookDeliveryForm / SRI_LANKA_HUBS):
-  // Base Rate (LKR 250) + Hub Distance Fee (LKR 3.50/km) + Weight Rate (LKR 80/kg)
-  const currentHub = getHubForCity(deliveryCity);
-  const baseRate = 250;
-  const distanceFee = currentHub ? Math.round(currentHub.distanceKm * 3.5) : 0;
-  const weightFee = Math.round((Number(weightKg) || 1) * 80);
-  const estimatedDeliveryFee = baseRate + distanceFee + weightFee;
+  // Dynamic fee calculation: Base LKR 350 + LKR 100/kg
+  const estimatedDeliveryFee = 350 + Math.round((Number(weightKg) || 1) * 100);
 
   // Validation rules engine
   const getFieldErrors = (): FormErrors => {
@@ -159,35 +127,14 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
 
     setIsSubmitting(true);
 
-    const formattedDimensions =
-      lengthCm.trim() && widthCm.trim() && heightCm.trim()
-        ? `${lengthCm.trim()}x${widthCm.trim()}x${heightCm.trim()} cm`
-        : [lengthCm.trim(), widthCm.trim(), heightCm.trim()].some(Boolean)
-          ? `${lengthCm.trim() || "0"}x${widthCm.trim() || "0"}x${heightCm.trim() || "0"} cm`
-          : "Standard Parcel";
-
-    let targetMerchantId = merchantId;
-    if (!targetMerchantId || targetMerchantId === "me") {
-      try {
-        const stored = localStorage.getItem("nexdrop_merchant_application");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed.merchant_id) {
-            targetMerchantId = String(parsed.merchant_id);
-          }
-        }
-      } catch { }
-    }
-    const finalMerchantId = targetMerchantId || "me";
-
     try {
-      const created = await apiClient.createMerchantOrder(finalMerchantId, {
+      const created = await apiClient.createMerchantOrder("me", {
         recipient_name: recipientName.trim(),
         recipient_phone: recipientPhone.trim(),
         delivery_address: deliveryAddress.trim(),
         delivery_city: deliveryCity,
         weight_kg: Number(weightKg) || 1.0,
-        dimensions: formattedDimensions,
+        dimensions: dimensions.trim() || "Standard Parcel",
         cod_amount: isCod ? Number(codAmount) || 0 : 0,
         is_prepaid: !isCod,
         special_instructions: specialInstructions.trim() || undefined,
@@ -209,7 +156,7 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
         deliveryCity,
         status: "created",
         weightKg: Number(weightKg) || 1.0,
-        dimensions: formattedDimensions,
+        dimensions: dimensions.trim() || "Standard Parcel",
         codAmount: isCod ? Number(codAmount) || 0 : 0,
         isPrepaid: !isCod,
         estimatedDelivery: "Pending Courier Pickup",
@@ -269,12 +216,13 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
                     if (submitError) setSubmitError(null);
                   }}
                   onBlur={() => handleBlur("recipientName")}
-                  className={`w-full px-3 py-2 border rounded-lg transition-colors focus:outline-none ${touched.recipientName && errors.recipientName
+                  className={`w-full px-3 py-2 border rounded-lg transition-colors focus:outline-none ${
+                    touched.recipientName && errors.recipientName
                       ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                       : touched.recipientName && !errors.recipientName
-                        ? "border-emerald-400/80 bg-emerald-50/10 focus:ring-2 focus:ring-[#064E3B]"
-                        : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                    }`}
+                      ? "border-emerald-400/80 bg-emerald-50/10 focus:ring-2 focus:ring-[#064E3B]"
+                      : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
+                  }`}
                 />
                 {touched.recipientName && errors.recipientName && (
                   <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1 font-medium">
@@ -297,12 +245,13 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
                     if (submitError) setSubmitError(null);
                   }}
                   onBlur={() => handleBlur("recipientPhone")}
-                  className={`w-full px-3 py-2 border rounded-lg transition-colors focus:outline-none ${touched.recipientPhone && errors.recipientPhone
+                  className={`w-full px-3 py-2 border rounded-lg transition-colors focus:outline-none ${
+                    touched.recipientPhone && errors.recipientPhone
                       ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                       : touched.recipientPhone && !errors.recipientPhone
-                        ? "border-emerald-400/80 bg-emerald-50/10 focus:ring-2 focus:ring-[#064E3B]"
-                        : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                    }`}
+                      ? "border-emerald-400/80 bg-emerald-50/10 focus:ring-2 focus:ring-[#064E3B]"
+                      : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
+                  }`}
                 />
                 {touched.recipientPhone && errors.recipientPhone && (
                   <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1 font-medium">
@@ -327,12 +276,13 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
                     if (submitError) setSubmitError(null);
                   }}
                   onBlur={() => handleBlur("deliveryAddress")}
-                  className={`w-full px-3 py-2 border rounded-lg transition-colors focus:outline-none ${touched.deliveryAddress && errors.deliveryAddress
+                  className={`w-full px-3 py-2 border rounded-lg transition-colors focus:outline-none ${
+                    touched.deliveryAddress && errors.deliveryAddress
                       ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                       : touched.deliveryAddress && !errors.deliveryAddress
-                        ? "border-emerald-400/80 bg-emerald-50/10 focus:ring-2 focus:ring-[#064E3B]"
-                        : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                    }`}
+                      ? "border-emerald-400/80 bg-emerald-50/10 focus:ring-2 focus:ring-[#064E3B]"
+                      : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
+                  }`}
                 />
                 {touched.deliveryAddress && errors.deliveryAddress && (
                   <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1 font-medium">
@@ -353,26 +303,20 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
                     if (submitError) setSubmitError(null);
                   }}
                   onBlur={() => handleBlur("deliveryCity")}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none bg-white ${touched.deliveryCity && errors.deliveryCity
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none bg-white ${
+                    touched.deliveryCity && errors.deliveryCity
                       ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                       : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                    }`}
+                  }`}
                 >
-                  <option value="Colombo">Colombo (Western) — 12 km</option>
-                  <option value="Kandy">Kandy (Central) — 115 km</option>
-                  <option value="Galle">Galle (Southern) — 125 km</option>
-                  <option value="Negombo">Negombo (Gampaha) — 28 km</option>
-                  <option value="Kurunegala">Kurunegala (North Western) — 95 km</option>
-                  <option value="Jaffna">Jaffna (Northern) — 395 km</option>
-                  <option value="Batticaloa">Batticaloa (Eastern) — 310 km</option>
-                  <option value="Matara">Matara (Southern) — 160 km</option>
-                  {SRI_LANKA_HUBS.filter(
-                    (h) => !["Colombo Local", "Kandy", "Galle", "Kurunegala", "Jaffna", "Batticaloa", "Matara"].includes(h.city)
-                  ).map((hub) => (
-                    <option key={hub.city} value={hub.city}>
-                      {hub.city} ({hub.province}) — {hub.distanceKm} km
-                    </option>
-                  ))}
+                  <option value="Colombo">Colombo (Western)</option>
+                  <option value="Kandy">Kandy (Central)</option>
+                  <option value="Galle">Galle (Southern)</option>
+                  <option value="Negombo">Negombo (Gampaha)</option>
+                  <option value="Kurunegala">Kurunegala (North Western)</option>
+                  <option value="Jaffna">Jaffna (Northern)</option>
+                  <option value="Batticaloa">Batticaloa (Eastern)</option>
+                  <option value="Matara">Matara (Southern)</option>
                 </select>
                 {touched.deliveryCity && errors.deliveryCity && (
                   <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1 font-medium">
@@ -406,10 +350,11 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
                     if (submitError) setSubmitError(null);
                   }}
                   onBlur={() => handleBlur("weightKg")}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none ${touched.weightKg && errors.weightKg
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none ${
+                    touched.weightKg && errors.weightKg
                       ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                       : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                    }`}
+                  }`}
                 />
                 {touched.weightKg && errors.weightKg && (
                   <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1 font-medium">
@@ -421,43 +366,15 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
 
               <div>
                 <label className="block font-medium text-gray-700 mb-1">
-                  Dimensions (L × W × H cm)
+                  Dimensions (L x W x H cm)
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder="L (cm)"
-                    title="Length in centimeters"
-                    aria-label="Length in centimeters"
-                    value={lengthCm}
-                    onChange={(e) => setLengthCm(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-[#E5E7EB] rounded-lg focus:ring-2 focus:ring-[#064E3B] focus:outline-none text-xs bg-white text-center sm:text-left"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder="W (cm)"
-                    title="Width in centimeters"
-                    aria-label="Width in centimeters"
-                    value={widthCm}
-                    onChange={(e) => setWidthCm(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-[#E5E7EB] rounded-lg focus:ring-2 focus:ring-[#064E3B] focus:outline-none text-xs bg-white text-center sm:text-left"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder="H (cm)"
-                    title="Height in centimeters"
-                    aria-label="Height in centimeters"
-                    value={heightCm}
-                    onChange={(e) => setHeightCm(e.target.value)}
-                    className="w-full px-2.5 py-2 border border-[#E5E7EB] rounded-lg focus:ring-2 focus:ring-[#064E3B] focus:outline-none text-xs bg-white text-center sm:text-left"
-                  />
-                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. 20x15x10 cm"
+                  value={dimensions}
+                  onChange={(e) => setDimensions(e.target.value)}
+                  className="w-full px-3 py-2 border border-[#E5E7EB] rounded-lg focus:ring-2 focus:ring-[#064E3B] focus:outline-none"
+                />
               </div>
             </div>
 
@@ -532,10 +449,11 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
                     if (submitError) setSubmitError(null);
                   }}
                   onBlur={() => handleBlur("codAmount")}
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none font-semibold text-[#064E3B] ${touched.codAmount && errors.codAmount
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none font-semibold text-[#064E3B] ${
+                    touched.codAmount && errors.codAmount
                       ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                       : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                    }`}
+                  }`}
                 />
                 {touched.codAmount && errors.codAmount ? (
                   <p className="mt-1 text-[11px] text-red-600 flex items-center gap-1 font-medium">
@@ -558,6 +476,9 @@ export function CreateOrderTab({ merchantId, onOrderCreated, onCancel }: CreateO
               <strong className="text-lg font-bold text-[#064E3B]">
                 LKR {estimatedDeliveryFee}.00
               </strong>
+              <p className="text-[10px] text-gray-400">
+                Includes insurance & live tracking. Debited from monthly merchant invoice.
+              </p>
             </div>
 
             <div className="flex items-center gap-2">

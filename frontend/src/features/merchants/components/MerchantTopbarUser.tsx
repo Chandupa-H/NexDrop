@@ -3,23 +3,33 @@
 import { useEffect, useState } from "react";
 import { TopbarProfileLink } from "@/components/dashboard/shell/dashboard-topbar";
 import type { DashboardUser } from "@/lib/dashboard/types";
-import { MOCK_API_CREDENTIALS } from "../data/mock-merchant-data";
 
 export function MerchantTopbarUser({ profileHref }: { profileHref: string }) {
   const [businessName, setBusinessName] = useState("Merchant Portal");
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("nexdrop_merchant_application");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.business_name) {
-          setBusinessName(parsed.business_name);
+    let isMounted = true;
+
+    async function loadBusinessName() {
+      await Promise.resolve();
+      if (!isMounted) return;
+      try {
+        const stored = localStorage.getItem("nexdrop_merchant_application");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.business_name) {
+            setBusinessName(parsed.business_name);
+          }
         }
+      } catch {
+        // Ignore localStorage parse errors.
       }
-    } catch {
-      // ignore parse errors
     }
+
+    void loadBusinessName();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const user: DashboardUser = {

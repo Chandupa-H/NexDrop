@@ -18,11 +18,11 @@ class MerchantBase(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Public registration — one payload creates User + Merchant together
+# Authenticated registration — creates the backend user link and Merchant profile
 # ---------------------------------------------------------------------------
 
 class MerchantRegisterRequest(MerchantBase):
-    """Submitted by a new merchant on the public registration form."""
+    """Submitted by an authenticated Supabase user applying to become a merchant."""
     email: EmailStr
     full_name: str
     password: Optional[str] = None
@@ -324,16 +324,15 @@ class RegenerateKeyRequest(BaseModel):
 class WebhookConfigResponse(BaseModel):
     """Webhook config matching frontend WebhookConfig interface."""
     target_url: str = Field(..., alias="targetUrl", serialization_alias="targetUrl")
-    secret_key: str = Field(..., alias="secretKey", serialization_alias="secretKey")
     is_active: bool = Field(..., alias="isActive", serialization_alias="isActive")
     subscribed_events: List[str] = Field(..., alias="subscribedEvents", serialization_alias="subscribedEvents")
+    secret_configured: bool = Field(..., alias="secretConfigured", serialization_alias="secretConfigured")
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookConfigUpdate(BaseModel):
     target_url: Optional[str] = Field(default=None, alias="targetUrl")
-    secret_key: Optional[str] = Field(default=None, alias="secretKey")
     is_active: Optional[bool] = Field(default=None, alias="isActive")
     subscribed_events: Optional[List[str]] = Field(default=None, alias="subscribedEvents")
 
@@ -344,24 +343,35 @@ class WebhookDeliveryLogResponse(BaseModel):
     """Webhook delivery attempt log matching frontend WebhookDeliveryLog interface."""
     id: str
     event: str
-    tracking_number: str = Field(..., alias="trackingNumber", serialization_alias="trackingNumber")
-    status: int
-    status_text: str = Field(..., alias="statusText", serialization_alias="statusText")
+    tracking_number: str = Field(default="", alias="trackingNumber", serialization_alias="trackingNumber")
+    status: Optional[int] = None
+    status_text: str = Field(default="OK", alias="statusText", serialization_alias="statusText")
     timestamp: str
-    duration_ms: int = Field(..., alias="durationMs", serialization_alias="durationMs")
-    payload_summary: str = Field(..., alias="payloadSummary", serialization_alias="payloadSummary")
+    duration_ms: int = Field(default=0, alias="durationMs", serialization_alias="durationMs")
+    delivery_status: str = Field(default="delivered", alias="deliveryStatus", serialization_alias="deliveryStatus")
+    attempt_number: int = Field(default=1, alias="attemptNumber", serialization_alias="attemptNumber")
+    error_message: Optional[str] = Field(default=None, alias="errorMessage", serialization_alias="errorMessage")
+    payload_summary: str = Field(default="", alias="payloadSummary", serialization_alias="payloadSummary")
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookTestRequest(BaseModel):
-    event_type: str = "order.in_transit"
-    tracking_number: Optional[str] = None
+    event_type: str = Field(default="order.in_transit", alias="eventType")
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookTestResponse(BaseModel):
     log: WebhookDeliveryLogResponse
     message: str
+
+
+class WebhookSecretRotationResponse(BaseModel):
+    secret_key: str = Field(..., alias="secretKey", serialization_alias="secretKey")
+    message: str
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MerchantDashboardSummaryResponse(BaseModel):

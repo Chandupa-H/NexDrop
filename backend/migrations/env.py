@@ -23,7 +23,7 @@ from app.modules.parcels.models import Parcel, ParcelStatusHistory  # noqa: F401
 from app.modules.dispatch.models import DispatchAssignment  # noqa: F401
 from app.modules.pricing.models import PricingTier  # noqa: F401
 from app.modules.notifications.models import Notification  # noqa: F401
-from app.modules.webhooks.models import WebhookSubscription  # noqa: F401
+from app.modules.webhooks.models import WebhookConfiguration, WebhookSubscription, WebhookDeliveryLog  # noqa: F401
 from app.modules.zones.models import DeliveryZone  # noqa: F401
 from app.modules.warehouses.models import Warehouse  # noqa: F401
 

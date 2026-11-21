@@ -521,18 +521,6 @@ export default function MerchantRegisterPage() {
   } = useMerchantRegister();
 
   useEffect(() => {
-    // 1. Check existing merchant application in localStorage
-    try {
-      const stored = localStorage.getItem("nexdrop_merchant_application");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed?.merchant_id) {
-          setExistingApp(parsed);
-        }
-      }
-    } catch {}
-
-    // 2. Check Supabase session
     supabase.auth
       .getSession()
       .then(async ({ data: { session } }) => {
@@ -551,7 +539,7 @@ export default function MerchantRegisterPage() {
 
           if (email) {
             try {
-              const statusData = await apiClient.getMerchantStatus(email);
+              const statusData = await apiClient.getMerchantStatusMe();
               if (statusData?.merchant_id) {
                 const restored = {
                   merchant_id: statusData.merchant_id,
@@ -739,7 +727,7 @@ export default function MerchantRegisterPage() {
                 {step === 2 && "Step 3 — Review & Submit"}
               </CardTitle>
               <CardDescription className="text-xs">
-                {step === 0 && "Create login credentials for your merchant portal."}
+                {step === 0 && "Confirm the contact details on your signed-in NexDrop account."}
                 {step === 1 && "Provide your business details for verification."}
                 {step === 2 && "Confirm your information and submit for admin review."}
               </CardDescription>

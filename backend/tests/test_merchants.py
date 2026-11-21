@@ -1,13 +1,15 @@
 import pytest
+from uuid import UUID
 from pydantic import ValidationError
-from app.modules.merchants.models import ApprovalStatus
+from app.modules.merchants import service as merchant_service_module
+from app.modules.merchants.models import ApprovalStatus, Merchant
 from app.modules.merchants.service import MerchantService
 from app.modules.merchants.schemas import (
     MerchantRegisterRequest,
     MerchantOrderCreate,
     MerchantOrderStatusUpdate,
-    WebhookConfigUpdate,
 )
+from app.modules.users.models import User, UserRole
 
 
 def run_coro(coro):
@@ -135,49 +137,206 @@ def test_merchant_service_credentials_and_regeneration():
     assert updated.live_key != creds.live_key
 
 
-def test_merchant_service_webhooks_and_test_ping():
-    """Verify webhook config, update, test ping, and log generation."""
-    service = MerchantService()
-    config = run_coro(service.get_webhook_config("me"))
-    assert "https://" in config.target_url
+class RegistrationSession:
+    def __init__(self, users=None, merchants=None):
+        self.users = list(users or [])
+        self.merchants = list(merchants or [])
 
-    updated_config = run_coro(
-        service.update_webhook_config(
-            "me",
-            WebhookConfigUpdate(targetUrl="https://example.com/api/webhooks"),
+    def add(self, instance):
+        records = self.users if isinstance(instance, User) else self.merchants
+        if instance not in records:
+            records.append(instance)
+
+    async def flush(self):
+        for index, user in enumerate(self.users, start=1):
+            if user.id is None:
+                user.id = index
+        for index, merchant in enumerate(self.merchants, start=1):
+            if merchant.id is None:
+                merchant.id = index
+
+    async def refresh(self, _instance):
+        return None
+
+
+class RegistrationUserRepository:
+    def __init__(self, session):
+        self.session = session
+
+    async def get_by_supabase_user_id(self, subject, *, for_update=False):
+        return next((user for user in self.session.users if user.supabase_user_id == subject), None)
+
+    async def list_by_normalized_email(self, email):
+        return [
+            user for user in self.session.users
+            if user.email.strip().lower() == email.strip().lower()
+        ]
+
+
+class RegistrationMerchantRepository:
+    def __init__(self, session):
+        self.session = session
+
+    async def get_by_user_id(self, user_id):
+        return next((merchant for merchant in self.session.merchants if merchant.user_id == user_id), None)
+
+    async def get_by_registration_number(self, registration_number):
+        return next(
+            (merchant for merchant in self.session.merchants
+             if merchant.registration_number == registration_number),
+            None,
         )
+
+
+def registration_payload(**updates):
+    values = {
+        "email": "artisan@lanka.com",
+        "full_name": "Nalin Dias",
+        "business_name": "Lanka Craftworks",
+        "registration_number": "PV-TEST-1002",
+        "contact_phone": "+94771239999",
+        "business_address": "88 Galle Road, Bentota",
+        "business_type": "manufacturer",
+    }
+    values.update(updates)
+    return MerchantRegisterRequest(**values)
+
+
+@pytest.fixture
+def registration_service(monkeypatch):
+    session = RegistrationSession()
+    monkeypatch.setattr(merchant_service_module, "UserRepository", RegistrationUserRepository)
+    repository = RegistrationMerchantRepository(session)
+    return MerchantService(repository), session
+
+
+@pytest.mark.asyncio
+async def test_merchant_registration_creates_subject_mapped_pending_application(registration_service):
+    service, session = registration_service
+    subject = UUID("f0f9b33e-2c2d-4c46-9e2f-a659819f5901")
+
+    merchant = await service.register_merchant(
+        registration_payload(),
+        supabase_user_id=subject,
+        authenticated_email="artisan@lanka.com",
     )
-    assert updated_config.target_url == "https://example.com/api/webhooks"
 
-    ping_result = run_coro(service.send_test_webhook("me", "order.delivered"))
-    assert ping_result.log.status == 200
-    assert ping_result.log.event == "order.delivered"
-
-    logs = run_coro(service.get_webhook_logs("me"))
-    assert len(logs) > 0
-    assert logs[0].event == "order.delivered"
+    assert merchant.approval_status == ApprovalStatus.PENDING
+    assert len(session.users) == len(session.merchants) == 1
+    assert session.users[0].supabase_user_id == subject
+    assert session.users[0].role == UserRole.MERCHANT
+    assert session.users[0].is_active is False
+    assert merchant.user_id == session.users[0].id
 
 
-def test_merchant_registration_and_status_flow():
-    """Verify registering a new merchant and checking application status."""
-    service = MerchantService()
-    reg = MerchantRegisterRequest(
+@pytest.mark.asyncio
+async def test_merchant_registration_retry_is_idempotent(registration_service):
+    service, session = registration_service
+    subject = UUID("f0f9b33e-2c2d-4c46-9e2f-a659819f5901")
+    payload = registration_payload()
+
+    original = await service.register_merchant(
+        payload,
+        supabase_user_id=subject,
+        authenticated_email="artisan@lanka.com",
+    )
+    retry = await service.register_merchant(
+        payload,
+        supabase_user_id=subject,
+        authenticated_email="artisan@lanka.com",
+    )
+
+    assert retry is original
+    assert len(session.users) == len(session.merchants) == 1
+
+
+@pytest.mark.asyncio
+async def test_merchant_registration_rejects_a_different_second_application(
+    registration_service,
+):
+    service, session = registration_service
+    subject = UUID("f0f9b33e-2c2d-4c46-9e2f-a659819f5901")
+    await service.register_merchant(
+        registration_payload(),
+        supabase_user_id=subject,
+        authenticated_email="artisan@lanka.com",
+    )
+
+    with pytest.raises(ValueError, match="application already exists"):
+        await service.register_merchant(
+            registration_payload(business_name="Different Business"),
+            supabase_user_id=subject,
+            authenticated_email="artisan@lanka.com",
+        )
+
+    assert len(session.users) == len(session.merchants) == 1
+
+
+@pytest.mark.asyncio
+async def test_merchant_registration_only_links_verified_imported_unassigned_user(
+    registration_service,
+):
+    service, session = registration_service
+    existing_user = User(
+        id=19,
         email="artisan@lanka.com",
         full_name="Nalin Dias",
-        password="Password123!",
-        confirm_password="Password123!",
-        business_name="Lanka Craftworks",
-        registration_number="PV-TEST-1002",
-        contact_phone="+94771239999",
-        business_address="88 Galle Road, Bentota",
-        business_type="manufacturer",
+        hashed_password="supabase-managed:previous-import",
+        role=UserRole.UNASSIGNED,
+        is_active=True,
     )
-    merchant = run_coro(service.register_merchant(reg))
-    assert merchant["id"] > 0
-    assert merchant["approval_status"] == ApprovalStatus.PENDING
+    session.users.append(existing_user)
+    subject = UUID("f0f9b33e-2c2d-4c46-9e2f-a659819f5901")
 
-    # Check status
-    status_info = run_coro(service.get_merchant_by_identifier(str(merchant["id"])))
-    assert status_info is not None
-    assert status_info["business_name"] == "Lanka Craftworks"
-    assert status_info["approval_status"] == ApprovalStatus.PENDING
+    merchant = await service.register_merchant(
+        registration_payload(),
+        supabase_user_id=subject,
+        authenticated_email="artisan@lanka.com",
+    )
+
+    assert len(session.users) == 1
+    assert existing_user.supabase_user_id == subject
+    assert existing_user.role == UserRole.MERCHANT
+    assert existing_user.is_active is False
+    assert merchant.user_id == existing_user.id
+
+
+@pytest.mark.asyncio
+async def test_merchant_registration_rejects_unmanaged_unassigned_email_match(
+    registration_service,
+):
+    service, session = registration_service
+    existing_user = User(
+        id=19,
+        email="artisan@lanka.com",
+        full_name="Nalin Dias",
+        hashed_password="not-a-supabase-import",
+        role=UserRole.UNASSIGNED,
+        is_active=True,
+    )
+    session.users.append(existing_user)
+
+    with pytest.raises(ValueError, match="different or unmanaged"):
+        await service.register_merchant(
+            registration_payload(),
+            supabase_user_id=UUID("f0f9b33e-2c2d-4c46-9e2f-a659819f5901"),
+            authenticated_email="artisan@lanka.com",
+        )
+
+    assert existing_user.supabase_user_id is None
+    assert not session.merchants
+
+
+@pytest.mark.asyncio
+async def test_merchant_registration_rejects_email_mismatch(registration_service):
+    service, session = registration_service
+
+    with pytest.raises(ValueError, match="must match"):
+        await service.register_merchant(
+            registration_payload(email="other@lanka.com"),
+            supabase_user_id=UUID("f0f9b33e-2c2d-4c46-9e2f-a659819f5901"),
+            authenticated_email="artisan@lanka.com",
+        )
+
+    assert not session.users
+    assert not session.merchants

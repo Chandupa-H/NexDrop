@@ -158,6 +158,17 @@ export function useMerchantRegister() {
     };
 
     try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError || !user?.id || !user.email) {
+        throw new Error("Please sign in with your NexDrop account before submitting.");
+      }
+      if (user.email.trim().toLowerCase() !== payload.email.trim().toLowerCase()) {
+        throw new Error("The registration email must match your signed-in account.");
+      }
+
       const response = await apiClient.registerMerchant(payload);
       setResult(response);
       if (typeof window !== "undefined") {
@@ -167,7 +178,7 @@ export function useMerchantRegister() {
             JSON.stringify({
               merchant_id: response.merchant_id,
               business_name: payload.business_name,
-              email: payload.email,
+              email: user.email,
               approval_status: response.approval_status || "pending",
               submitted_at: new Date().toISOString(),
             })
@@ -178,16 +189,11 @@ export function useMerchantRegister() {
           // ignore localstorage quota errors
         }
       }
-      try {
-        await supabase.auth.updateUser({
-          data: { role: "merchant" },
-        });
-      } catch {
-        // ignore if offline or not logged into supabase
-      }
       setStep(3); // Final pending review screen
     } catch (error) {
       if (error instanceof ApiError) {
+        setServerError(error.message);
+      } else if (error instanceof Error) {
         setServerError(error.message);
       } else {
         setServerError("An unexpected error occurred. Please try again.");
