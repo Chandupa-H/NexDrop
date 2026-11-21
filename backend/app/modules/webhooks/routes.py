@@ -1,64 +1,96 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_optional_db
+from typing import List
+
+from fastapi import APIRouter, BackgroundTasks, Body, Depends
+from app.modules.auth.dependencies import get_authenticated_merchant_profile
+from app.modules.merchants.models import Merchant
+from app.modules.merchants.schemas import WebhookConfigResponse, WebhookConfigUpdate
 from app.modules.webhooks.schemas import (
-    WebhookResponse,
-    WebhookCreate,
     WebhookConfigSchema,
+    WebhookLogResponse,
     WebhookTestPingRequest,
     WebhookTestPingResponse,
-    WebhookLogResponse,
 )
-from app.modules.webhooks.service import WebhookService
+from app.modules.webhooks.service import (
+    WebhookService,
+    authorize_merchant_path,
+    get_webhook_service,
+)
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
-# Singleton service instance
-webhook_service = WebhookService()
+
+def _config_response(config: WebhookConfigSchema) -> WebhookConfigResponse:
+    return WebhookConfigResponse(
+        target_url=config.target_url,
+        is_active=config.is_active,
+        subscribed_events=config.subscribed_events,
+        secret_configured=bool(config.secret_key),
+    )
 
 
-def get_service() -> WebhookService:
-    return webhook_service
-
-
-@router.get("/merchant/{merchant_id}/config", response_model=WebhookConfigSchema)
+@router.get(
+    "/merchant/{merchant_id}/config",
+    response_model=WebhookConfigResponse,
+)
 async def get_merchant_webhook_config(
     merchant_id: int,
-    service: WebhookService = Depends(get_service),
-) -> WebhookConfigSchema:
-    """Fetch webhook URL, secret token, and subscribed events for a merchant."""
-    return await service.get_merchant_config(merchant_id)
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
+) -> WebhookConfigResponse:
+    owned_id = authorize_merchant_path(str(merchant_id), merchant.id)
+    return _config_response(await service.get_merchant_config(owned_id))
 
 
-@router.post("/merchant/{merchant_id}/config", response_model=WebhookConfigSchema)
+@router.post(
+    "/merchant/{merchant_id}/config",
+    response_model=WebhookConfigResponse,
+)
 async def save_merchant_webhook_config(
     merchant_id: int,
-    payload: WebhookConfigSchema,
-    service: WebhookService = Depends(get_service),
-) -> WebhookConfigSchema:
-    """Save target URL, active status, and event triggers for a merchant's webhook."""
-    return await service.save_merchant_config(merchant_id, payload)
+    payload: WebhookConfigUpdate,
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
+) -> WebhookConfigResponse:
+    owned_id = authorize_merchant_path(str(merchant_id), merchant.id)
+    current = await service.get_merchant_config(owned_id)
+    updated = await service.save_merchant_config(
+        owned_id,
+        WebhookConfigSchema(
+            target_url=payload.target_url if payload.target_url is not None else current.target_url,
+            secret_key=current.secret_key,
+            is_active=payload.is_active if payload.is_active is not None else current.is_active,
+            subscribed_events=(
+                payload.subscribed_events
+                if payload.subscribed_events is not None
+                else current.subscribed_events
+            ),
+        ),
+    )
+    return _config_response(updated)
 
 
-@router.get("/merchant/{merchant_id}/logs", response_model=List[WebhookLogResponse])
+@router.get(
+    "/merchant/{merchant_id}/logs",
+    response_model=List[WebhookLogResponse],
+)
 async def get_merchant_webhook_logs(
     merchant_id: int,
-    service: WebhookService = Depends(get_service),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
 ) -> List[WebhookLogResponse]:
-    """Get delivery logs for all recent webhook notifications sent to this merchant."""
-    return await service.list_merchant_logs(merchant_id)
+    owned_id = authorize_merchant_path(str(merchant_id), merchant.id)
+    return await service.list_merchant_logs(owned_id)
 
 
 @router.post("/test-ping", response_model=WebhookTestPingResponse)
 async def send_test_webhook_ping(
-    payload: WebhookTestPingRequest,
-    service: WebhookService = Depends(get_service),
+    background_tasks: BackgroundTasks,
+    payload: WebhookTestPingRequest = Body(default_factory=WebhookTestPingRequest),
+    merchant: Merchant = Depends(get_authenticated_merchant_profile),
+    service: WebhookService = Depends(get_webhook_service),
 ) -> WebhookTestPingResponse:
-    """Send a real-time signed test webhook ping with HMAC-SHA256 signature."""
-    return await service.test_ping(
-        target_url=payload.target_url,
-        secret_key=payload.secret_key,
+    return await service.send_test_ping(
+        merchant_id=merchant.id,
         event=payload.event or "order.in_transit",
-        tracking_number=payload.tracking_number or "ND-LK-890216",
+        background_tasks=background_tasks,
     )

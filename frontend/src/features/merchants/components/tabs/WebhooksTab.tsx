@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { Webhook, Send, CheckCircle2, AlertCircle } from "lucide-react";
 import type { WebhookConfig, WebhookDeliveryLog } from "../../types";
 import { Button } from "@/components/ui/button";
@@ -10,16 +10,26 @@ interface WebhooksTabProps {
   merchantId?: string;
   initialConfig: WebhookConfig;
   initialLogs: WebhookDeliveryLog[];
+  onConfigChange: (config: WebhookConfig) => void;
+  onLogsChange: Dispatch<SetStateAction<WebhookDeliveryLog[]>>;
 }
 
-export function WebhooksTab({ merchantId, initialConfig, initialLogs }: WebhooksTabProps) {
-  const [config, setConfig] = useState(initialConfig);
-  const [targetUrl, setTargetUrl] = useState(initialConfig.targetUrl);
-  const [logs, setLogs] = useState(initialLogs);
+export function WebhooksTab({
+  merchantId = "me",
+  initialConfig,
+  initialLogs,
+  onConfigChange,
+  onLogsChange,
+}: WebhooksTabProps) {
+  const config = initialConfig;
+  const logs = initialLogs;
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isPinging, setIsPinging] = useState(false);
   const [pingSuccess, setPingSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [newSecret, setNewSecret] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [eventsError, setEventsError] = useState<string | null>(null);
 
@@ -37,8 +47,18 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
     if (!trimmed) return "Webhook endpoint URL is required.";
     try {
       const parsed = new URL(trimmed);
-      if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
-        return "Webhook endpoints must use HTTPS protocol in production (http:// allowed only for localhost).";
+      if (parsed.protocol !== "https:") {
+        return "Webhook endpoints must use HTTPS.";
+      }
+      if (
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash ||
+        parsed.hostname === "localhost" ||
+        parsed.hostname.endsWith(".localhost")
+      ) {
+        return "Credentials, query strings, fragments, and local destinations are not allowed.";
       }
       return null;
     } catch {
@@ -47,21 +67,16 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
   };
 
   const handleToggleEvent = (eventId: string) => {
-    setConfig((prev) => {
-      const exists = prev.subscribedEvents.includes(eventId);
-      const updated = exists
-        ? prev.subscribedEvents.filter((e) => e !== eventId)
-        : [...prev.subscribedEvents, eventId];
-      if (updated.length > 0) setEventsError(null);
-      return {
-        ...prev,
-        subscribedEvents: updated,
-      };
-    });
+    const exists = config.subscribedEvents.includes(eventId);
+    const updated = exists
+      ? config.subscribedEvents.filter((event) => event !== eventId)
+      : [...config.subscribedEvents, eventId];
+    if (updated.length > 0) setEventsError(null);
+    onConfigChange({ ...config, subscribedEvents: updated });
   };
 
   const handleSaveConfig = async () => {
-    const urlErr = validateUrl(targetUrl);
+    const urlErr = validateUrl(config.targetUrl);
     if (urlErr) {
       setUrlError(urlErr);
       return;
@@ -74,45 +89,76 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
     }
     setEventsError(null);
 
-    setConfig((prev) => ({ ...prev, targetUrl: targetUrl.trim() }));
+    const nextConfig: WebhookConfig = {
+      ...config,
+      targetUrl: config.targetUrl.trim(),
+    };
+    onConfigChange(nextConfig);
+    setActionError(null);
+    setIsSaving(true);
     try {
-      await apiClient.updateMerchantWebhooks(merchantId || "me", {
-        targetUrl: targetUrl.trim(),
-        subscribedEvents: config.subscribedEvents,
-        isActive: config.isActive,
+      const saved = await apiClient.updateMerchantWebhooks(merchantId, {
+        targetUrl: nextConfig.targetUrl,
+        subscribedEvents: nextConfig.subscribedEvents,
+        isActive: nextConfig.isActive,
       });
-    } catch {
-      // offline fallback
+      onConfigChange(saved);
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save webhook endpoint.";
+      setActionError(message);
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2500);
   };
 
   const handleTestPing = async () => {
     setIsPinging(true);
     setPingSuccess(null);
+    setActionError(null);
 
     try {
-      const res = await apiClient.testMerchantWebhook(merchantId || "me");
-      setLogs((prev) => [res.log, ...prev]);
-      setPingSuccess(`HTTP ${res.log.status} ${res.log.statusText} — Delivered in ${res.log.durationMs}ms`);
-    } catch {
-      // Fallback local ping
-      const newLog: WebhookDeliveryLog = {
-        id: `wh-test-${Date.now()}`,
-        event: "order.in_transit",
-        trackingNumber: "ND-LK-890216",
-        status: 200,
-        statusText: "OK",
-        timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
-        durationMs: Math.floor(45 + Math.random() * 40),
-        payloadSummary: '{"event":"order.in_transit","tracking_number":"ND-LK-890216","hub":"Central Colombo"}',
-      };
-      setLogs((prev) => [newLog, ...prev]);
-      setPingSuccess(`HTTP 200 OK — Delivered in ${newLog.durationMs}ms`);
+      const res = await apiClient.testMerchantWebhook(merchantId);
+      onLogsChange((currentLogs) => [res.log, ...currentLogs]);
+      const ok = res.log.deliveryStatus === "delivered";
+      const status = res.log.status === null ? "No HTTP response" : `HTTP ${res.log.status} ${res.log.statusText}`;
+      const summary = `${status} — ${ok ? "Delivered" : res.log.deliveryStatus} in ${res.log.durationMs}ms`;
+      if (ok) {
+        setPingSuccess(summary);
+      } else {
+        setActionError(res.log.errorMessage || summary);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not send test webhook.";
+      setActionError(message);
     } finally {
       setIsPinging(false);
       setTimeout(() => setPingSuccess(null), 4000);
+    }
+  };
+
+  const handleRotateSecret = async () => {
+    setActionError(null);
+    try {
+      const rotated = await apiClient.rotateMerchantWebhookSecret(merchantId);
+      setNewSecret(rotated.secretKey);
+      setCopiedSecret(false);
+      onConfigChange({ ...config, secretConfigured: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not rotate the webhook secret.";
+      setActionError(message);
+    }
+  };
+
+  const handleCopyNewSecret = async () => {
+    if (!newSecret) return;
+    try {
+      await navigator.clipboard.writeText(newSecret);
+      setCopiedSecret(true);
+      setTimeout(() => setCopiedSecret(false), 2000);
+    } catch {
+      setActionError("Clipboard access failed. Select and copy the new secret manually.");
     }
   };
 
@@ -137,7 +183,7 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
             <Button
               variant="outline"
               size="sm"
-              disabled={isPinging}
+              disabled={isPinging || isSaving}
               onClick={handleTestPing}
               className="text-[#064E3B] font-semibold flex items-center gap-1.5"
             >
@@ -157,33 +203,42 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
           </div>
         )}
 
+        {actionError && (
+          <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-800 text-xs rounded-lg font-medium flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4 text-red-600" />
+            <span>{actionError}</span>
+          </div>
+        )}
+
         <div className="mt-6 space-y-5 text-xs">
           {/* Target URL */}
           <div>
             <label className="block font-bold text-gray-900 mb-1">
-              Your Webhook Endpoint URL (HTTPS) <span className="text-red-500">*</span>
+              Your Public HTTPS Webhook Endpoint <span className="text-red-500">*</span>
             </label>
             <div className="flex items-center gap-2">
               <input
                 type="url"
-                value={targetUrl}
+                value={config.targetUrl}
                 onChange={(e) => {
-                  setTargetUrl(e.target.value);
+                  onConfigChange({ ...config, targetUrl: e.target.value });
                   if (urlError) setUrlError(null);
                 }}
                 placeholder="https://yourstore.com/api/webhooks/nexdrop"
-                className={`w-full text-xs font-mono px-3 py-2 border rounded-lg focus:outline-none ${urlError
+                className={`w-full text-xs font-mono px-3 py-2 border rounded-lg focus:outline-none ${
+                  urlError
                     ? "border-red-400 bg-red-50/20 focus:ring-2 focus:ring-red-400"
                     : "border-[#E5E7EB] focus:ring-2 focus:ring-[#064E3B]"
-                  }`}
+                }`}
               />
               <Button
                 variant="primary"
                 size="sm"
                 onClick={handleSaveConfig}
+                disabled={isSaving}
                 className="whitespace-nowrap font-bold"
               >
-                {isSaved ? "Saved!" : "Save Endpoint"}
+                {isSaved ? "Saved!" : isSaving ? "Saving..." : "Save Endpoint"}
               </Button>
             </div>
             {urlError ? (
@@ -193,38 +248,66 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
               </p>
             ) : (
               <p className="text-[11px] text-gray-400 mt-1">
-                NexDrop delivers JSON payloads via POST with header <code className="text-[#064E3B]">X-NexDrop-Signature</code>.
+                NexDrop sends signed JSON via POST in <code className="text-[#064E3B]">X-NexDrop-Signature</code>. Private-network destinations are blocked.
               </p>
             )}
           </div>
 
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+            <input
+              type="checkbox"
+              checked={config.isActive}
+              onChange={(event) =>
+                onConfigChange({ ...config, isActive: event.target.checked })
+              }
+              className="rounded text-[#064E3B] focus:ring-[#064E3B]"
+            />
+            Enable automatic webhook deliveries
+          </label>
+
           {/* Webhook Secret */}
           <div className="bg-[#F8FAF8] border border-[#E5E7EB] rounded-xl p-4">
-            <span className="text-xs font-bold text-gray-900 block mb-1">
-              HMAC SHA-256 Signing Secret
-            </span>
-            <div className="flex items-center gap-2">
-              <input
-                type="password"
-                readOnly
-                value={config.secretKey}
-                className="w-full text-xs font-mono bg-white border border-[#E5E7EB] rounded-lg px-3 py-2 text-gray-800"
-              />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-gray-900 block mb-1">
+                  HMAC SHA-256 Signing Secret
+                </span>
+                <p className="text-[10px] text-gray-500">
+                  {config.secretConfigured
+                    ? "The current secret is hidden. Rotating it immediately invalidates the previous secret."
+                    : "No signing secret has been created yet."}
+                </p>
+              </div>
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(config.secretKey);
-                  setCopiedSecret(true);
-                  setTimeout(() => setCopiedSecret(false), 2000);
-                }}
+                onClick={handleRotateSecret}
               >
-                {copiedSecret ? "Copied!" : "Copy Secret"}
+                {config.secretConfigured ? "Rotate Secret" : "Generate Secret"}
               </Button>
             </div>
-            <p className="text-[10px] text-gray-400 mt-1">
-              Use this secret to verify authenticity of incoming payloads.
-            </p>
+            {newSecret && (
+              <div className="mt-3 space-y-2">
+                <p className="text-[11px] font-semibold text-amber-800">
+                  Copy this new secret now. It will not be shown again.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={newSecret}
+                    className="w-full text-xs font-mono bg-white border border-[#E5E7EB] rounded-lg px-3 py-2 text-gray-800"
+                    aria-label="New webhook signing secret"
+                  />
+                  <Button variant="secondary" size="sm" onClick={handleCopyNewSecret}>
+                    {copiedSecret ? "Copied!" : "Copy"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setNewSecret(null)}>
+                    Hide
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Subscribed Events Checklist */}
@@ -244,10 +327,11 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
                 return (
                   <label
                     key={ev.id}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer ${isChecked
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer ${
+                      isChecked
                         ? "bg-[#F0FDF4] border-emerald-300"
                         : "bg-white border-[#E5E7EB] opacity-70"
-                      }`}
+                    }`}
                   >
                     <input
                       type="checkbox"
@@ -278,7 +362,7 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
             <h3 className="font-bold text-sm text-[#064E3B]">Recent Webhook Deliveries</h3>
             <p className="text-xs text-gray-500">Log of events dispatched to your server endpoint with HTTP response codes</p>
           </div>
-          <span className="text-xs text-gray-400 font-mono">Auto-Retry on failure (3x)</span>
+          <span className="text-xs text-gray-400 font-mono">Up to 3 retries (4 total attempts)</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -287,7 +371,8 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
               <tr>
                 <th className="px-6 py-3">Event</th>
                 <th className="px-6 py-3">Tracking Number</th>
-                <th className="px-6 py-3">HTTP Status</th>
+                <th className="px-6 py-3">Delivery / HTTP</th>
+                <th className="px-6 py-3">Attempt</th>
                 <th className="px-6 py-3">Latency</th>
                 <th className="px-6 py-3">Dispatched At</th>
               </tr>
@@ -295,13 +380,13 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
             <tbody className="divide-y divide-[#E5E7EB]">
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    No webhook deliveries logged yet. Click &quot;Send Test Webhook&quot; above to simulate an event.
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    No webhook deliveries logged yet. Send a clearly marked test event to your configured endpoint.
                   </td>
                 </tr>
               ) : (
                 logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-[#F9FAF9] transition-colors">
+                  <tr key={`${log.id}-${log.attemptNumber}`} className="hover:bg-[#F9FAF9] transition-colors">
                     <td className="px-6 py-3.5 font-mono font-bold text-[#064E3B]">
                       {log.event}
                     </td>
@@ -309,9 +394,23 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
                       {log.trackingNumber}
                     </td>
                     <td className="px-6 py-3.5">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800">
-                        {log.status} {log.statusText}
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                          log.deliveryStatus === "delivered"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : log.deliveryStatus === "retrying" || log.deliveryStatus === "pending"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {log.deliveryStatus} · {log.status === null ? "No HTTP response" : `${log.status} ${log.statusText}`}
                       </span>
+                      {log.errorMessage && (
+                        <p className="mt-1 max-w-xs text-[10px] text-red-700">{log.errorMessage}</p>
+                      )}
+                    </td>
+                    <td className="px-6 py-3.5 text-gray-600">
+                      {log.attemptNumber} / 4
                     </td>
                     <td className="px-6 py-3.5 text-gray-600">
                       {log.durationMs} ms
@@ -329,4 +428,3 @@ export function WebhooksTab({ merchantId, initialConfig, initialLogs }: Webhooks
     </div>
   );
 }
-

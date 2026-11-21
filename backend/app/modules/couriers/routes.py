@@ -6,6 +6,7 @@ import time as time_module
 import httpx
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -60,6 +61,7 @@ from app.modules.couriers.cloudinary_service import (
 )
 from app.integrations.rabbitmq.client import rabbitmq_client
 from app.integrations.websockets.manager import ws_manager
+from app.modules.webhooks.service import WebhookService
 
 router = APIRouter(prefix="/couriers", tags=["Couriers"])
 
@@ -1058,6 +1060,7 @@ async def delete_delivery_proof(
 async def submit_successful_delivery(
     tracking_id: str,
     payload: SuccessfulDeliveryRequest,
+    background_tasks: BackgroundTasks,
     courier: Courier = Depends(get_authenticated_courier),
     session: AsyncSession = Depends(get_db),
 ) -> ParcelDetailResponse:
@@ -1126,6 +1129,13 @@ async def submit_successful_delivery(
     history = list(history_res.scalars().all())
     # Publish RabbitMQ event + WebSocket broadcast (delivered)
     await _publish_parcel_status_event(tracking_id, courier.id, "delivered", parcel.id)
+    WebhookService.schedule_parcel_event(
+        background_tasks=background_tasks,
+        merchant_id=parcel.merchant_id,
+        tracking_number=parcel.tracking_number,
+        status_value="delivered",
+        location=parcel.delivery_city,
+    )
     return await _parcel_to_detail_response(parcel, history, courier.id, session)
 
 
@@ -1137,6 +1147,7 @@ async def submit_successful_delivery(
 async def submit_failed_delivery(
     tracking_id: str,
     payload: FailedDeliveryRequest,
+    background_tasks: BackgroundTasks,
     courier: Courier = Depends(get_authenticated_courier),
     session: AsyncSession = Depends(get_db),
 ) -> ParcelDetailResponse:
@@ -1185,6 +1196,15 @@ async def submit_failed_delivery(
     history = list(history_res.scalars().all())
     # Publish RabbitMQ event + WebSocket broadcast (failed/cancelled)
     await _publish_parcel_status_event(tracking_id, courier.id, "cancelled", parcel.id)
+    WebhookService.schedule_parcel_event(
+        background_tasks=background_tasks,
+        merchant_id=parcel.merchant_id,
+        tracking_number=parcel.tracking_number,
+        status_value="cancelled",
+        location=parcel.delivery_city,
+        note=getattr(payload, "note", None),
+        failure_reason=failure_reason,
+    )
     return await _parcel_to_detail_response(parcel, history, courier.id, session)
 
 
@@ -1192,6 +1212,7 @@ async def submit_failed_delivery(
 async def update_parcel_status(
     tracking_id: str,
     payload: ParcelStatusUpdateRequest,
+    background_tasks: BackgroundTasks,
     courier: Courier = Depends(get_authenticated_courier),
     session: AsyncSession = Depends(get_db),
 ) -> ParcelDetailResponse:
@@ -1249,4 +1270,13 @@ async def update_parcel_status(
     history = list(history_res.scalars().all())
     # Publish RabbitMQ event + WebSocket broadcast (generic status update)
     await _publish_parcel_status_event(tracking_id, courier.id, new_status.value, parcel.id)
+    WebhookService.schedule_parcel_event(
+        background_tasks=background_tasks,
+        merchant_id=parcel.merchant_id,
+        tracking_number=parcel.tracking_number,
+        status_value=new_status.value,
+        location=parcel.delivery_city,
+        note=payload.note,
+        failure_reason=payload.failure_reason,
+    )
     return await _parcel_to_detail_response(parcel, history, courier.id, session)

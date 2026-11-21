@@ -1,7 +1,7 @@
 from typing import Optional, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.modules.webhooks.models import WebhookSubscription
+from app.modules.webhooks.models import WebhookConfiguration, WebhookDeliveryLog, WebhookSubscription
 
 
 class WebhookRepository:
@@ -27,6 +27,30 @@ class WebhookRepository:
             .where(WebhookSubscription.is_active.is_(True))
         )
         return list(result.scalars().all())
+
+    async def get_configuration(self, merchant_id: int) -> Optional[WebhookConfiguration]:
+        result = await self.session.execute(
+            select(WebhookConfiguration).where(
+                WebhookConfiguration.merchant_id == merchant_id
+            )
+        )
+        return result.scalars().first()
+
+    async def list_delivery_logs(
+        self, merchant_id: int, limit: int = 50
+    ) -> List[WebhookDeliveryLog]:
+        result = await self.session.execute(
+            select(WebhookDeliveryLog)
+            .where(WebhookDeliveryLog.merchant_id == merchant_id)
+            .order_by(WebhookDeliveryLog.created_at.desc(), WebhookDeliveryLog.id.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def add_delivery_log(self, log: WebhookDeliveryLog) -> WebhookDeliveryLog:
+        self.session.add(log)
+        await self.session.flush()
+        return log
 
     async def create(self, subscription: WebhookSubscription) -> WebhookSubscription:
         self.session.add(subscription)

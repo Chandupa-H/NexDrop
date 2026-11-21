@@ -38,19 +38,19 @@ class WebhookConfigSchema(BaseModel):
 
 
 class WebhookTestPingRequest(BaseModel):
-    target_url: str
-    secret_key: Optional[str] = None
     event: Optional[str] = "order.in_transit"
-    tracking_number: Optional[str] = "ND-LK-890216"
 
 
 class WebhookTestPingResponse(BaseModel):
     success: bool
-    status_code: int
+    status_code: Optional[int] = None
     status_text: str
     duration_ms: int
     payload_sent: dict
     signature: str
+    delivery_id: str
+    delivery_status: str
+    attempt_number: int = 1
     message: str
 
 
@@ -58,9 +58,14 @@ class WebhookLogResponse(BaseModel):
     id: str
     event: str
     tracking_number: Optional[str] = None
-    status: int
+    status: Optional[int] = None
     status_text: str
     timestamp: str
     duration_ms: int
+    delivery_status: str = "delivered"
+    attempt_number: int = 1
+    error_message: Optional[str] = None
     payload_summary: Optional[str] = None
     response_body: Optional[str] = None
+
+    model_config = ConfigDict(extra="ignore")

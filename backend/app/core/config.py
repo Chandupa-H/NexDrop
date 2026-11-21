@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     # Security & Supabase Auth
     SECRET_KEY: str = "development-secret-key-change-in-production"
+    WEBHOOK_ENCRYPTION_KEY: Optional[str] = None
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
