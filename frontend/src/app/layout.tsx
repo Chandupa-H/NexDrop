@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DeliveryAssistantWidget } from "@/components/chat/delivery-assistant-widget";
 
 export const metadata: Metadata = {
   title: "NexDrop — Parcel Delivery & Courier Management Platform",
@@ -25,6 +26,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-[var(--background)] text-[var(--foreground)] antialiased" suppressHydrationWarning>
         {children}
+        <DeliveryAssistantWidget />
       </body>
     </html>
   );

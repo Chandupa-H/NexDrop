@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import apiClient from "@/lib/api-client";
 
 export type UserRole = "admin" | "courier" | "merchant" | "customer" | "dispatcher" | "unassigned";
 
@@ -183,19 +184,47 @@ export async function resolveUserRole(
     // 3. Browser-stored active role (e.g. merchant application submitted/approved)
     if (typeof window !== "undefined") {
       const localRole = localStorage.getItem("nexdrop_user_role");
-      if (localRole && ["admin", "courier", "dispatcher", "customer"].includes(localRole.toLowerCase())) {
-        return localRole.trim().toLowerCase();
+      if (localRole && ["admin", "courier", "dispatcher", "customer", "merchant"].includes(localRole.toLowerCase())) {
+        // For merchant role, verify cached approval status before trusting it
+        if (localRole.toLowerCase() === "merchant") {
+          try {
+            const stored = localStorage.getItem("nexdrop_merchant_application");
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed?.approval_status === "approved") {
+                return "merchant";
+              }
+            }
+          } catch { }
+          // Merchant role in localStorage but no approved cached data — fall through to backend check
+        } else {
+          return localRole.trim().toLowerCase();
+        }
       }
-      if (localRole && localRole.toLowerCase() === "merchant") {
+
+      // Check backend for merchant application by authenticated user email
+      const { data: authData } = await supabase.auth.getUser();
+      const email = authData?.user?.email;
+      if (email) {
         try {
-          const stored = localStorage.getItem("nexdrop_merchant_application");
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (parsed?.approval_status === "approved") {
+          const statusData = await apiClient.getMerchantStatus(email);
+          if (statusData?.merchant_id) {
+            localStorage.setItem("nexdrop_user_role", "merchant");
+            localStorage.setItem(
+              "nexdrop_merchant_application",
+              JSON.stringify({
+                merchant_id: statusData.merchant_id,
+                business_name: statusData.business_name,
+                email,
+                approval_status: statusData.approval_status,
+              })
+            );
+            document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+            if (statusData.approval_status === "approved") {
               return "merchant";
             }
           }
-        } catch { }
+        } catch {}
       }
     }
   } catch {

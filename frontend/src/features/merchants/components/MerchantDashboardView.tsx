@@ -54,6 +54,7 @@ export function MerchantDashboardView() {
   const [webhookLogs, setWebhookLogs] = useState<WebhookDeliveryLog[]>(MOCK_WEBHOOK_LOGS);
   const [selectedOrder, setSelectedOrder] = useState<MerchantOrder | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [merchantId, setMerchantId] = useState<string>("me");
 
   // Dynamic Merchant details resolution (from login/registration or API)
   const [merchantProfile, setMerchantProfile] = useState<{
@@ -90,7 +91,9 @@ export function MerchantDashboardView() {
         });
       }
       if (parsed.merchant_id) {
-        merchantIdToFetch = String(parsed.merchant_id);
+        const mId = String(parsed.merchant_id);
+        merchantIdToFetch = mId;
+        setMerchantId(mId);
       }
     } catch {
       // Ignore localStorage parse errors
@@ -168,85 +171,79 @@ export function MerchantDashboardView() {
 
       {activeTab !== "profile" && (
         <div className="bg-white border border-[#E5E7EB] rounded-xl p-1.5 shadow-sm flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1">
-          <button
-            onClick={() => handleTabChange("overview")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "overview"
-                ? "bg-[#064E3B] text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>Overview</span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange("orders")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "orders"
-                ? "bg-[#064E3B] text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>All Shipments</span>
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                activeTab === "orders"
-                  ? "bg-white/20 text-white"
-                  : "bg-gray-200 text-gray-700"
-              }`}
+          <div className="flex flex-wrap items-center gap-1">
+            <button
+              onClick={() => handleTabChange("overview")}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "overview"
+                  ? "bg-[#064E3B] text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+                }`}
             >
-              {orders.length}
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Overview</span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange("orders")}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "orders"
+                  ? "bg-[#064E3B] text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+                }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              <span>All Shipments</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeTab === "orders"
+                    ? "bg-white/20 text-white"
+                    : "bg-gray-200 text-gray-700"
+                  }`}
+              >
+                {orders.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange("create")}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "create"
+                  ? "bg-[#064E3B] text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+                }`}
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>New Shipment</span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange("api")}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "api"
+                  ? "bg-[#064E3B] text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+                }`}
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>API Keys & Docs</span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange("webhooks")}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "webhooks"
+                  ? "bg-[#064E3B] text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
+                }`}
+            >
+              <Webhook className="w-3.5 h-3.5" />
+              <span>Webhooks</span>
+            </button>
+
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 pr-3">
+            <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse" />
+            <span className="text-[11px] font-medium text-[#064E3B]">
+              Fleet System Online
             </span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange("create")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "create"
-                ? "bg-[#064E3B] text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-            }`}
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            <span>New Shipment</span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange("api")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "api"
-                ? "bg-[#064E3B] text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-            }`}
-          >
-            <Key className="w-3.5 h-3.5" />
-            <span>API Keys & Docs</span>
-          </button>
-
-          <button
-            onClick={() => handleTabChange("webhooks")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "webhooks"
-                ? "bg-[#064E3B] text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-[#F8FAF8]"
-            }`}
-          >
-            <Webhook className="w-3.5 h-3.5" />
-            <span>Webhooks</span>
-          </button>
-
+          </div>
         </div>
-
-        <div className="hidden sm:flex items-center gap-2 pr-3">
-          <span className="w-2 h-2 rounded-full bg-[#16A34A] animate-pulse" />
-          <span className="text-[11px] font-medium text-[#064E3B]">
-            Fleet System Online
-          </span>
-        </div>
-      </div>
       )}
 
       {/* Active Tab View */}
@@ -272,6 +269,7 @@ export function MerchantDashboardView() {
 
       {activeTab === "create" && (
         <CreateOrderTab
+          merchantId={merchantId}
           onOrderCreated={handleOrderCreated}
           onCancel={() => handleTabChange("orders")}
         />
@@ -279,6 +277,7 @@ export function MerchantDashboardView() {
 
       {activeTab === "api" && (
         <ApiTab
+          merchantId={merchantId}
           credentials={credentials}
           onKeyRegenerated={(newCreds) => setCredentials(newCreds)}
         />
@@ -286,6 +285,7 @@ export function MerchantDashboardView() {
 
       {activeTab === "webhooks" && (
         <WebhooksTab
+          merchantId={merchantId}
           initialConfig={webhookConfig}
           initialLogs={webhookLogs}
         />

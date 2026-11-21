@@ -23,6 +23,7 @@ import type {
   CourierLocationUpdateDTO,
   CourierLocationUpdateResponseDTO,
   CourierLocationWebSocketTicketDTO,
+  CourierWebSocketTicketDTO,
   DeliveryProofUploadDTO,
   SuccessfulDeliveryRequestDTO,
   FailedDeliveryRequestDTO,
@@ -241,6 +242,10 @@ export async function createCourierLocationWebSocketTicket(): Promise<CourierLoc
   );
 }
 
+export async function createCourierWebSocketTicket(): Promise<CourierWebSocketTicketDTO> {
+  return apiClient.post<CourierWebSocketTicketDTO>("/couriers/courier/ws-ticket");
+}
+
 /**
  * Get full parcel details including masked phone and timeline.
  */
@@ -264,7 +269,7 @@ export async function uploadDeliveryProof(
   onProgress: (percent: number) => void
 ): Promise<DeliveryProofUploadDTO> {
   const body = new FormData();
-  body.append("proof_file", file);
+  body.append("file", file);
   return apiClient.postForm<DeliveryProofUploadDTO>(
     `/couriers/courier/parcels/${encodeURIComponent(trackingId)}/delivery-result/proof`,
     body,

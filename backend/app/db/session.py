@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -14,10 +15,16 @@ _engine: Optional[AsyncEngine] = None
 _sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
 _engine_loop = None
 
+# Supabase session-mode pooler (port 5432) caps at 15 clients total.
+# Using NullPool means SQLAlchemy does NOT maintain persistent connections —
+# each session borrows a connection from PgBouncer and returns it immediately.
+# This is the recommended pattern for serverless / PgBouncer session-mode setups.
+_IS_SUPABASE_SESSION_MODE = False
+
 
 def get_async_database_url(url: Optional[str]) -> Optional[str]:
     """
-    Format database URL for asyncpg and Neon PostgreSQL compatibility.
+    Format database URL for asyncpg and Neon/Supabase PostgreSQL compatibility.
     """
     if not url:
         return None
@@ -28,12 +35,26 @@ def get_async_database_url(url: Optional[str]) -> Optional[str]:
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-    # Neon connections often require ssl
     return url
 
 
+def _detect_supabase_session_mode(url: str) -> bool:
+    """Return True when using Supabase's session-mode pooler (port 5432)."""
+    is_supabase = any(h in url for h in ("supabase.com", "supabase.co"))
+    # Port 5432 = session mode, 6543 = transaction mode
+    has_session_port = ":5432/" in url or url.endswith(":5432")
+    return is_supabase and has_session_port
+
+
+def _detect_supabase_transaction_mode(url: str) -> bool:
+    """Return True when using Supabase's transaction-mode pooler (port 6543)."""
+    is_supabase = any(h in url for h in ("supabase.com", "supabase.co"))
+    has_transaction_port = ":6543/" in url or url.endswith(":6543")
+    return is_supabase and has_transaction_port
+
+
 def get_engine() -> Optional[AsyncEngine]:
-    global _engine, _sessionmaker, _engine_loop
+    global _engine, _sessionmaker, _engine_loop, _IS_SUPABASE_SESSION_MODE
     try:
         import asyncio
         current_loop = asyncio.get_running_loop()
@@ -49,17 +70,71 @@ def get_engine() -> Optional[AsyncEngine]:
     if _engine is None and settings.DATABASE_URL:
         db_url = get_async_database_url(settings.DATABASE_URL)
         if db_url:
-            # Neon serverless PostgreSQL works well with pre-ping
             connect_args = {}
-            if any(host in db_url for host in ("neon.tech", "supabase.com", "supabase.co")):
+            is_supabase = any(h in db_url for h in ("neon.tech", "supabase.com", "supabase.co"))
+            if is_supabase:
                 connect_args["ssl"] = "require"
 
-            _engine = create_async_engine(
-                db_url,
-                echo=settings.DEBUG,
-                pool_pre_ping=True,
-                connect_args=connect_args,
-            )
+            _IS_SUPABASE_SESSION_MODE = _detect_supabase_session_mode(db_url)
+            is_transaction_mode = _detect_supabase_transaction_mode(db_url)
+
+            if is_transaction_mode:
+                # Transaction mode: PgBouncer routes each transaction to a
+                # potentially different backend connection, so asyncpg's prepared
+                # statement handles become invalid immediately after the transaction.
+                # Two settings are required:
+                #   prepared_statement_cache_size=0  — stops asyncpg caching stmt handles
+                #   statement_cache_size=0           — stops asyncpg using the extended
+                #                                     (binary) query protocol entirely,
+                #                                     which is what triggers the
+                #                                     "_introspect_types" prepare call
+                #                                     that fails on recycled connections.
+                connect_args["prepared_statement_cache_size"] = 0
+                connect_args["statement_cache_size"] = 0
+
+            # Strip query params from the URL — asyncpg doesn't read them and
+            # they cause connection errors. Settings are passed via connect_args.
+            if "?" in db_url:
+                db_url = db_url.split("?")[0]
+
+            if _IS_SUPABASE_SESSION_MODE:
+                # Session-mode: use NullPool so SQLAlchemy never holds idle
+                # connections open, staying well under PgBouncer's 15-client cap.
+                logger.info(
+                    "Supabase session-mode pooler detected (port 5432). "
+                    "Using NullPool — connections are opened/closed per request."
+                )
+                _engine = create_async_engine(
+                    db_url,
+                    echo=settings.DEBUG,
+                    poolclass=NullPool,
+                    connect_args=connect_args,
+                )
+            else:
+                # Transaction mode (port 6543) or direct connection: use a
+                # bounded SQLAlchemy pool for efficiency.
+                # NOTE: pool_pre_ping MUST be False for transaction mode —
+                # asyncpg's ping uses a prepared statement internally, which
+                # PgBouncer destroys when it rotates the backend connection,
+                # causing "prepared statement does not exist" errors.
+                # PgBouncer manages connection health itself, so pre-ping is
+                # neither needed nor safe here.
+                logger.info(
+                    "Using bounded connection pool "
+                    f"(pool_size={settings.DATABASE_POOL_SIZE}, "
+                    f"max_overflow={settings.DATABASE_MAX_OVERFLOW})."
+                )
+                _engine = create_async_engine(
+                    db_url,
+                    echo=settings.DEBUG,
+                    pool_pre_ping=False,
+                    pool_size=settings.DATABASE_POOL_SIZE,
+                    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+                    pool_timeout=30,
+                    pool_recycle=1800,
+                    connect_args=connect_args,
+                )
+
             _engine_loop = current_loop
             logger.info("SQLAlchemy async engine initialized.")
     return _engine
@@ -134,5 +209,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()

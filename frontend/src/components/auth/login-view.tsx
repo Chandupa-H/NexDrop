@@ -10,6 +10,7 @@ import { AuthForm } from "@/components/auth/auth-form";
 import { VerifyEmailForm } from "@/components/auth/verify-email-form";
 import { supabase } from "@/lib/supabase/client";
 import { resolveUserDashboardPath } from "@/lib/auth/routes";
+import apiClient from "@/lib/api-client";
 
 export function LoginView() {
   const router = useRouter();
@@ -60,6 +61,24 @@ export function LoginView() {
       } else {
         supabase.auth.getUser().then(async ({ data }) => {
           if (data.user) {
+            if (data.user.email) {
+              try {
+                const statusData = await apiClient.getMerchantStatus(data.user.email);
+                if (statusData?.merchant_id) {
+                  localStorage.setItem("nexdrop_user_role", "merchant");
+                  localStorage.setItem(
+                    "nexdrop_merchant_application",
+                    JSON.stringify({
+                      merchant_id: statusData.merchant_id,
+                      business_name: statusData.business_name,
+                      email: data.user.email,
+                      approval_status: statusData.approval_status,
+                    })
+                  );
+                  document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+                }
+              } catch {}
+            }
             const target = await resolveUserDashboardPath(
               supabase,
               data.user.id,

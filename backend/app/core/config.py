@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     # Database (Neon PostgreSQL) - Optional at startup so it runs without DB credentials
     DATABASE_URL: Optional[str] = None
-    DATABASE_POOL_SIZE: int = 5
-    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_SIZE: int = 3
+    DATABASE_MAX_OVERFLOW: int = 7
 
     # RabbitMQ - Optional at startup
     RABBITMQ_URL: Optional[str] = None
@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     CLOUDINARY_CLOUD_NAME: Optional[str] = None
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
+
+    # AI Delivery Assistant (Groq / Gemini / Generative AI / MCP)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GEMINI_API_KEY: Optional[str] = None
+    OPENAI_API_KEY: Optional[str] = None
+    AI_MODEL: str = "gemini-2.5-flash"
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env", "backend/.env"),

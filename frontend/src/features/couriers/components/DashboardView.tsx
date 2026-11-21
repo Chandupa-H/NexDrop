@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import type { DonutSegment } from "@/lib/dashboard/types";
 import { useParcels } from "../hooks/useParcels";
+import { useCourierNotifications } from "../hooks/useCourierNotifications";
 
 import { BarChart, DonutChart } from "@/components/dashboard";
 
@@ -58,6 +59,13 @@ export function DashboardView({
   const [activeFilter, setActiveFilter] = useState<TableFilter>("all");
   const [parcelPage, setParcelPage] = useState(1);
   const filteredParcels = useParcels(activeFilter, parcelPage, parcels, parcelsTotal);
+
+  // Live WebSocket notifications — auto-refresh parcel list when status changes
+  const handleParcelStatusChanged = useCallback(() => {
+    filteredParcels.refetch();
+  }, [filteredParcels]);
+
+  useCourierNotifications({ onParcelStatusChanged: handleParcelStatusChanged });
 
   const handleFilterChange = (filter: TableFilter) => {
     setActiveFilter(filter);
@@ -163,7 +171,7 @@ export function DashboardView({
               {userName}
             </h1>
             <p className="mt-2 text-sm text-[#687b70]">
-              Here’s what’s happening with your deliveries today.
+              Here's what's happening with your deliveries today.
             </p>
           </div>
 

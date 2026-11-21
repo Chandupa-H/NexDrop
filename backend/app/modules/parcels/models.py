@@ -7,6 +7,7 @@ from sqlalchemy import (
     String,
     Integer,
     Float,
+    Boolean,
     Enum,
     Text,
     DateTime,
@@ -54,6 +55,9 @@ class Parcel(Base, TimestampMixin):
         String(64), unique=True, index=True, nullable=False
     )
     sender_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    merchant_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("merchants.id"), nullable=True
+    )
     recipient_name: Mapped[str] = mapped_column(String(255), nullable=False)
     delivery_recipient_name: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
@@ -81,6 +85,13 @@ class Parcel(Base, TimestampMixin):
         Enum(ParcelStatus, name="parcel_status_enum"),
         default=ParcelStatus.PENDING,
         nullable=False,
+    )
+
+    cod_amount: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False
+    )
+    is_prepaid: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
     )
 
     special_instructions: Mapped[Optional[str]] = mapped_column(

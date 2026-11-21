@@ -70,9 +70,9 @@ class DispatchService:
         saved = await self.repository.create(assignment)
 
         # 4. Update parcel state
-        if parcel.status == ParcelStatus.PENDING:
-            parcel.status = ParcelStatus.PICKED_UP
-        parcel.current_location_type = CurrentLocationType.COURIER
+        # Parcel stays PENDING — the courier advances it to PICKED_UP themselves
+        # when they physically collect it. current_location_type stays SENDER
+        # until pickup; only the delivery_method and routing are set here.
 
         # Handle routing type: DIRECT vs VIA_WAREHOUSE
         if payload.delivery_method == "VIA_WAREHOUSE":

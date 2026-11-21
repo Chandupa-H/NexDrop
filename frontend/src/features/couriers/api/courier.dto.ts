@@ -79,6 +79,7 @@ export interface ParcelDetailDTO {
   tracking_id: string;
   customer_name: string;
   customer_phone_masked: string;
+  customer_phone: string; // full phone number for couriers
   destination: string;
   address_line: string;
   status: string;
@@ -303,6 +304,13 @@ export interface CourierLocationWebSocketTicketDTO {
   ticket: string;
 }
 
+export interface CourierWebSocketTicketDTO {
+  ticket: string;
+}
+
 export interface DeliveryStatusUpdateDTO {
   status: import("../types").DeliveryStatus;
+  proof_reference?: string;
+  failure_reason?: string;
+  note?: string;
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, RefreshCw, AlertCircle, ArrowRight } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { resolveUserDashboardPath } from "@/lib/auth/routes";
+import apiClient from "@/lib/api-client";
 
 interface AuthFormProps {
   isDark?: boolean;
@@ -87,6 +88,26 @@ export function AuthForm({
         }
 
         if (data.session) {
+          const userEmail = data.user?.email || email;
+          if (userEmail) {
+            try {
+              const statusData = await apiClient.getMerchantStatus(userEmail);
+              if (statusData?.merchant_id) {
+                localStorage.setItem("nexdrop_user_role", "merchant");
+                localStorage.setItem(
+                  "nexdrop_merchant_application",
+                  JSON.stringify({
+                    merchant_id: statusData.merchant_id,
+                    business_name: statusData.business_name,
+                    email: userEmail,
+                    approval_status: statusData.approval_status,
+                  })
+                );
+                document.cookie = "nexdrop_user_role=merchant; path=/; max-age=2592000; SameSite=Lax";
+              }
+            } catch {}
+          }
+
           const target = await resolveUserDashboardPath(
             supabase,
             data.user?.id,

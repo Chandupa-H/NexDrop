@@ -30,6 +30,8 @@ from app.modules.couriers.delivery_routes import (
 )
 from app.modules.couriers.repository import CourierRepository
 from app.modules.couriers.routes import (
+    courier_websocket,
+    get_parcel_detail,
     get_courier_me,
     get_courier_parcels,
     get_dashboard_summary,
@@ -499,6 +501,114 @@ async def test_location_websocket_ticket_is_short_lived_and_single_use(monkeypat
     reused_websocket = StubWebSocket(ticket_response.ticket)
     await courier_location_websocket(reused_websocket)
     assert reused_websocket.close_code == 1008
+
+
+@pytest.mark.asyncio
+async def test_courier_notification_websocket_ticket_is_single_use(
+    async_client: AsyncClient,
+    monkeypatch,
+):
+    app.dependency_overrides[get_authenticated_courier] = lambda: SimpleNamespace(id=42)
+    try:
+        response = await async_client.post("/api/v1/couriers/courier/ws-ticket")
+    finally:
+        app.dependency_overrides.pop(get_authenticated_courier, None)
+
+    assert response.status_code == 200
+    ticket = response.json()["ticket"]
+    connections = []
+    disconnections = []
+
+    async def record_connect(_websocket, channel):
+        connections.append(channel)
+
+    def record_disconnect(_websocket, channel):
+        disconnections.append(channel)
+
+    monkeypatch.setattr(
+        "app.modules.couriers.routes.ws_manager.connect",
+        record_connect,
+    )
+    monkeypatch.setattr(
+        "app.modules.couriers.routes.ws_manager.disconnect",
+        record_disconnect,
+    )
+
+    class StubWebSocket:
+        def __init__(self, value):
+            self.query_params = {"ticket": value}
+            self.close_code = None
+
+        async def close(self, code, reason):
+            self.close_code = code
+
+        async def receive_text(self):
+            raise WebSocketDisconnect(code=1000)
+
+    await courier_websocket(StubWebSocket(ticket))
+    assert connections == ["courier_42"]
+    assert disconnections == ["courier_42"]
+
+    reused_websocket = StubWebSocket(ticket)
+    await courier_websocket(reused_websocket)
+    assert reused_websocket.close_code == 1008
+
+
+@pytest.mark.asyncio
+async def test_parcel_detail_uses_repository_tracking_lookup(monkeypatch):
+    parcel = SimpleNamespace(
+        id=9,
+        tracking_number="ND-PEND-001",
+        recipient_name="Test Recipient",
+        recipient_phone="+94771234521",
+        delivery_city="Colombo",
+        delivery_address="Test address",
+        status=ParcelStatus.PENDING,
+        special_instructions=None,
+        failure_reason=None,
+    )
+
+    class StubRepository:
+        def __init__(self, _session):
+            self.tracking_number = None
+
+        async def get_parcel_by_tracking(self, tracking_number):
+            self.tracking_number = tracking_number
+            return parcel
+
+    class StubQueryResult:
+        def scalars(self):
+            return self
+
+        def first(self):
+            return object()
+
+        def all(self):
+            return []
+
+    class StubSession:
+        def __init__(self):
+            self.query_count = 0
+
+        async def execute(self, _query):
+            self.query_count += 1
+            return StubQueryResult()
+
+        async def scalar(self, _query):
+            return datetime.now(timezone.utc)
+
+    monkeypatch.setattr(
+        "app.modules.couriers.routes.CourierRepository",
+        StubRepository,
+    )
+    repository_session = StubSession()
+    response = await get_parcel_detail(
+        "ND-PEND-001",
+        SimpleNamespace(id=42),
+        repository_session,
+    )
+
+    assert response.tracking_id == "ND-PEND-001"
 
 
 @pytest.mark.asyncio
