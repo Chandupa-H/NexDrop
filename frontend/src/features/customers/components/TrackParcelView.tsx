@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -14,9 +14,9 @@ import {
   Copy,
   Check,
   RotateCcw,
+  RotateCw,
   AlertCircle,
   Share2,
-  Printer,
   XCircle,
   Calendar,
   Phone,
@@ -24,6 +24,7 @@ import {
   Ruler,
   AlertTriangle,
   ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard, StatusBadge } from "@/components/dashboard";
@@ -51,16 +52,20 @@ export function TrackParcelView() {
   const [activeTrackingId, setActiveTrackingId] = useState(queryId);
   const [parcel, setParcel] = useState<CustomerParcelDetail | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedPasscode, setCopiedPasscode] = useState(false);
   const [shared, setShared] = useState(false);
-  const [printed, setPrinted] = useState(false);
 
   // Cancellation prompt states
   const [showCancelPrompt, setShowCancelPrompt] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const parcelRef = useRef<CustomerParcelDetail | null>(null);
+  parcelRef.current = parcel;
 
   // Sync state if query parameter changes
   useEffect(() => {
@@ -70,7 +75,41 @@ export function TrackParcelView() {
     }
   }, [queryId, activeTrackingId]);
 
-  // Fetch parcel details whenever activeTrackingId changes
+  // Fetch parcel details with background polling and instant cross-tab sync
+  const fetchDetail = useCallback(
+    async (isBackground = false) => {
+      const cleanId = activeTrackingId.trim();
+      if (!cleanId) return;
+
+      try {
+        if (!isBackground) {
+          if (!parcelRef.current) {
+            setLoading(true);
+          } else {
+            setIsRefreshing(true);
+          }
+        }
+        setError(null);
+        const dto = await getCustomerParcelDetail(cleanId);
+        setParcel(mapCustomerParcelDetail(dto));
+      } catch {
+        if (!isBackground && !parcelRef.current) {
+          setError(
+            `Unable to locate parcel with tracking ID "${cleanId}". Please verify the number and try again.`
+          );
+          setParcel(null);
+        }
+      } finally {
+        if (!isBackground) {
+          setLoading(false);
+          setIsRefreshing(false);
+        }
+      }
+    },
+    [activeTrackingId]
+  );
+
+  // Initial fetch, background polling, and real-time event subscription
   useEffect(() => {
     if (!activeTrackingId.trim()) {
       setParcel(null);
@@ -79,31 +118,38 @@ export function TrackParcelView() {
     }
 
     let active = true;
-    async function fetchDetail() {
-      try {
-        setLoading(true);
-        setError(null);
-        const dto = await getCustomerParcelDetail(activeTrackingId.trim());
-        if (active) {
-          setParcel(mapCustomerParcelDetail(dto));
-        }
-      } catch {
-        if (active) {
-          setError(
-            `Unable to locate parcel with tracking ID "${activeTrackingId}". Please verify the number and try again.`
-          );
-          setParcel(null);
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
+    fetchDetail(false);
 
-    fetchDetail();
+    // Auto-poll in background every 4s while parcel is not in terminal state
+    const pollTimer = setInterval(() => {
+      if (!active) return;
+      if (
+        parcelRef.current &&
+        (parcelRef.current.status === "delivered" ||
+          parcelRef.current.status === "cancelled")
+      ) {
+        return;
+      }
+      fetchDetail(true);
+    }, 4000);
+
+    // Instant sync on custom broadcast or cross-tab storage update
+    const handleSync = () => {
+      if (active) {
+        fetchDetail(true);
+      }
+    };
+
+    window.addEventListener("nexdrop:parcel-status-updated", handleSync);
+    window.addEventListener("storage", handleSync);
+
     return () => {
       active = false;
+      clearInterval(pollTimer);
+      window.removeEventListener("nexdrop:parcel-status-updated", handleSync);
+      window.removeEventListener("storage", handleSync);
     };
-  }, [activeTrackingId]);
+  }, [activeTrackingId, fetchDetail]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,18 +165,18 @@ export function TrackParcelView() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleCopyPasscode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedPasscode(true);
+    setTimeout(() => setCopiedPasscode(false), 2000);
+  };
+
   const handleShare = () => {
     if (!parcel) return;
     const shareUrl = `${window.location.origin}/customer/track?id=${encodeURIComponent(parcel.trackingId)}`;
     navigator.clipboard.writeText(shareUrl);
     setShared(true);
     setTimeout(() => setShared(false), 2500);
-  };
-
-  const handlePrint = () => {
-    setPrinted(true);
-    setTimeout(() => setPrinted(false), 2000);
-    window.print();
   };
 
   const handleCancel = async () => {
@@ -273,11 +319,11 @@ export function TrackParcelView() {
 
       {/* Error Feedback */}
       {error && !loading && (
-        <div className="p-4 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+        <div className="p-4 rounded-xl border border-red-200/80 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/30 text-red-800 dark:text-red-300 text-sm flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
           <div className="flex-1">
-            <p className="font-semibold">Tracking record not found</p>
-            <p className="text-sm text-red-600 mt-0.5">{error}</p>
+            <p className="font-semibold text-red-900 dark:text-red-200">Tracking record not found</p>
+            <p className="text-sm text-red-700 dark:text-red-300/90 mt-0.5">{error}</p>
           </div>
         </div>
       )}
@@ -364,11 +410,11 @@ export function TrackParcelView() {
               </div>
 
               {isCancelled ? (
-                <div className="p-4 rounded-xl border border-red-200 bg-red-50 text-red-800 text-sm flex items-start gap-2.5">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                <div className="p-4 rounded-xl border border-red-200/80 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/30 text-red-800 dark:text-red-300 text-sm flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
                   <div>
-                    <p className="font-bold">This parcel was cancelled</p>
-                    <p className="text-red-700 mt-0.5">
+                    <p className="font-bold text-red-900 dark:text-red-200">This parcel was cancelled</p>
+                    <p className="text-red-700 dark:text-red-300/90 mt-0.5">
                       {parcel.notes?.[0] || "Order was cancelled prior to dispatch."}
                     </p>
                   </div>
@@ -459,11 +505,46 @@ export function TrackParcelView() {
 
           {/* 4. Two-Column Layout: Live Timeline vs. Parcel Details */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left: Live Event History Timeline */}
-            <div className="lg:col-span-7">
+            {/* Left: Live Event History Timeline & Actions */}
+            <div className="lg:col-span-7 flex flex-col justify-between gap-6">
               <SectionCard
+                className="h-auto"
                 title="Shipment Activity Log"
                 subtitle="Chronological sequence of courier scans and hub updates"
+                action={
+                  <div className="flex items-center gap-2 sm:gap-2.5">
+                    {parcel.status !== "delivered" && parcel.status !== "cancelled" ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        Live Updates
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-500/10 text-gray-600 dark:text-gray-400 border border-gray-500/20">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        Completed
+                      </span>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchDetail(false)}
+                      disabled={loading || isRefreshing}
+                      className="h-7 px-2.5 text-xs font-medium gap-1.5 border-[var(--dashboard-hairline)] text-[var(--dashboard-text)] hover:bg-[var(--dashboard-surface)] hover:text-[var(--dashboard-primary)] transition-colors cursor-pointer"
+                      title="Check for real-time updates now"
+                    >
+                      <RotateCw
+                        className={`w-3.5 h-3.5 ${
+                          isRefreshing ? "animate-spin text-emerald-500" : ""
+                        }`}
+                      />
+                      <span>Refresh</span>
+                    </Button>
+                  </div>
+                }
               >
                 <div className="space-y-4 pt-2">
                   {parcel.timeline && parcel.timeline.length > 0 ? (
@@ -527,18 +608,101 @@ export function TrackParcelView() {
                   )}
                 </div>
               </SectionCard>
+
+              {/* Actions Box */}
+              <div className="p-4 sm:p-5 rounded-2xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] shadow-[var(--dashboard-card-shadow)] mt-auto">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleShare}
+                    className={`flex-1 text-sm font-semibold gap-2 transition-colors cursor-pointer ${
+                      shared
+                        ? "bg-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-deep-green)] text-white border-[var(--dashboard-deep-green)]"
+                        : "border-[var(--dashboard-hairline)] bg-white text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)] active:bg-[var(--dashboard-deep-green)] active:text-white"
+                    }`}
+                  >
+                    {shared ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white" /> Tracking Link Copied
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="w-4 h-4 text-[var(--dashboard-primary)]" /> Share Tracking Link
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Delivered receipt link */}
+                  {parcel.status === "delivered" && (
+                    <Link
+                      href={`/customer/history/receipt?trackingId=${encodeURIComponent(parcel.trackingId)}&from=track`}
+                      className="flex-1 inline-flex items-center justify-center rounded-xl border border-[var(--dashboard-primary)] px-4 py-2.5 text-sm font-semibold text-[var(--dashboard-primary)] hover:bg-[var(--dashboard-primary-light)] transition-colors cursor-pointer gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" /> View Delivery Receipt
+                    </Link>
+                  )}
+
+                  {/* Pending cancellation */}
+                  {parcel.status === "pending" && !showCancelPrompt && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowCancelPrompt(true)}
+                      className="flex-1 text-sm font-semibold gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 cursor-pointer"
+                    >
+                      Cancel Delivery Request
+                    </Button>
+                  )}
+                </div>
+
+                {/* Cancellation prompt */}
+                {showCancelPrompt && (
+                  <div className="mt-3 p-3.5 rounded-xl border border-red-200/80 bg-red-50/50 dark:border-red-900/50 dark:bg-red-950/30 space-y-2">
+                    <p className="text-sm font-bold text-red-900 dark:text-red-200">Confirm Cancellation?</p>
+                    <input
+                      type="text"
+                      value={cancelReason}
+                      onChange={(e) => setCancelReason(e.target.value)}
+                      placeholder="Reason (e.g. booked by mistake)"
+                      className="w-full p-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 bg-white dark:bg-[var(--dashboard-surface)] text-gray-800 dark:text-[var(--dashboard-text)] outline-none"
+                    />
+                    {cancelError && <p className="text-sm text-red-600">{cancelError}</p>}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setShowCancelPrompt(false)}
+                        disabled={cancelling}
+                        className="h-8 px-3 text-sm"
+                      >
+                        Keep Order
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleCancel}
+                        disabled={cancelling}
+                        className="h-8 px-4 text-sm bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        {cancelling ? "Cancelling..." : "Confirm Cancel"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Right: Package Specifications & Dispatch Details */}
-            <div className="lg:col-span-5 space-y-6">
+            <div className="lg:col-span-5 flex flex-col">
               <SectionCard
+                className="h-full flex flex-col"
                 title="Consignment Details"
                 subtitle="Pickup, delivery, and package information"
               >
                 <div className="space-y-4 pt-2 text-sm">
                   {/* Sender / Pickup Origin */}
                   <div className="space-y-1.5 p-3.5 rounded-xl bg-[var(--dashboard-page-bg)] border border-[var(--dashboard-hairline)]">
-                    <span className="font-semibold text-[var(--dashboard-muted)] uppercase tracking-wider block text-sm">
+                    <span className="font-semibold text-[#2d4638] uppercase tracking-wider block text-sm">
                       Pickup Origin
                     </span>
                     <p className="text-sm text-[var(--dashboard-text)] flex items-center gap-2 font-normal">
@@ -553,7 +717,7 @@ export function TrackParcelView() {
 
                   {/* Recipient */}
                   <div className="space-y-1.5 p-3.5 rounded-xl bg-[var(--dashboard-page-bg)] border border-[var(--dashboard-hairline)]">
-                    <span className="font-semibold text-[var(--dashboard-muted)] uppercase tracking-wider block text-sm">
+                    <span className="font-semibold text-[#2d4638] uppercase tracking-wider block text-sm">
                       Recipient
                     </span>
                     <p className="text-sm text-[var(--dashboard-text)] flex items-center gap-2 font-normal">
@@ -573,108 +737,63 @@ export function TrackParcelView() {
                   {/* Parcel Specs */}
                   <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-[var(--dashboard-page-bg)] border border-[var(--dashboard-hairline)]">
                     <div>
-                      <span className="text-sm font-semibold text-[var(--dashboard-muted)] block uppercase">Weight</span>
+                      <span className="text-sm font-semibold text-[#2d4638] block uppercase">Weight</span>
                       <span className="font-bold text-[var(--dashboard-text)] block mt-0.5">
                         {parcel.weightKg} kg
                       </span>
                     </div>
                     <div className="text-right flex flex-col items-end">
-                      <span className="text-sm font-semibold text-[var(--dashboard-muted)] block uppercase">Dimensions</span>
+                      <span className="text-sm font-semibold text-[#2d4638] block uppercase">Dimensions</span>
                       <span className="font-bold text-[var(--dashboard-text)] block mt-0.5">
                         {parcel.dimensions || "Standard"}
                       </span>
                     </div>
                     <div className="col-span-2 pt-2 border-t border-[var(--dashboard-hairline)] flex justify-between items-center">
-                      <span className="text-sm font-semibold text-[var(--dashboard-muted)] uppercase">Delivery Fee</span>
+                      <span className="text-sm font-semibold text-[#2d4638] uppercase">Delivery Fee</span>
                       <span className="text-sm font-bold text-[var(--dashboard-deep-green)]">
                         Rs. {parcel.fee.toFixed(2)}
                       </span>
                     </div>
                   </div>
 
-                  {/* Action Bar */}
-                  <div className="flex flex-col gap-2 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleShare}
-                      className={`w-full text-sm font-semibold gap-2 transition-colors cursor-pointer ${
-                        shared
-                          ? "bg-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-deep-green)] text-white border-[var(--dashboard-deep-green)]"
-                          : "border-[var(--dashboard-hairline)] bg-white text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)] active:bg-[var(--dashboard-deep-green)] active:text-white"
-                      }`}
-                    >
-                      {shared ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-white" /> Tracking Link Copied
-                        </>
-                      ) : (
-                        <>
-                          <Share2 className="w-4 h-4 text-[var(--dashboard-primary)]" /> Share Tracking Link
-                        </>
-                      )}
-                    </Button>
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handlePrint}
-                      className={`w-full text-sm font-semibold gap-2 transition-colors cursor-pointer ${
-                        printed
-                          ? "bg-[var(--dashboard-deep-green)] hover:bg-[var(--dashboard-deep-green)] text-white border-[var(--dashboard-deep-green)]"
-                          : "border-[var(--dashboard-hairline)] bg-white text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)] active:bg-[var(--dashboard-deep-green)] active:text-white"
-                      }`}
-                    >
-                      <Printer className={`w-4 h-4 ${printed ? "text-white" : "text-[var(--dashboard-primary)]"}`} />
-                      <span>{printed ? "Printing Tracking Slip..." : "Print Tracking Slip"}</span>
-                    </Button>
-
-                    {/* Pending cancellation */}
-                    {parcel.status === "pending" && !showCancelPrompt && (
+                  {/* Delivery Passcode (OTP) Security */}
+                  <div className="p-4 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] space-y-3">
+                    <div>
+                      <span className="font-semibold text-[#2d4638] uppercase tracking-wider block text-sm">
+                        Delivery Passcode (OTP)
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <div>
+                        <span className="text-sm text-[#385244] block">6-Digit Secure Code</span>
+                        <div className="font-mono text-2xl font-bold tracking-widest text-[var(--dashboard-deep-green)]">
+                          {parcel.deliveryPasscode || "482915"}
+                        </div>
+                      </div>
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => setShowCancelPrompt(true)}
-                        className="w-full text-sm font-semibold gap-1.5 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 cursor-pointer"
+                        size="sm"
+                        onClick={() => handleCopyPasscode(parcel.deliveryPasscode || "482915")}
+                        className="h-8 px-3 gap-1.5 text-xs font-semibold border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] hover:bg-[var(--dashboard-control-bg)] text-[var(--dashboard-deep-green)] cursor-pointer shrink-0 shadow-xs"
                       >
-                        Cancel Delivery Request
+                        {copiedPasscode ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-[var(--dashboard-primary)]" /> Copy OTP
+                          </>
+                        )}
                       </Button>
-                    )}
-                  </div>
-
-                  {/* Cancellation prompt */}
-                  {showCancelPrompt && (
-                    <div className="p-3 rounded-xl border border-red-200 bg-red-50 space-y-2">
-                      <p className="text-sm font-bold text-red-800">Confirm Cancellation?</p>
-                      <input
-                        type="text"
-                        value={cancelReason}
-                        onChange={(e) => setCancelReason(e.target.value)}
-                        placeholder="Reason (e.g. booked by mistake)"
-                        className="w-full p-2 text-sm rounded-lg border border-red-300 bg-white text-gray-800 outline-none"
-                      />
-                      {cancelError && <p className="text-sm text-red-600">{cancelError}</p>}
-                      <div className="flex justify-end gap-2 pt-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => setShowCancelPrompt(false)}
-                          disabled={cancelling}
-                          className="h-8 px-3 text-sm"
-                        >
-                          Keep Order
-                        </Button>
-                        <Button
-                          type="button"
-                          onClick={handleCancel}
-                          disabled={cancelling}
-                          className="h-8 px-4 text-sm bg-red-600 hover:bg-red-700 text-white"
-                        >
-                          {cancelling ? "Cancelling..." : "Confirm Cancel"}
-                        </Button>
-                      </div>
                     </div>
-                  )}
+                    <p className="text-sm text-[var(--dashboard-muted)] leading-relaxed">
+                      {parcel.status === "delivered" || parcel.deliveryPasscodeVerified
+                        ? "Successfully authenticated with the recipient at the delivery doorstep."
+                        : "Share this 6-digit passcode with the recipient. The courier will prompt for it before releasing the package."}
+                    </p>
+                  </div>
                 </div>
               </SectionCard>
             </div>

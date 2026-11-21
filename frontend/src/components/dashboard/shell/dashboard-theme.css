@@ -131,6 +131,53 @@
   --dashboard-chart-tooltip-offset: 4px;
 }
 
+/* Dark mode theme overrides */
+html.dark .dashboard-theme,
+.dark .dashboard-theme,
+.dashboard-theme.dark,
+[data-theme="dark"] .dashboard-theme,
+.dashboard-theme[data-theme="dark"],
+html.dark,
+:root.dark,
+.dark,
+[data-theme="dark"] {
+  --dashboard-page-bg: #07150e;
+  --dashboard-surface: #0e2419;
+  --dashboard-on-surface: #e6f6ee;
+  --dashboard-hairline: #1c422e;
+  --dashboard-text: #e6f6ee;
+  --dashboard-muted: #8ba999;
+  --dashboard-primary: #22c55e;
+  --dashboard-deep-green: #34d399;
+  --dashboard-promo-green: #071b12;
+  --dashboard-promo-green-dark: #04100b;
+  --dashboard-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 32px -16px rgba(0, 0, 0, 0.7);
+  --dashboard-card-border: #1c422e;
+  --dashboard-control-bg: #143625;
+  --dashboard-topbar-bg: rgb(11 32 22 / 0.95);
+  --dashboard-search-bg: rgb(16 42 29 / 0.85);
+  --dashboard-neutral-bg: #143625;
+  --dashboard-neutral-text: #b9ded0;
+  --dashboard-chart-track: #1c422e;
+  --dashboard-backdrop-bg: rgb(0 0 0 / 0.7);
+  --dashboard-success-bg: #123321;
+  --dashboard-success-text: #4ade80;
+  --dashboard-info-bg: #132742;
+  --dashboard-info-text: #60a5fa;
+  --dashboard-warning-bg: #3a2b0e;
+  --dashboard-warning-text: #fde047;
+  --dashboard-danger-bg: #3c1414;
+  --dashboard-danger-text: #f87171;
+}
+
+html.dark .dashboard-stat-card.is-selected,
+.dark .dashboard-stat-card.is-selected,
+[data-theme="dark"] .dashboard-stat-card.is-selected {
+  background: #143625;
+  border-color: var(--dashboard-primary);
+  box-shadow: 0 4px 20px -4px rgba(34, 197, 94, 0.25);
+}
+
 .dashboard-brand {
   display: flex;
   align-items: center;

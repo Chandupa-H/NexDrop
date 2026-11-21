@@ -103,33 +103,32 @@ class CustomerRepository:
         )
         result = await self.session.execute(stmt)
         row = result.first()
+        customer = None
+        user = None
         if not row:
             customer = await self.get_by_user_id(user_id)
             if not customer:
-                return None
-            if phone is not None:
-                customer.phone = phone
-            if default_address is not None:
-                customer.default_address = default_address
-            if city is not None:
-                customer.city = city
-            if postal_code is not None:
-                customer.postal_code = postal_code
-            await self.session.commit()
-            await self.session.refresh(customer)
-            return {
-                "id": customer.id,
-                "full_name": full_name or "Customer User",
-                "email": "customer@nexdrop.com",
-                "phone": customer.phone,
-                "role": "customer",
-                "default_address": customer.default_address,
-                "city": customer.city,
-                "postal_code": customer.postal_code,
-            }
+                user_res = await self.session.execute(select(User).where(User.id == user_id))
+                user = user_res.scalars().first()
+                if user:
+                    customer = Customer(
+                        user_id=user_id,
+                        phone=phone or "+94 77 123 4567",
+                        default_address=default_address or "45/2 Temple Road",
+                        city=city or "Colombo 07",
+                        postal_code=postal_code or "00700",
+                    )
+                    self.session.add(customer)
+                    await self.session.flush()
+                else:
+                    return None
+            else:
+                user_res = await self.session.execute(select(User).where(User.id == user_id))
+                user = user_res.scalars().first()
+        else:
+            customer, user = row
 
-        customer, user = row
-        if full_name is not None:
+        if user and full_name is not None:
             user.full_name = full_name
         if phone is not None:
             customer.phone = phone
@@ -140,16 +139,51 @@ class CustomerRepository:
         if postal_code is not None:
             customer.postal_code = postal_code
 
+        # Sync default customer address in CustomerAddress table
+        if default_address is not None or city is not None or postal_code is not None:
+            addr_stmt = select(CustomerAddress).where(
+                CustomerAddress.customer_id == customer.id,
+                CustomerAddress.is_default == True,
+                CustomerAddress.address_type == "pickup",
+            )
+            addr_result = await self.session.execute(addr_stmt)
+            default_addr = addr_result.scalars().first()
+            if default_addr:
+                if default_address is not None:
+                    default_addr.address = default_address
+                if city is not None:
+                    default_addr.city = city
+                if postal_code is not None:
+                    default_addr.postal_code = postal_code
+                if full_name is not None:
+                    default_addr.contact_name = full_name
+                if phone is not None:
+                    default_addr.phone = phone
+            elif default_address:
+                new_addr = CustomerAddress(
+                    customer_id=customer.id,
+                    address_type="pickup",
+                    label="Home",
+                    address=default_address,
+                    city=city or customer.city or "Colombo 07",
+                    postal_code=postal_code or customer.postal_code or "00700",
+                    contact_name=full_name or (user.full_name if user else "Customer User"),
+                    phone=phone or customer.phone,
+                    is_default=True,
+                )
+                self.session.add(new_addr)
+
         await self.session.commit()
         await self.session.refresh(customer)
-        await self.session.refresh(user)
+        if user:
+            await self.session.refresh(user)
 
         return {
             "id": customer.id,
-            "full_name": user.full_name,
-            "email": user.email,
+            "full_name": user.full_name if user else (full_name or "Customer User"),
+            "email": user.email if user else "customer@nexdrop.com",
             "phone": customer.phone,
-            "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+            "role": (user.role.value if hasattr(user.role, "value") else str(user.role)) if user else "customer",
             "default_address": customer.default_address,
             "city": customer.city,
             "postal_code": customer.postal_code,

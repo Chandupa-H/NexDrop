@@ -26,9 +26,13 @@ import {
   FileText,
 } from "lucide-react";
 import { SRI_LANKA_HUBS, SERVICE_TIERS, type ServiceTierOption } from "../constants/destinations";
-import { createCustomerParcel, getCustomerAddresses } from "../api/customer.api";
+import { createCustomerParcel, getCustomerAddresses, getCustomerProfile } from "../api/customer.api";
 import type { CustomerParcelDetailDTO } from "../api/customer.dto";
-import { mapDtoToSavedAddress, type SavedAddress } from "../hooks/useSavedAddresses";
+import {
+  mapDtoToSavedAddress,
+  autoSaveUsedAddress,
+  type SavedAddress,
+} from "../hooks/useSavedAddresses";
 
 function resolveHubCity(inputCity: string): string {
   if (!inputCity) return SRI_LANKA_HUBS[0].city;
@@ -46,32 +50,46 @@ function resolveHubCity(inputCity: string): string {
   return inputCity;
 }
 
-function getStoredDefaults(): { pickup?: SavedAddress; dropoff?: SavedAddress } {
+function getStoredDefaults(userEmail?: string, customerName?: string): { pickup?: SavedAddress; dropoff?: SavedAddress } {
   if (typeof window === "undefined") return {};
   try {
     let pickup: SavedAddress | undefined;
     let dropoff: SavedAddress | undefined;
 
-    const rawAll = localStorage.getItem("nexdrop_customer_saved_addresses");
+    const scopedKey = userEmail
+      ? `nexdrop_customer_saved_addresses_${userEmail.trim().toLowerCase()}`
+      : null;
+    const rawAll = (scopedKey ? localStorage.getItem(scopedKey) : null) || localStorage.getItem("nexdrop_customer_saved_addresses");
+
     if (rawAll) {
       const parsed = JSON.parse(rawAll);
       if (Array.isArray(parsed)) {
-        pickup = parsed.find((a: SavedAddress) => a.addressType === "pickup" && Boolean(a.isDefault));
-        dropoff = parsed.find((a: SavedAddress) => a.addressType === "dropoff" && Boolean(a.isDefault));
-        // Master list is authoritative; do not fall back to separate stale keys
+        // Exclude legacy hardcoded mock addresses
+        const clean = parsed.filter(
+          (a: SavedAddress) =>
+            a.address !== "45/2 Temple Road" &&
+            a.phone !== "+94 77 123 4567" &&
+            a.contactName !== "Dihini Kankanamage"
+        );
+        const candidatePickup = clean.find((a: SavedAddress) => a.addressType === "pickup" && Boolean(a.isDefault));
+        const candidateDropoff = clean.find((a: SavedAddress) => a.addressType === "dropoff" && Boolean(a.isDefault));
+
+        // Ensure candidate pickup actually matches the active customer if known
+        if (
+          candidatePickup &&
+          customerName &&
+          candidatePickup.contactName &&
+          candidatePickup.contactName.trim().toLowerCase() !== customerName.trim().toLowerCase()
+        ) {
+          // Stale address from another user session; disregard
+          pickup = undefined;
+        } else {
+          pickup = candidatePickup;
+        }
+
+        dropoff = candidateDropoff;
         return { pickup, dropoff };
       }
-    }
-
-    const rawP = localStorage.getItem("nexdrop_customer_default_pickup");
-    if (rawP) {
-      const parsedP = JSON.parse(rawP);
-      if (parsedP && parsedP.isDefault) pickup = parsedP;
-    }
-    const rawD = localStorage.getItem("nexdrop_customer_default_dropoff");
-    if (rawD) {
-      const parsedD = JSON.parse(rawD);
-      if (parsedD && parsedD.isDefault) dropoff = parsedD;
     }
 
     return { pickup, dropoff };
@@ -85,6 +103,7 @@ interface BookDeliveryFormProps {
   defaultAddress?: string;
   defaultCity?: string;
   customerPhone?: string;
+  userEmail?: string;
   initialDefaultPickup?: SavedAddress;
   initialDefaultDropoff?: SavedAddress;
 }
@@ -94,6 +113,7 @@ export function BookDeliveryForm({
   defaultAddress = "",
   defaultCity = "",
   customerPhone = "",
+  userEmail = "",
   initialDefaultPickup,
   initialDefaultDropoff,
 }: BookDeliveryFormProps) {
@@ -105,12 +125,41 @@ export function BookDeliveryForm({
   const paramPhone = searchParams.get("phone") || "";
   const paramDestinationCity = searchParams.get("destinationCity") || searchParams.get("destination") || "";
 
-  const localDefaults = getStoredDefaults();
-  const effectivePickup = initialDefaultPickup || localDefaults.pickup;
-  const effectiveDropoff = initialDefaultDropoff || localDefaults.dropoff;
+  const isMockValue = (val?: string): boolean => {
+    if (!val) return true;
+    const clean = val.trim().toLowerCase();
+    if (userEmail) {
+      if (customerName && clean === customerName.trim().toLowerCase()) return false;
+      if (customerPhone && clean === customerPhone.trim().toLowerCase()) return false;
+      if (defaultAddress && clean === defaultAddress.trim().toLowerCase()) return false;
+      if (defaultCity && clean === defaultCity.trim().toLowerCase()) return false;
+    }
+    return (
+      clean === "dihini kankanamage" ||
+      clean === "+94 77 123 4567" ||
+      clean === "+94771234567" ||
+      clean === "45/2 temple road" ||
+      clean === "colombo 07"
+    );
+  };
 
-  const hasDefaultPickup = Boolean(effectivePickup?.isDefault);
-  const hasDefaultDropoff = Boolean(effectiveDropoff?.isDefault);
+  const isMockAddress = (addr?: SavedAddress): boolean => {
+    if (!addr) return false;
+    return (
+      isMockValue(addr.address) ||
+      isMockValue(addr.contactName) ||
+      isMockValue(addr.phone)
+    );
+  };
+
+  const localDefaults = getStoredDefaults(userEmail, customerName);
+  const rawPickup = initialDefaultPickup || localDefaults.pickup;
+  const effectivePickup = isMockAddress(rawPickup) ? undefined : rawPickup;
+  const rawDropoff = initialDefaultDropoff || localDefaults.dropoff;
+  const effectiveDropoff = isMockAddress(rawDropoff) ? undefined : rawDropoff;
+
+  const hasDefaultPickup = Boolean(effectivePickup?.isDefault && effectivePickup?.address);
+  const hasDefaultDropoff = Boolean(effectiveDropoff?.isDefault && effectiveDropoff?.address);
 
   // Helper to read destination with fallback across searchParams, window.location.search, and sessionStorage
   const getInitialDestination = (): string => {
@@ -173,37 +222,47 @@ export function BookDeliveryForm({
   const isDropoff = paramType === "dropoff";
 
   // Form State - Sender (Pickup Location)
-  // Only autofill if:
+  // Priority:
   // 1. Explicitly provided via URL params (e.g. clicking "Book Pickup" / "Send Here")
-  // 2. OR a default pickup address is chosen
+  // 2. Authenticated customer profile details (customerName, customerPhone, defaultAddress, defaultCity)
+  // 3. Default pickup address from address book if matching
+  // 4. Blank string if not available
   const [senderName, setSenderName] = useState(
     !isDropoff && paramName
       ? paramName
-      : hasDefaultPickup
-        ? effectivePickup?.contactName || ""
-        : ""
+      : (!isMockValue(customerName) ? customerName : "") || effectivePickup?.contactName || ""
   );
   const [senderPhone, setSenderPhone] = useState(
     !isDropoff && paramPhone
       ? paramPhone
-      : hasDefaultPickup
-        ? effectivePickup?.phone || ""
-        : ""
+      : (!isMockValue(customerPhone) ? customerPhone : "") || effectivePickup?.phone || ""
   );
   const [pickupAddress, setPickupAddress] = useState(
     !isDropoff && paramAddress
       ? paramAddress
-      : hasDefaultPickup
-        ? effectivePickup?.address || ""
-        : ""
+      : (!isMockValue(defaultAddress) ? defaultAddress : "") || effectivePickup?.address || ""
   );
   const [pickupCity, setPickupCity] = useState(
     !isDropoff && paramCity
       ? paramCity
-      : hasDefaultPickup
-        ? effectivePickup?.city || ""
-        : ""
+      : (!isMockValue(defaultCity) ? defaultCity : "") || effectivePickup?.city || ""
   );
+
+  // Synchronize immediately when customer profile props arrive or change (e.g. on account login/switch)
+  useEffect(() => {
+    if (!paramName && customerName && !isMockValue(customerName)) {
+      setSenderName(customerName);
+    }
+    if (!paramPhone && customerPhone && !isMockValue(customerPhone)) {
+      setSenderPhone(customerPhone);
+    }
+    if (!paramAddress) {
+      setPickupAddress(defaultAddress && !isMockValue(defaultAddress) ? defaultAddress : "");
+    }
+    if (!paramCity) {
+      setPickupCity(defaultCity && !isMockValue(defaultCity) ? defaultCity : "");
+    }
+  }, [customerName, customerPhone, defaultAddress, defaultCity, paramName, paramPhone, paramAddress, paramCity]);
 
   // Form State - Recipient (Drop-off Location)
   // Only autofill if:
@@ -285,31 +344,49 @@ export function BookDeliveryForm({
     }
 
     const applyDefaults = (pickup?: SavedAddress, dropoff?: SavedAddress) => {
-      // 1. Autofill Pickup Location ONLY if a default pickup is chosen and not given via URL params
+      const validPickup = isMockAddress(pickup) ? undefined : pickup;
+      const validDropoff = isMockAddress(dropoff) ? undefined : dropoff;
+
+      // 1. Autofill Pickup Location ONLY if not given via URL params
       if (paramType !== "dropoff" && !paramAddress) {
-        if (pickup?.isDefault && pickup.address) {
-          setPickupAddress(pickup.address);
-          if (pickup.city) setPickupCity(pickup.city);
-          if (pickup.contactName) setSenderName(pickup.contactName);
-          if (pickup.phone) setSenderPhone(pickup.phone);
+        const isMatchingPickup =
+          validPickup?.isDefault &&
+          validPickup.address &&
+          (!customerName || !validPickup.contactName || validPickup.contactName.trim().toLowerCase() === customerName.trim().toLowerCase());
+
+        if (isMatchingPickup && validPickup) {
+          setPickupAddress(validPickup.address);
+          if (validPickup.city) setPickupCity(validPickup.city);
+          if (validPickup.contactName) setSenderName(validPickup.contactName);
+          if (validPickup.phone) setSenderPhone(validPickup.phone);
+        } else {
+          // If no matching default pickup address in address book, fall back to customer profile details
+          setPickupAddress(defaultAddress && !isMockValue(defaultAddress) ? defaultAddress : "");
+          setPickupCity(defaultCity && !isMockValue(defaultCity) ? defaultCity : "");
+          if (customerName && !isMockValue(customerName)) {
+            setSenderName(customerName);
+          }
+          if (customerPhone && !isMockValue(customerPhone)) {
+            setSenderPhone(customerPhone);
+          }
         }
       }
 
-      // 2. Autofill Delivery Destination ONLY if a default dropoff is chosen and not given via URL params
+      // 2. Autofill Delivery Destination ONLY if not given via URL params
       if (paramType !== "dropoff" && !paramAddress) {
-        if (dropoff?.isDefault && dropoff.address) {
-          setDeliveryAddress(dropoff.address);
-          if (dropoff.contactName) setRecipientName(dropoff.contactName);
-          if (dropoff.phone) setRecipientPhone(dropoff.phone);
-          if (!destVal && dropoff.city) {
-            setDestinationCity(resolveHubCity(dropoff.city));
+        if (validDropoff?.isDefault && validDropoff.address) {
+          setDeliveryAddress(validDropoff.address);
+          if (validDropoff.contactName) setRecipientName(validDropoff.contactName);
+          if (validDropoff.phone) setRecipientPhone(validDropoff.phone);
+          if (!destVal && validDropoff.city) {
+            setDestinationCity(resolveHubCity(validDropoff.city));
           }
         }
       }
     };
 
     // Immediate sync from localStorage
-    const stored = getStoredDefaults();
+    const stored = getStoredDefaults(userEmail, customerName);
     applyDefaults(stored.pickup || initialDefaultPickup, stored.dropoff || initialDefaultDropoff);
 
     // Sync from backend to ensure persistent DB default address is applied
@@ -317,14 +394,42 @@ export function BookDeliveryForm({
       .then((backendList) => {
         if (Array.isArray(backendList) && backendList.length > 0) {
           const mapped = backendList.map(mapDtoToSavedAddress);
-          const bp = mapped.find((a) => a.addressType === "pickup" && a.isDefault);
-          const bd = mapped.find((a) => a.addressType === "dropoff" && a.isDefault);
-          applyDefaults(bp || stored.pickup, bd || stored.dropoff);
+          const valid = mapped.filter((a) => !isMockAddress(a));
+          const bp = valid.find(
+            (a) =>
+              a.addressType === "pickup" &&
+              a.isDefault &&
+              (!customerName || !a.contactName || a.contactName.trim().toLowerCase() === customerName.trim().toLowerCase())
+          );
+          const bd = valid.find((a) => a.addressType === "dropoff" && a.isDefault);
+          if (bp || bd) {
+            applyDefaults(bp || stored.pickup, bd || stored.dropoff);
+          }
         }
       })
       .catch(() => {
         // offline fallback
       });
+
+    // Also fetch live customer profile in case client session hydrated post server render
+    getCustomerProfile()
+      .then((profileDto) => {
+        if (profileDto && paramType !== "dropoff") {
+          if (profileDto.full_name && !isMockValue(profileDto.full_name) && !paramName) {
+            setSenderName(profileDto.full_name);
+          }
+          if (profileDto.phone && !isMockValue(profileDto.phone) && !paramPhone) {
+            setSenderPhone(profileDto.phone);
+          }
+          if (profileDto.default_address && !isMockValue(profileDto.default_address) && !paramAddress) {
+            setPickupAddress(profileDto.default_address);
+          }
+          if (profileDto.city && !isMockValue(profileDto.city) && !paramCity) {
+            setPickupCity(profileDto.city);
+          }
+        }
+      })
+      .catch(() => {});
 
     // Explicit address from URL (e.g. from "Book Pickup" or "Send Here" in address book)
     if (paramAddress || paramCity || paramName || paramPhone || paramDestinationCity) {
@@ -344,7 +449,7 @@ export function BookDeliveryForm({
 
     // React to default address changes across tabs/modals
     const handleDefaultsChanged = () => {
-      const fresh = getStoredDefaults();
+      const fresh = getStoredDefaults(userEmail, customerName);
       applyDefaults(fresh.pickup, fresh.dropoff);
     };
 
@@ -355,7 +460,20 @@ export function BookDeliveryForm({
       window.removeEventListener("nexdrop_default_address_changed", handleDefaultsChanged);
       window.removeEventListener("storage", handleDefaultsChanged);
     };
-  }, [paramType, paramAddress, paramCity, paramName, paramPhone, searchParams, initialDefaultPickup, initialDefaultDropoff]);
+  }, [
+    paramType,
+    paramAddress,
+    paramCity,
+    paramName,
+    paramPhone,
+    searchParams,
+    initialDefaultPickup,
+    initialDefaultDropoff,
+    customerName,
+    customerPhone,
+    defaultAddress,
+    defaultCity,
+  ]);
   const [lengthCm, setLengthCm] = useState<number>(0);
   const [widthCm, setWidthCm] = useState<number>(0);
   const [heightCm, setHeightCm] = useState<number>(0);
@@ -368,6 +486,7 @@ export function BookDeliveryForm({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdParcel, setCreatedParcel] = useState<CustomerParcelDetailDTO | null>(null);
   const [copiedTracking, setCopiedTracking] = useState(false);
+  const [copiedPasscode, setCopiedPasscode] = useState(false);
 
   // Weight-based pricing (per project specification)
   const billableWeightKg = weightKg;
@@ -394,6 +513,12 @@ export function BookDeliveryForm({
     navigator.clipboard.writeText(id);
     setCopiedTracking(true);
     setTimeout(() => setCopiedTracking(false), 2000);
+  };
+
+  const handleCopyPasscode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedPasscode(true);
+    setTimeout(() => setCopiedPasscode(false), 2000);
   };
 
   const handleResetForm = () => {
@@ -444,6 +569,7 @@ export function BookDeliveryForm({
 
     try {
       setSubmitting(true);
+      const generatedPasscode = String(Math.floor(100000 + Math.random() * 900000));
       const parcel = await createCustomerParcel({
         recipient_name: recipientName.trim(),
         recipient_phone: recipientPhone.trim(),
@@ -457,7 +583,37 @@ export function BookDeliveryForm({
           ? `[${packageCategory.toUpperCase()}] ${specialInstructions.trim()}`
           : `[${packageCategory.toUpperCase()}] Package`,
         fee: totalEstimatedFee,
+        delivery_passcode: generatedPasscode,
+        sender_name: senderName.trim() || customerName?.trim() || "Customer",
+        sender_email: userEmail?.trim() || undefined,
       });
+
+      // Automatically save both pickup and dropoff addresses under saved addresses section
+      if (pickupAddress.trim() && pickupCity.trim()) {
+        autoSaveUsedAddress({
+          addressType: "pickup",
+          address: pickupAddress.trim(),
+          city: pickupCity.trim(),
+          postalCode: "00100",
+          contactName: senderName.trim() || customerName,
+          phone: senderPhone.trim() || customerPhone,
+          label: "Home",
+          userName: customerName,
+        });
+      }
+
+      if (deliveryAddress.trim() && destinationCity.trim()) {
+        autoSaveUsedAddress({
+          addressType: "dropoff",
+          address: deliveryAddress.trim(),
+          city: destinationCity.trim(),
+          postalCode: "00100",
+          contactName: recipientName.trim(),
+          phone: recipientPhone.trim(),
+          label: "Client",
+          userName: customerName,
+        });
+      }
 
       setCreatedParcel(parcel);
     } catch (err) {
@@ -545,21 +701,61 @@ export function BookDeliveryForm({
             </div>
           </div>
 
+          {/* Delivery Passcode (OTP) Handover Security */}
+          <div className="p-4 rounded-xl border border-emerald-200/80 bg-emerald-50/70 dark:bg-emerald-950/20 text-left space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                Delivery Passcode (OTP)
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleCopyPasscode(createdParcel.delivery_passcode || "")}
+                className="h-8 px-3 gap-1.5 text-xs font-semibold border-emerald-300 bg-white dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 cursor-pointer shadow-xs"
+              >
+                {copiedPasscode ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" /> Copied OTP
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-emerald-600" /> Copy OTP
+                  </>
+                )}
+              </Button>
+            </div>
+            <div>
+              <span className="text-sm text-emerald-700/80 dark:text-emerald-400 block">6-Digit Secure Code</span>
+              <p className="font-mono text-2xl font-black tracking-widest text-emerald-900 dark:text-emerald-200">
+                {createdParcel.delivery_passcode || "—"}
+              </p>
+            </div>
+            <p className="text-sm text-emerald-800 dark:text-emerald-300 leading-relaxed">
+              Share this 6-digit one-time passcode with <strong>{createdParcel.recipient_name}</strong>. The courier will prompt for it before handing over the parcel.
+            </p>
+          </div>
+
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
             <Link
-              href="/customer/dashboard"
+              href={`/customer/track?id=${encodeURIComponent(createdParcel.tracking_id)}`}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--dashboard-primary)] text-white text-sm font-semibold hover:bg-[var(--dashboard-primary)]/90 transition-colors shadow-sm"
+            >
+              <Truck className="w-4 h-4" /> Track Shipment
+            </Link>
+            <Link
+              href="/customer/dashboard"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-sm font-semibold text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)] transition-colors shadow-xs"
             >
               <ArrowLeft className="w-4 h-4" /> Go to Dashboard
             </Link>
-            <Button
+            <button
               type="button"
-              variant="outline"
               onClick={handleResetForm}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] text-sm font-semibold text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)] cursor-pointer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-sm font-semibold text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)] transition-colors cursor-pointer shadow-xs"
             >
               <RotateCcw className="w-4 h-4" /> Book Another Delivery
-            </Button>
+            </button>
           </div>
         </div>
       </div>
@@ -595,7 +791,7 @@ export function BookDeliveryForm({
                 value={senderName}
                 onChange={(e) => setSenderName(e.target.value)}
                 className="w-full text-xs sm:text-sm p-2.5 rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] outline-none"
-                placeholder="Sender Name"
+                placeholder="e.g. Sender Name"
                 required
               />
             </div>
@@ -609,7 +805,7 @@ export function BookDeliveryForm({
                 value={senderPhone}
                 onChange={(e) => setSenderPhone(e.target.value)}
                 className="w-full text-xs sm:text-sm p-2.5 rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] outline-none"
-                placeholder="+94 77 123 4567"
+                placeholder="e.g. +94 7X XXX XXXX"
                 required
               />
             </div>
@@ -623,7 +819,7 @@ export function BookDeliveryForm({
                 value={pickupCity}
                 onChange={(e) => setPickupCity(e.target.value)}
                 className="w-full text-xs sm:text-sm p-2.5 rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] outline-none"
-                placeholder="e.g. Colombo 07"
+                placeholder="e.g. Colombo, Kandy..."
                 required
               />
             </div>
@@ -675,7 +871,7 @@ export function BookDeliveryForm({
                 value={recipientPhone}
                 onChange={(e) => setRecipientPhone(e.target.value)}
                 className="w-full text-xs sm:text-sm p-2.5 rounded-lg border border-[var(--dashboard-hairline)] bg-[var(--dashboard-surface)] text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] outline-none"
-                placeholder="+94 77 123 4567"
+                placeholder="e.g. +94 7X XXX XXXX"
                 required
               />
             </div>
@@ -723,7 +919,7 @@ export function BookDeliveryForm({
             <div className="space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <label className="text-sm font-semibold text-[var(--dashboard-muted)] uppercase tracking-wider flex items-center gap-2">
-                  <Ruler className="h-4 w-4 text-[var(--dashboard-primary)]" /> Parcel Dimensions (L × W × H in cm) <span className="text-red-500 font-bold">*</span>
+                  <Ruler className="h-4 w-4 text-[var(--dashboard-primary)]" /> Parcel Dimensions <span className="text-red-500 font-bold">*</span>
                 </label>
                 
               </div>
@@ -1016,6 +1212,13 @@ export function BookDeliveryForm({
                   Standard Transit Insurance
                 </span>
                 <span className="font-medium">Free</span>
+              </div>
+              <div className="flex justify-between items-center text-[var(--dashboard-success-text)]">
+                <span className="flex items-center gap-1 font-medium">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  6-Digit Handover OTP Security
+                </span>
+                <span className="font-medium">Included</span>
               </div>
             </div>
 

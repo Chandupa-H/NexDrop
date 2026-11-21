@@ -38,7 +38,7 @@ describe("history cancellation workflow (mock requests only)", () => {
     expect(await screen.findByText(policy.message)).toBeInTheDocument();
     const button = await confirm();
     expect(screen.getByRole("group", { name: "Confirm Cancellation" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Reason for cancellation (optional)"), { target: { value: "Changed plans" } });
+    fireEvent.change(screen.getByLabelText("Reason for cancellation"), { target: { value: "Changed plans" } });
     expect(button).toBeDisabled();
     fireEvent.click(button);
     expect(cancelCustomerHistoryParcelAction).not.toHaveBeenCalled();
@@ -59,11 +59,11 @@ describe("history cancellation workflow (mock requests only)", () => {
     vi.mocked(cancelCustomerHistoryParcelAction).mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
     const updated = vi.fn(); drawer(updated);
     const button = await confirm();
-    fireEvent.change(screen.getByLabelText("Reason for cancellation (optional)"), { target: { value: " Changed plans " } });
+    fireEvent.change(screen.getByLabelText("Reason for cancellation"), { target: { value: " Changed plans " } });
     fireEvent.click(button); fireEvent.click(button);
     expect(cancelCustomerHistoryParcelAction).toHaveBeenCalledExactlyOnceWith("ND-TEST", "Changed plans");
     expect(screen.getByRole("button", { name: "Cancelling..." })).toBeDisabled();
-    expect(screen.getByLabelText("Reason for cancellation (optional)")).toBeDisabled();
+    expect(screen.getByLabelText("Reason for cancellation")).toBeDisabled();
     expect(updated).not.toHaveBeenCalled();
     await act(async () => resolve({ ok: true, parcel: { ...parcel, status: "cancelled" } }));
     expect(updated).toHaveBeenCalledTimes(1);
@@ -74,11 +74,22 @@ describe("history cancellation workflow (mock requests only)", () => {
     policy.enabled = true;
     vi.mocked(cancelCustomerHistoryParcelAction).mockResolvedValue({ ok: false, conflict, message: conflict ? "This delivery can no longer be cancelled." : "Unable to cancel this delivery." });
     const updated = vi.fn(); drawer(updated);
-    fireEvent.click(await confirm());
+    const button = await confirm();
+    fireEvent.change(screen.getByLabelText("Reason for cancellation"), { target: { value: "Changed plans" } });
+    fireEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveTextContent(conflict ? "no longer be cancelled" : "Unable to cancel");
     expect(screen.queryByText(/Delivery cancelled\./)).not.toBeInTheDocument();
     expect(updated).toHaveBeenCalledTimes(conflict ? 1 : 0);
     expect(screen.getByRole("button", { name: "Confirm Cancel" })).toBeEnabled();
+  });
+  it("requires a cancellation reason and shows an error if submitted empty", async () => {
+    policy.enabled = true;
+    const updated = vi.fn(); drawer(updated);
+    const button = await confirm();
+    fireEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Please provide a reason for cancellation.");
+    expect(cancelCustomerHistoryParcelAction).not.toHaveBeenCalled();
+    expect(updated).not.toHaveBeenCalled();
   });
   it("refreshes pending totals after cancellation and finds the shipment under Cancelled", async () => {
     policy.enabled = true;
@@ -97,9 +108,11 @@ describe("history cancellation workflow (mock requests only)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pending" }));
     await waitFor(() => expect(fetchCustomerParcelsAction).toHaveBeenLastCalledWith("pending", 1, false));
     fireEvent.click(await screen.findByRole("button", { name: "Details" }));
-    fireEvent.click(await confirm());
+    const button = await confirm();
+    fireEvent.change(screen.getByLabelText("Reason for cancellation"), { target: { value: "Mistake" } });
+    fireEvent.click(button);
     await screen.findByText("Showing 0–0 of 0 deliveries");
-    expect(cancelCustomerHistoryParcelAction).toHaveBeenCalledWith("ND-TEST", undefined);
+    expect(cancelCustomerHistoryParcelAction).toHaveBeenCalledWith("ND-TEST", "Mistake");
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancelled" }));
@@ -126,7 +139,9 @@ describe("history cancellation workflow (mock requests only)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     await screen.findByText("Showing 11–11 of 11 deliveries");
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
-    fireEvent.click(await confirm());
+    const button = await confirm();
+    fireEvent.change(screen.getByLabelText("Reason for cancellation"), { target: { value: "Mistake" } });
+    fireEvent.click(button);
     await screen.findByText("Showing 1–10 of 10 deliveries");
     expect(fetchCustomerParcelsAction).toHaveBeenLastCalledWith("all", 1, false);
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();

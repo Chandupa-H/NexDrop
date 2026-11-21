@@ -16,7 +16,15 @@ function SidebarNavContent({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const isActive = (href: string, match: "exact" | "prefix" = "prefix") => {
+  const isActive = (href: string, match: "exact" | "prefix" = "prefix", itemId?: string) => {
+    const fromParam = searchParams?.get("from") || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("from") : null);
+
+    // When viewing receipt redirected from track parcel page, highlight Track Parcel instead of Delivery History
+    if (pathname.startsWith("/customer/history/receipt") && fromParam === "track") {
+      if (href === "/customer/track" || itemId === "track") return true;
+      if (href === "/customer/history" || itemId === "history") return false;
+    }
+
     const [itemPath, itemQuery] = href.split("?");
 
     // Path must match
@@ -49,7 +57,7 @@ function SidebarNavContent({
           <ul className="dashboard-nav-list">
             {section.items.map((item) => {
               const Icon = iconMap[item.icon];
-              const active = item.availability === "live" && isActive(item.href, item.match);
+              const active = item.availability === "live" && isActive(item.href, item.match, item.id);
               const isPlanned = item.availability === "planned";
 
               if (isPlanned) {

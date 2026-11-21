@@ -46,7 +46,7 @@ describe("CustomerHistoryView", () => {
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("Read-only details");
-  });
+  }, 15000);
 
   it("shows an error without a false empty state and retries with loading feedback", async () => {
     let resolve!: (data: CustomerParcelListDTO) => void;

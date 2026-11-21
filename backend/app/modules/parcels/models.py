@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -95,6 +96,13 @@ class Parcel(Base, TimestampMixin):
 
     special_instructions: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
+    )
+
+    delivery_passcode: Mapped[Optional[str]] = mapped_column(
+        String(16), nullable=True
+    )
+    delivery_passcode_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
     )
 
     # Delivery history branch

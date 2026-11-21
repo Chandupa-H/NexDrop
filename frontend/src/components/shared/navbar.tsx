@@ -11,7 +11,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ backendHealthy }: NavbarProps) {
-  const { user, dashboardHref, isDashboardAccessible, isLoading, signOut } = useAuthUser();
+  const { user, role, dashboardHref, isDashboardAccessible, isLoading, signOut } = useAuthUser();
 
   const displayName =
     (user?.user_metadata?.full_name as string | undefined) ||
@@ -85,25 +85,14 @@ export function Navbar({ backendHealthy }: NavbarProps) {
                 <span className="max-w-[140px] truncate">{displayName}</span>
               </div>
 
-              {isDashboardAccessible !== false ? (
+              {isDashboardAccessible && role && role !== "unassigned" ? (
                 <Link href={dashboardHref}>
                   <Button variant="primary" size="sm" className="font-bold shadow-sm">
                     <LayoutDashboard className="h-3.5 w-3.5" />
                     Dashboard
                   </Button>
                 </Link>
-              ) : (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled
-                  title="Dashboard access is locked until your registration is approved by an admin"
-                  className="font-bold opacity-45 cursor-not-allowed select-none border border-[#E5E7EB]"
-                >
-                  <LayoutDashboard className="h-3.5 w-3.5" />
-                  Dashboard
-                </Button>
-              )}
+              ) : null}
 
               <Button
                 variant="ghost"

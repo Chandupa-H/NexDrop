@@ -11,7 +11,15 @@ function MobileTabBarContent({ config }: { config: DashboardRoleConfig }) {
   const searchParams = useSearchParams();
   const items = config.nav.flatMap((section) => section.items).slice(0, 5);
 
-  const isActive = (href: string, match: "exact" | "prefix" = "prefix") => {
+  const isActive = (href: string, match: "exact" | "prefix" = "prefix", itemId?: string) => {
+    const fromParam = searchParams?.get("from") || (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("from") : null);
+
+    // When viewing receipt redirected from track parcel page, highlight Track Parcel instead of Delivery History
+    if (pathname.startsWith("/customer/history/receipt") && fromParam === "track") {
+      if (href === "/customer/track" || itemId === "track") return true;
+      if (href === "/customer/history" || itemId === "history") return false;
+    }
+
     const [itemPath, itemQuery] = href.split("?");
     const pathMatches =
       match === "exact" ? pathname === itemPath : pathname.startsWith(itemPath);
@@ -31,7 +39,7 @@ function MobileTabBarContent({ config }: { config: DashboardRoleConfig }) {
     <nav className="dashboard-mobile-tab-bar" aria-label="Dashboard tabs">
       {items.map((item: NavItem) => {
         const Icon = iconMap[item.icon];
-        const active = item.availability === "live" && isActive(item.href, item.match);
+        const active = item.availability === "live" && isActive(item.href, item.match, item.id);
         const classes = `dashboard-mobile-tab${active ? " is-active" : ""}${
           item.availability === "planned" ? " is-planned" : ""
         }`;

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getCustomerProfile } from "@/features/customers/api/customer.api";
+import { getCustomerProfile } from "@/features/customers/api/customer.server";
 import { mapCustomerProfile } from "@/features/customers/api/customer.mappers";
 import { CustomerProfileView } from "@/features/customers/components/CustomerProfileView";
 import { Skeleton } from "@/components/ui/skeleton";

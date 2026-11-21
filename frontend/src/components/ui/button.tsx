@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "lime";
+  variant?: "primary" | "secondary" | "outline" | "ghost" | "lime" | "destructive";
   size?: "sm" | "md" | "lg";
 }
 
@@ -16,13 +16,15 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       primary:
         "bg-[#064E3B] text-white hover:bg-[#085a44] shadow-sm",
       secondary:
-        "bg-white text-[#064E3B] border border-[#16A34A] hover:bg-[#F0FDF4] focus:ring-[#16A34A] shadow-sm",
+        "bg-white dark:bg-[#0e2419] text-[#064E3B] dark:text-[#22c55e] border border-[#16A34A] dark:border-[#22c55e] hover:bg-[#F0FDF4] dark:hover:bg-[#143625] focus:ring-[#16A34A] shadow-sm",
       outline:
-        "border border-[#E5E7EB] bg-white text-[#1F2937] hover:bg-[#F1F5F1]",
+        "border border-[#E5E7EB] dark:border-[#1c422e] bg-white dark:bg-[#0e2419] text-[#1F2937] dark:text-[#e6f6ee] hover:bg-[#F1F5F1] dark:hover:bg-[#143625]",
       ghost:
-        "text-[#1F2937] hover:bg-[#E2E8F0]",
+        "text-[#1F2937] dark:text-[#e6f6ee] hover:bg-[#E2E8F0] dark:hover:bg-[#143625]",
       lime:
         "bg-[#A3E635] text-[#064E3B] font-semibold hover:bg-[#92cf2e] shadow-sm",
+      destructive:
+        "bg-red-600 hover:bg-red-700 text-white shadow-sm",
     };
 
     const sizeStyles = {

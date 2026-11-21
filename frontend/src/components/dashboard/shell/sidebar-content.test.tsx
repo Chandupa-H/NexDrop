@@ -2,13 +2,16 @@ import { render, screen } from "@testing-library/react";
 import type { AnchorHTMLAttributes } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { courierDashboardConfig } from "@/features/couriers/config/dashboard.config";
+import { customerDashboardConfig } from "@/features/customers/config/dashboard.config";
 import { SidebarContent } from "./sidebar-content";
 
-const { route } = vi.hoisted(() => ({ route: { pathname: "/courier/dashboard" } }));
+const { route } = vi.hoisted(() => ({
+  route: { pathname: "/courier/dashboard", searchParams: new URLSearchParams() },
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => route.pathname,
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => route.searchParams,
 }));
 
 vi.mock("next/link", () => ({
@@ -23,6 +26,7 @@ vi.mock("next/link", () => ({
 describe("SidebarContent", () => {
   beforeEach(() => {
     route.pathname = "/courier/dashboard";
+    route.searchParams = new URLSearchParams();
   });
 
   it("renders the navigation and logout without a sidebar promo", () => {
@@ -81,5 +85,14 @@ describe("SidebarContent", () => {
       "aria-current",
       "page"
     );
+  });
+
+  it("activates Track Parcel on receipt route when redirected from track parcel page (from=track)", () => {
+    route.pathname = "/customer/history/receipt";
+    route.searchParams = new URLSearchParams("from=track");
+    render(<SidebarContent config={customerDashboardConfig} />);
+
+    expect(screen.getByRole("link", { name: "Track Parcel" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Delivery History" })).not.toHaveAttribute("aria-current");
   });
 });

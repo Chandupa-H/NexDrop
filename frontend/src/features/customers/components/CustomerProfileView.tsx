@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { User, MapPin, Mail, Phone, ShieldCheck, Pencil, X, Check, AlertCircle, Trash2, AlertTriangle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, MapPin, Mail, Phone, ShieldCheck, Pencil, X, Check, AlertCircle, Trash2, AlertTriangle, Plus } from "lucide-react";
 import { PageHeader, SectionCard } from "@/components/dashboard";
 import { Button } from "@/components/ui/button";
 import type { CustomerProfile } from "../types";
 import { updateCustomerProfile, deleteCustomerProfile } from "../api/customer.api";
 import { mapCustomerProfile } from "../api/customer.mappers";
+import { autoSaveUsedAddress } from "../hooks/useSavedAddresses";
 import { logoutAction } from "@/lib/auth/logout";
 
 interface CustomerProfileViewProps {
@@ -30,12 +31,52 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
   const [city, setCity] = useState(profile.city);
   const [postalCode, setPostalCode] = useState(profile.postalCode);
 
-  const handleOpenEdit = () => {
+  useEffect(() => {
+    import("../api/customer.api").then(({ getCustomerProfile }) => {
+      getCustomerProfile().then((latestDto) => {
+        if (!latestDto) return;
+        const latest = mapCustomerProfile(latestDto);
+        setProfile((prev) => {
+          const updatedAddress =
+            latest.defaultAddress && latest.defaultAddress !== "45/2 Temple Road"
+              ? latest.defaultAddress
+              : prev.defaultAddress;
+          const updatedCity =
+            latest.city && latest.city !== "Colombo 07" ? latest.city : prev.city;
+          const updatedPostal =
+            latest.postalCode && latest.postalCode !== "00700"
+              ? latest.postalCode
+              : prev.postalCode;
+          return {
+            ...prev,
+            ...latest,
+            defaultAddress: updatedAddress,
+            city: updatedCity,
+            postalCode: updatedPostal,
+          };
+        });
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     setFullName(profile.fullName);
     setPhone(profile.phone);
     setDefaultAddress(profile.defaultAddress);
     setCity(profile.city);
     setPostalCode(profile.postalCode);
+  }, [profile]);
+
+  const handleOpenEdit = () => {
+    setFullName(profile.fullName);
+    setPhone(profile.phone);
+    setDefaultAddress(
+      profile.defaultAddress === "," || profile.defaultAddress === "45/2 Temple Road"
+        ? ""
+        : profile.defaultAddress
+    );
+    setCity(profile.city === "Colombo 07" ? "" : profile.city);
+    setPostalCode(profile.postalCode === "00700" ? "" : profile.postalCode);
     setError(null);
     setIsEditModalOpen(true);
   };
@@ -73,6 +114,20 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
 
       const updated = mapCustomerProfile(updatedDto);
       setProfile(updated);
+
+      if (defaultAddress.trim()) {
+        autoSaveUsedAddress({
+          addressType: "pickup",
+          address: defaultAddress.trim(),
+          city: city.trim(),
+          postalCode: postalCode.trim() || "00100",
+          contactName: fullName.trim(),
+          phone: phone.trim(),
+          label: "Home",
+          userName: fullName.trim(),
+        });
+      }
+
       setIsEditModalOpen(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3500);
@@ -172,69 +227,98 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                 <p className="text-xs font-medium text-[var(--dashboard-muted)] uppercase tracking-wider">
                   Account Role
                 </p>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[var(--dashboard-success-bg)] text-[var(--dashboard-success-text)] capitalize">
+                <p className="text-base font-semibold text-[var(--dashboard-text)] capitalize">
                   {profile.role}
-                </span>
+                </p>
               </div>
             </div>
           </div>
         </SectionCard>
 
-        <SectionCard title="Default Delivery Address" subtitle="Used automatically for pickup & drop-offs">
-          <div className="space-y-4 pt-2">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-xl bg-[var(--dashboard-control-bg)] text-[var(--dashboard-primary)]">
-                <MapPin className="h-5 w-5" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-[var(--dashboard-muted)] uppercase tracking-wider">
-                  Street Address
-                </p>
-                <p className="text-base font-semibold text-[var(--dashboard-text)]">
-                  {profile.defaultAddress}
-                </p>
-                <p className="text-sm font-medium text-[var(--dashboard-muted)]">
-                  {profile.city}, {profile.postalCode}
-                </p>
-                <p className="text-sm text-[var(--dashboard-muted)]">Sri Lanka</p>
-              </div>
-            </div>
+        {(() => {
+          const cleanAddress = (profile.defaultAddress || "").trim();
+          const hasAddress = Boolean(
+            cleanAddress &&
+            cleanAddress !== "," &&
+            cleanAddress !== "45/2 Temple Road"
+          );
 
-            <div className="mt-4 p-4 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)]">
-              <p className="text-sm font-semibold text-[var(--dashboard-text)]">
-                Delivery Note Preference
-              </p>
-              <p className="text-sm text-[var(--dashboard-muted)] mt-1.5 leading-relaxed">
-                Couriers will attempt delivery during standard daytime hours (8:00 AM – 6:00 PM).
-              </p>
-            </div>
-          </div>
-        </SectionCard>
+          return (
+            <SectionCard title="Default Delivery Address" subtitle="Used automatically for pickup & drop-offs">
+              <div className="space-y-4 pt-2">
+                {!hasAddress ? (
+                  <div className="py-2 space-y-3">
+                    <p className="text-sm text-[var(--dashboard-muted)]">
+                      No default delivery address configured yet.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={handleOpenEdit}
+                      className="bg-[var(--dashboard-primary)] hover:bg-[var(--dashboard-primary)]/90 text-white font-medium px-4 py-2 h-auto rounded-xl gap-2 cursor-pointer shadow-sm transition-colors text-sm inline-flex items-center"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Address
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-[var(--dashboard-control-bg)] text-[var(--dashboard-primary)]">
+                      <MapPin className="h-5 w-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-[var(--dashboard-muted)] uppercase tracking-wider">
+                        Street Address
+                      </p>
+                      <p className="text-base font-semibold text-[var(--dashboard-text)]">
+                        {profile.defaultAddress}
+                      </p>
+                      {Boolean(profile.city || profile.postalCode) && (
+                        <p className="text-sm font-medium text-[var(--dashboard-muted)]">
+                          {[profile.city, profile.postalCode].filter(Boolean).join(", ")}
+                        </p>
+                      )}
+                      <p className="text-sm text-[var(--dashboard-muted)]">Sri Lanka</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 p-4 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)]">
+                  <p className="text-sm font-semibold text-[var(--dashboard-text)]">
+                    Delivery Note Preference
+                  </p>
+                  <p className="text-sm text-[var(--dashboard-muted)] mt-1.5 leading-relaxed">
+                    Couriers will attempt delivery during standard daytime hours (8:00 AM – 6:00 PM).
+                  </p>
+                </div>
+              </div>
+            </SectionCard>
+          );
+        })()}
       </div>
 
       {/* Danger Zone: Delete Profile */}
-      <div className="p-6 rounded-2xl border border-red-200 bg-red-50/40 space-y-4">
+      <div className="p-6 rounded-2xl border border-red-200 dark:border-red-900/50 bg-red-50/40 dark:bg-red-950/20 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <h3 className="text-base font-bold text-red-950 flex items-center gap-2">
-              <Trash2 className="w-5 h-5 text-red-600" />
+            <h3 className="text-base font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
               Delete Profile
             </h3>
-            <p className="text-sm text-red-800/80">
+            <p className="text-sm text-red-700/90 dark:text-red-300/80">
               Permanently delete your profile, default addresses, and associated customer preferences.
             </p>
           </div>
-          <Button
+          <button
             type="button"
             onClick={() => {
               setDeleteError(null);
               setIsDeleteModalOpen(true);
             }}
-            className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-4 py-2.5 h-auto rounded-xl gap-2 cursor-pointer shrink-0 shadow-sm transition-colors"
+            className="inline-flex items-center justify-center bg-[#EF4444] hover:bg-[#DC2626] active:bg-[#B91C1C] text-white text-xs font-bold px-4 py-2.5 rounded-xl gap-2 cursor-pointer shrink-0 shadow-sm transition-colors"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4 text-white" />
             Delete Profile
-          </Button>
+          </button>
         </div>
       </div>
 
@@ -305,7 +389,7 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
-                  placeholder="+94 77 123 4567"
+                  placeholder="e.g. +94 7X XXX XXXX"
                   required
                 />
               </div>
@@ -319,7 +403,7 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                   value={defaultAddress}
                   onChange={(e) => setDefaultAddress(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
-                  placeholder="e.g. 45/2 Temple Road"
+                  placeholder="Street address, apartment, landmarks..."
                   required
                 />
               </div>
@@ -334,7 +418,7 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-sm text-[var(--dashboard-text)] focus:ring-2 focus:ring-[var(--dashboard-primary)] focus:outline-none"
-                    placeholder="e.g. Colombo 07"
+                    placeholder="e.g. Colombo, Kandy..."
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -377,9 +461,9 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
       {/* Delete Profile Confirmation Modal */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-[var(--dashboard-surface)] rounded-2xl border border-red-200 shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150">
+          <div className="w-full max-w-md bg-[var(--dashboard-surface)] rounded-2xl border border-red-200 dark:border-red-900/60 shadow-2xl p-6 space-y-5 animate-in zoom-in-95 duration-150">
             <div className="flex items-start gap-3.5">
-              <div className="p-2.5 rounded-full bg-red-100 text-red-600 shrink-0">
+              <div className="p-2.5 rounded-full bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
@@ -393,7 +477,7 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
             </div>
 
             {deleteError && (
-              <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{deleteError}</span>
               </div>
@@ -409,11 +493,11 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
               >
                 Cancel
               </Button>
-              <Button
+              <button
                 type="button"
                 onClick={handleDeleteProfile}
                 disabled={deleting}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer gap-2"
+                className="inline-flex items-center justify-center bg-[#EF4444] hover:bg-[#DC2626] active:bg-[#B91C1C] text-white text-xs font-bold px-4 py-2 rounded-xl cursor-pointer gap-2 transition-colors disabled:opacity-80"
               >
                 {deleting ? (
                   <>
@@ -422,11 +506,11 @@ export function CustomerProfileView({ initialProfile }: CustomerProfileViewProps
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4 text-white" />
                     Confirm Delete
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         </div>

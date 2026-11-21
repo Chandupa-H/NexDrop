@@ -14,7 +14,7 @@ beforeEach(() => vi.clearAllMocks());
 it.each([
   ["admin", "/admin/dashboard"], ["courier", "/courier/dashboard"],
   ["dispatcher", "/dispatcher/dashboard"], ["merchant", "/merchant/dashboard"],
-  ["customer", "/"], ["unassigned", "/register"],
+  ["customer", "/customer/dashboard"], ["unassigned", "/register"],
 ])("uses the %s dashboard when signing in without a return URL", async (role, destination) => {
   const user = { id: "u1", app_metadata: { role } };
   signIn.mockResolvedValue({ data: { user, session: {} }, error: null });
