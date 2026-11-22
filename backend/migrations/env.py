@@ -1,9 +1,11 @@
 import asyncio
+import uuid
 from logging.config import fileConfig
 import os
 import sys
 
 from sqlalchemy import pool
+from sqlalchemy.engine import make_url
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
@@ -62,6 +64,14 @@ async def run_async_migrations() -> None:
     db_url = configuration.get("sqlalchemy.url", "")
     if any(host in db_url for host in ("neon.tech", "supabase.com", "supabase.co")):
         connect_args["ssl"] = "require"
+
+    # Supabase transaction pooler (port 6543, pgbouncer) does not support prepared
+    # statements; without this, `alembic upgrade` fails with
+    # "prepared statement ... already exists". Same settings as app/db/session.py.
+    if make_url(db_url).port == 6543:
+        connect_args["statement_cache_size"] = 0
+        connect_args["prepared_statement_cache_size"] = 0
+        connect_args["prepared_statement_name_func"] = lambda: f"__asyncpg_{uuid.uuid4()}__"
 
     connectable = async_engine_from_config(
         configuration,
