@@ -1,25 +1,46 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { getCustomerProfile } from "../api/customer.api";
 import { mapCustomerProfile } from "../api/customer.mappers";
 import { customerDashboardConfig } from "../config/dashboard.config";
 import { TopbarProfileLink } from "@/components/dashboard/shell/dashboard-topbar";
+import type { DashboardUser } from "@/lib/dashboard/types";
 
 /**
- * Async server component that fetches customer profile and renders the user chip.
- * Wrapped in Suspense by the layout with CustomerTopbarUserSkeleton fallback.
+ * Client component that fetches customer profile and renders the user chip.
+ * Avoids unstable Date.now() server prerendering issues and dynamically
+ * reflects the active user session in the browser.
  */
-export async function CustomerTopbarUser({ profileHref }: { profileHref: string }) {
-  const profile = mapCustomerProfile(await getCustomerProfile());
+export function CustomerTopbarUser({ profileHref }: { profileHref: string }) {
+  const [user, setUser] = useState<DashboardUser | null>(null);
 
-  return (
-    <TopbarProfileLink
-      user={{
-        id: profile.id,
-        name: profile.fullName,
-        roleLabel: customerDashboardConfig.roleLabel,
-      }}
-      profileHref={profileHref}
-    />
-  );
+  useEffect(() => {
+    let active = true;
+    getCustomerProfile()
+      .then((profileDto) => {
+        if (!active) return;
+        const profile = mapCustomerProfile(profileDto);
+        setUser({
+          id: profile.id,
+          name: profile.fullName,
+          roleLabel: customerDashboardConfig.roleLabel,
+        });
+      })
+      .catch(() => {
+        // Fallback on error
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!user) {
+    return <CustomerTopbarUserSkeleton />;
+  }
+
+  return <TopbarProfileLink user={user} profileHref={profileHref} />;
 }
 
 /**

@@ -71,6 +71,7 @@ export interface CustomerParcelListItem {
   estimatedFee: number;
   weightKg: number;
   eta: string | null;
+  deliveryPasscode?: string | null;
 }
 
 export interface CustomerTimelineEvent {
@@ -84,6 +85,7 @@ export interface CustomerTimelineEvent {
 export interface CustomerParcelDetail {
   trackingId: string;
   recipientName: string;
+  recipientPhone?: string;
   recipientPhoneMasked: string;
   senderName: string;
   deliveryAddress: string;
@@ -93,6 +95,8 @@ export interface CustomerParcelDetail {
   status: CustomerParcelStatus;
   createdAt: string;
   createdAtDisplay: string;
+  deliveredAt?: string | null;
+  deliveredAtDisplay?: string;
   eta: string | null;
   fee: number;
   weightKg: number;
@@ -100,4 +104,6 @@ export interface CustomerParcelDetail {
   specialInstructions?: string | null;
   notes: string[];
   timeline: CustomerTimelineEvent[];
+  deliveryPasscode?: string | null;
+  deliveryPasscodeVerified?: boolean;
 }

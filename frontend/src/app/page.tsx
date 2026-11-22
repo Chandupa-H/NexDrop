@@ -179,7 +179,7 @@ export default function Home() {
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-3.5 pt-2">
                 {!authLoading && user ? (
-                  role && role !== "customer" ? (
+                  role && role !== "unassigned" ? (
                     <Link href={dashboardHref}>
                       <Button variant="primary" size="lg" className="shadow-md font-bold sm:px-6">
                         <LayoutDashboard className="h-4 w-4" />
@@ -198,7 +198,7 @@ export default function Home() {
                   )
                 ) : (
                   <>
-                    <Link href="/customer/register">
+                    <Link href="/login">
                       <Button variant="primary" size="lg" className="shadow-md font-bold sm:px-6">
                         <Package className="h-4 w-4" />
                         Ship a Parcel
@@ -410,9 +410,9 @@ export default function Home() {
                     </li>
                   </ul>
                   <div className="pt-2">
-                    <Link href="/customer/register">
+                    <Link href={user ? dashboardHref : "/login?view=sign_up"}>
                       <Button variant="primary" size="lg" className="font-bold">
-                        Create Customer Account
+                        {user ? "Open Customer Dashboard" : "Create Customer Account"}
                         <ArrowRight className="h-4 w-4" />
                       </Button>
                     </Link>
@@ -777,7 +777,7 @@ X-NexDrop-Key: nd_live_948f...
                   </div>
 
                   <div className="pt-2">
-                    <Link href="/customer/register">
+                    <Link href={user ? "/customer/book" : "/login"}>
                       <Button variant="lime" className="w-full font-bold text-[#064E3B] shadow-md">
                         Book Pickup at This Rate
                         <ArrowRight className="h-4 w-4" />
@@ -839,7 +839,7 @@ X-NexDrop-Key: nd_live_948f...
               Daily overnight trunk line connects Kandy, Galle, Gampaha, Kurunegala, and Jaffna.
             </p>
             <div className="mt-3">
-              <Link href="/customer/register">
+              <Link href={user ? "/customer/dashboard" : "/login"}>
                 <Button variant="outline" size="sm" className="font-semibold text-xs">
                   View Outstation Rates
                 </Button>
@@ -927,7 +927,7 @@ X-NexDrop-Key: nd_live_948f...
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
-            <Link href="/customer/register">
+            <Link href={user ? "/customer/book" : "/login?view=sign_up"}>
               <Button variant="lime" size="lg" className="font-bold text-[#064E3B] shadow-xl sm:px-8">
                 <Package className="h-5 w-5" />
                 Book Your First Parcel

@@ -85,6 +85,7 @@ class CustomerService:
         sender_id: int = 1,
     ) -> Parcel:
         tracking_number = f"NXD-CUS-{random.randint(10000, 99999)}"
+        passcode = payload.delivery_passcode or f"{random.randint(100000, 999999)}"
         parcel = Parcel(
             tracking_number=tracking_number,
             sender_id=sender_id,
@@ -96,6 +97,8 @@ class CustomerService:
             dimensions=payload.dimensions or "20 x 15 x 10 cm",
             status=ParcelStatus.PENDING,
             special_instructions=payload.special_instructions,
+            delivery_passcode=passcode,
+            delivery_passcode_verified=False,
         )
         return await self.repository.create_parcel(parcel)
 

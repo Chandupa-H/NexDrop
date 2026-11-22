@@ -40,7 +40,7 @@ describe("auth routes", () => {
     expect(getDashboardPathForRole("courier")).toBe("/courier/dashboard");
     expect(getDashboardPathForRole("merchant")).toBe("/merchant/dashboard");
     expect(getDashboardPathForRole("dispatcher")).toBe("/dispatcher/dashboard");
-    expect(getDashboardPathForRole("customer")).toBe("/");
+    expect(getDashboardPathForRole("customer")).toBe("/customer/dashboard");
     expect(getDashboardPathForRole(null)).toBe(DEFAULT_AUTHENTICATED_REDIRECT);
   });
 
@@ -51,6 +51,8 @@ describe("auth routes", () => {
     expect(isProtectedRoute("/dispatcher/dashboard")).toBe(true);
     expect(isProtectedRoute("/merchant/dashboard")).toBe(true);
     expect(isProtectedRoute("/merchant/dashboard/orders")).toBe(true);
+    expect(isProtectedRoute("/customer/dashboard")).toBe(true);
+    expect(isProtectedRoute("/customer/addresses")).toBe(true);
 
     expect(isProtectedRoute("/merchant")).toBe(false);
     expect(isProtectedRoute("/merchant/register")).toBe(false);
@@ -84,6 +86,17 @@ describe("auth routes", () => {
     expect(isRouteAllowedForRole("/merchant/dashboard", "merchant")).toBe(true);
     expect(isRouteAllowedForRole("/admin/dashboard", "merchant")).toBe(false);
     expect(isRouteAllowedForRole("/courier/dashboard", "merchant")).toBe(false);
+
+    // Customer access
+    expect(isRouteAllowedForRole("/customer/dashboard", "customer")).toBe(true);
+    expect(isRouteAllowedForRole("/customer/addresses", "customer")).toBe(true);
+    expect(isRouteAllowedForRole("/customer/dashboard", "admin")).toBe(true);
+    expect(isRouteAllowedForRole("/admin/dashboard", "customer")).toBe(false);
+    expect(isRouteAllowedForRole("/courier/dashboard", "customer")).toBe(false);
+    expect(isRouteAllowedForRole("/merchant/dashboard", "customer")).toBe(false);
+    expect(isRouteAllowedForRole("/dispatcher/dashboard", "customer")).toBe(false);
+    expect(isRouteAllowedForRole("/customer/dashboard", "courier")).toBe(false);
+    expect(isRouteAllowedForRole("/customer/dashboard", "merchant")).toBe(false);
 
     // Unauthenticated or unknown role
     expect(isRouteAllowedForRole("/admin", null)).toBe(false);

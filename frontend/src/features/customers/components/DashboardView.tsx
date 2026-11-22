@@ -136,6 +136,7 @@ export function CustomerDashboardView({
           city={userProfile?.city}
           postalCode={userProfile?.postalCode}
           userName={userName}
+          userPhone={userProfile?.phone}
           limit={3}
           isDashboardView={true}
         />

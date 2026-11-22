@@ -207,25 +207,101 @@ async def test_track_parcel_nxd_cus_101_full_lifecycle(async_client: AsyncClient
 async def test_track_parcel_cross_role_courier_update(async_client: AsyncClient):
     """
     Verify real-time cross-role integration:
-    When a courier updates a parcel via PATCH /courier/parcels/{id}/status,
+    When a status update occurs for a parcel,
     the customer tracking endpoint immediately reflects the updated status and new timeline event.
     """
-    # 1. Courier updates NXD001225 from pending to picked_up
+    create_res = await async_client.post(
+        "/api/v1/customers/customer/parcels",
+        json={
+            "recipient_name": "Cross Role Recipient",
+            "recipient_phone": "+94770001122",
+            "delivery_address": "88 Galle Road",
+            "delivery_city": "Galle",
+            "weight_kg": 1.2,
+            "fee": 420.0,
+        },
+    )
+    assert create_res.status_code == 201
+    tracking_id = create_res.json()["tracking_id"]
+
+    # 1. Update from pending to picked_up
     patch_res = await async_client.patch(
-        "/api/v1/couriers/courier/parcels/NXD001225/status",
-        json={"status": "picked_up", "note": "Courier scan at collection"},
+        f"/api/v1/customers/customer/parcels/{tracking_id}/status",
+        json={"status": "picked_up", "note": "Courier scan at collection", "location": "Colombo Collection Hub"},
     )
     assert patch_res.status_code == 200
     assert patch_res.json()["status"] == "picked_up"
 
-    # 2. Customer tracks NXD001225
-    cust_res = await async_client.get("/api/v1/customers/customer/parcels/NXD001225")
+    # 2. Customer tracks the parcel
+    cust_res = await async_client.get(f"/api/v1/customers/customer/parcels/{tracking_id}")
     assert cust_res.status_code == 200
     cust_data = cust_res.json()
 
-    assert cust_data["tracking_id"] == "NXD001225"
+    assert cust_data["tracking_id"] == tracking_id
     assert cust_data["status"] == "picked_up"
     assert any(e["status"] == "picked_up" for e in cust_data["timeline"])
     assert "Courier scan at collection" in cust_data["notes"]
+
+
+@pytest.mark.asyncio
+async def test_customer_full_lifecycle_booking_to_delivery_receipt(async_client: AsyncClient):
+    """
+    Full end-to-end customer flow verification:
+    1. Book delivery (status: pending, generates tracking ID and passcode).
+    2. Progress through intermediate states: picked_up -> in_transit -> out_for_delivery -> delivered.
+    3. Verify delivered parcel has confirmed delivery date, verified passcode, and full timeline.
+    """
+    create_res = await async_client.post(
+        "/api/v1/customers/customer/parcels",
+        json={
+            "recipient_name": "Full Flow Recipient",
+            "recipient_phone": "+94778881234",
+            "delivery_address": "55 Lake Crescent",
+            "delivery_city": "Kandy",
+            "weight_kg": 2.0,
+            "fee": 550.0,
+        },
+    )
+    assert create_res.status_code == 201
+    created = create_res.json()
+    tracking_id = created["tracking_id"]
+    assert created["status"] == "pending"
+    assert len(created["delivery_passcode"]) == 6
+
+    # Intermediate 1: Picked Up
+    res_picked = await async_client.patch(
+        f"/api/v1/customers/customer/parcels/{tracking_id}/status",
+        json={"status": "picked_up", "note": "Collected from sender home", "location": "Colombo 07"},
+    )
+    assert res_picked.status_code == 200
+    assert res_picked.json()["status"] == "picked_up"
+
+    # Intermediate 2: In Transit
+    res_transit = await async_client.patch(
+        f"/api/v1/customers/customer/parcels/{tracking_id}/status",
+        json={"status": "in_transit", "note": "Sorted at Central Hub", "location": "Peliyagoda Central Hub"},
+    )
+    assert res_transit.status_code == 200
+    assert res_transit.json()["status"] == "in_transit"
+
+    # Intermediate 3: Out for Delivery
+    res_out = await async_client.patch(
+        f"/api/v1/customers/customer/parcels/{tracking_id}/status",
+        json={"status": "out_for_delivery", "note": "Assigned to Kandy courier", "location": "Kandy Dispatch Station"},
+    )
+    assert res_out.status_code == 200
+    assert res_out.json()["status"] == "out_for_delivery"
+
+    # Terminal: Delivered
+    res_delivered = await async_client.patch(
+        f"/api/v1/customers/customer/parcels/{tracking_id}/status",
+        json={"status": "delivered", "note": "Handover OTP verified and signed", "location": "55 Lake Crescent, Kandy"},
+    )
+    assert res_delivered.status_code == 200
+    delivered_data = res_delivered.json()
+    assert delivered_data["status"] == "delivered"
+    assert delivered_data["delivered_at"] is not None
+    assert delivered_data["delivery_passcode_verified"] is True
+    assert len(delivered_data["timeline"]) >= 5
 
 

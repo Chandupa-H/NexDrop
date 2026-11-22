@@ -243,7 +243,6 @@ export const apiClient = {
         doSend(null);
       }
     }),
-
   patch: <T>(endpoint: string, body?: unknown, options?: RequestInit) =>
     request<T>(endpoint, {
       ...options,

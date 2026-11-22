@@ -22,7 +22,12 @@ export interface AuthUserState {
 function isRoleDashboardAccessible(role: string | null): boolean {
   if (!role) return false;
   const normalized = role.trim().toLowerCase();
-  if (normalized === "admin" || normalized === "courier" || normalized === "dispatcher") {
+  if (
+    normalized === "admin" ||
+    normalized === "courier" ||
+    normalized === "dispatcher" ||
+    normalized === "customer"
+  ) {
     return true;
   }
   if (normalized === "merchant") {
@@ -118,6 +123,13 @@ export function useAuthUser(): AuthUserState {
       setIsLoading(false);
 
       if (nextUser) {
+        if (typeof window !== "undefined" && nextUser.email) {
+          try {
+            import("@/features/customers/api/customer.mock").then((m) => {
+              m.setActiveCustomerUserKey(nextUser.email ?? null);
+            });
+          } catch {}
+        }
         const resolvedRole = await resolveUserRole(supabase, nextUser.id);
         const target = getDashboardPathForRole(resolvedRole);
         const accessible = isRoleDashboardAccessible(resolvedRole);
@@ -127,6 +139,14 @@ export function useAuthUser(): AuthUserState {
           setIsDashboardAccessible(accessible);
         }
       } else {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("nexdrop_current_user_profile");
+            import("@/features/customers/api/customer.mock").then((m) => {
+              m.setActiveCustomerUserKey(null);
+            });
+          } catch {}
+        }
         setRole(null);
         setDashboardHref(DEFAULT_AUTHENTICATED_REDIRECT);
         setIsDashboardAccessible(false);
@@ -140,6 +160,13 @@ export function useAuthUser(): AuthUserState {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("nexdrop_current_user_profile");
+        const { setActiveCustomerUserKey } = await import("@/features/customers/api/customer.mock");
+        setActiveCustomerUserKey(null);
+      } catch {}
+    }
     await supabase.auth.signOut();
     setUser(null);
     setRole(null);

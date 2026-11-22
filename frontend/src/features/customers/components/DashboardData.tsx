@@ -1,5 +1,5 @@
+import { getCustomerProfile } from "../api/customer.server";
 import {
-  getCustomerProfile,
   getCustomerDashboardSummary,
   getCustomerParcels,
 } from "../api/customer.api";

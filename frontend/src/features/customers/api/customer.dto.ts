@@ -48,6 +48,7 @@ export interface CustomerParcelListItemDTO {
   estimated_fee: number;
   weight_kg: number;
   eta: string | null;
+  delivery_passcode?: string | null;
 }
 
 export interface CustomerParcelListDTO {
@@ -65,6 +66,7 @@ export interface CustomerTimelineEventDTO {
 export interface CustomerParcelDetailDTO {
   tracking_id: string;
   recipient_name: string;
+  recipient_phone?: string;
   recipient_phone_masked: string;
   sender_name: string;
   delivery_address: string;
@@ -73,6 +75,7 @@ export interface CustomerParcelDetailDTO {
   pickup_city: string;
   status: string;
   created_at: string;
+  delivered_at?: string | null;
   eta: string | null;
   fee: number;
   weight_kg: number;
@@ -80,6 +83,8 @@ export interface CustomerParcelDetailDTO {
   special_instructions?: string | null;
   notes: string[];
   timeline: CustomerTimelineEventDTO[];
+  delivery_passcode?: string | null;
+  delivery_passcode_verified?: boolean;
 }
 
 export interface CustomerCancelParcelRequestDTO {
@@ -97,6 +102,9 @@ export interface CustomerCreateParcelRequestDTO {
   dimensions?: string;
   special_instructions?: string;
   fee?: number;
+  delivery_passcode?: string;
+  sender_name?: string;
+  sender_email?: string;
 }
 
 export interface CustomerAddressDTO {

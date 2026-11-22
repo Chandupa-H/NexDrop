@@ -52,12 +52,72 @@ export function sortAddressesWithDefaultsFirst(list: SavedAddress[]): SavedAddre
   });
 }
 
+export function normalizeAddressKey(
+  addr: string,
+  city = "",
+  type: AddressType = "pickup"
+): string {
+  let cleanAddr = (addr || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[,\s.-]+/g, " ");
+  const cleanCity = (city || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[,\s.-]+/g, " ");
+  if (cleanCity && cleanAddr.endsWith(cleanCity)) {
+    cleanAddr = cleanAddr.slice(0, -cleanCity.length).trim();
+  }
+  return `${type}:::${cleanAddr}:::${cleanCity}`;
+}
+
+export function deduplicateAddresses(list: SavedAddress[]): SavedAddress[] {
+  if (!Array.isArray(list)) return [];
+  const map = new Map<string, SavedAddress>();
+
+  for (const item of list) {
+    if (!item || !item.address?.trim()) continue;
+    const key = normalizeAddressKey(item.address, item.city || "", item.addressType);
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, { ...item });
+    } else {
+      const isDefault = Boolean(existing.isDefault || item.isDefault);
+      const contactName = existing.contactName || item.contactName;
+      const phone = existing.phone || item.phone;
+      const customName = existing.customName || item.customName;
+      const postalCode = existing.postalCode || item.postalCode;
+      const label = existing.label && existing.label !== "Other" ? existing.label : item.label;
+      const preferItemId = !Number.isNaN(Number(item.id)) && Number.isNaN(Number(existing.id));
+      const id = preferItemId ? item.id : existing.id;
+
+      map.set(key, {
+        ...existing,
+        id,
+        label,
+        customName,
+        postalCode,
+        isDefault,
+        contactName,
+        phone,
+      });
+    }
+  }
+
+  return sortAddressesWithDefaultsFirst(Array.from(map.values()));
+}
+
 export function getDefaultAddresses(
-  initialAddress = "45/2 Temple Road",
-  city = "Colombo 07",
-  postalCode = "00700",
-  userName = "Dihini Kankanamage"
+  initialAddress = "",
+  city = "",
+  postalCode = "",
+  userName = "",
+  userPhone = ""
 ): SavedAddress[] {
+  if (!initialAddress && !city) {
+    return [];
+  }
   return [
     {
       id: "1",
@@ -67,85 +127,96 @@ export function getDefaultAddresses(
       city: city,
       postalCode: postalCode,
       isDefault: true,
-      contactName: userName,
-      phone: "+94 77 123 4567",
-    },
-    {
-      id: "2",
-      addressType: "pickup",
-      label: "Office",
-      address: "Level 12, World Trade Center, Echelon Square",
-      city: "Colombo 01",
-      postalCode: "00100",
-      isDefault: false,
-      contactName: userName,
-      phone: "+94 77 123 4567",
-    },
-    {
-      id: "3",
-      addressType: "pickup",
-      label: "Warehouse",
-      customName: "Kadawatha Distribution Depot",
-      address: "188 Kandy Road",
-      city: "Kadawatha",
-      postalCode: "11850",
-      isDefault: false,
-      contactName: "Depot Reception",
-      phone: "+94 71 888 9900",
-    },
-    {
-      id: "4",
-      addressType: "dropoff",
-      label: "Client",
-      customName: "Kasun Perera (Client)",
-      address: "12 Peradeniya Road",
-      city: "Kandy",
-      postalCode: "20000",
-      isDefault: false,
-      contactName: "Kasun Perera",
-      phone: "+94 77 987 6543",
-    },
-    {
-      id: "5",
-      addressType: "dropoff",
-      label: "Store",
-      customName: "Galle Retail Branch",
-      address: "88 Galle Road",
-      city: "Galle",
-      postalCode: "80000",
-      isDefault: false,
-      contactName: "Nimali Silva",
-      phone: "+94 71 555 4321",
+      contactName: userName || "",
+      phone: userPhone || "",
     },
   ];
 }
 
 export function useSavedAddresses(
-  initialAddress = "45/2 Temple Road",
-  city = "Colombo 07",
-  postalCode = "00700",
-  userName = "Dihini Kankanamage"
+  initialAddress = "",
+  city = "",
+  postalCode = "",
+  userName = "",
+  userPhone = ""
 ) {
   const [addresses, setAddresses] = useState<SavedAddress[]>(() =>
-    sortAddressesWithDefaultsFirst(getDefaultAddresses(initialAddress, city, postalCode, userName))
+    deduplicateAddresses(
+      getDefaultAddresses(initialAddress, city, postalCode, userName, userPhone)
+    )
   );
+
+  const userStorageKey = userName
+    ? `${SAVED_ADDRESSES_STORAGE_KEY}_${userName.trim().toLowerCase().replace(/\s+/g, "_")}`
+    : SAVED_ADDRESSES_STORAGE_KEY;
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadAddresses() {
       try {
-        const stored = localStorage.getItem(SAVED_ADDRESSES_STORAGE_KEY);
+        const stored = localStorage.getItem(userStorageKey) || (!userName ? localStorage.getItem(SAVED_ADDRESSES_STORAGE_KEY) : null);
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0 && !cancelled) {
-            const sorted = sortAddressesWithDefaultsFirst(parsed);
-            setAddresses(sorted);
-            const defaultPickup = sorted.find((a: SavedAddress) => a.addressType === "pickup" && a.isDefault);
-            const defaultDropoff = sorted.find((a: SavedAddress) => a.addressType === "dropoff" && a.isDefault);
-            if (defaultPickup) localStorage.setItem(DEFAULT_PICKUP_STORAGE_KEY, JSON.stringify(defaultPickup));
-            if (defaultDropoff) localStorage.setItem(DEFAULT_DROPOFF_STORAGE_KEY, JSON.stringify(defaultDropoff));
+          if (Array.isArray(parsed) && !cancelled) {
+            const clean = parsed.filter(
+              (a: SavedAddress) =>
+                !(a.address === "45/2 Temple Road" && a.city === "Colombo 07" && a.postalCode === "00700" && !userName)
+            );
+            if (clean.length > 0) {
+              const updated = clean.map((a: SavedAddress) => {
+                if (a.isDefault && a.addressType === "pickup") {
+                  return {
+                    ...a,
+                    address: initialAddress || a.address,
+                    city: city || a.city,
+                    postalCode: postalCode || a.postalCode,
+                    contactName: userName || a.contactName,
+                    phone: a.phone || userPhone || "",
+                  };
+                }
+                return a;
+              });
+
+              // Automatically ensure customer's pickup address is saved if not already present
+              const initialKey = (initialAddress || city) ? normalizeAddressKey(initialAddress, city, "pickup") : null;
+              const hasMatchingPickup = initialKey ? updated.some(a => normalizeAddressKey(a.address, a.city, a.addressType) === initialKey) : false;
+              if (!hasMatchingPickup && (initialAddress || city)) {
+                updated.unshift({
+                  id: "profile-pickup",
+                  addressType: "pickup",
+                  label: "Home",
+                  address: initialAddress,
+                  city: city,
+                  postalCode: postalCode || "00100",
+                  isDefault: true,
+                  contactName: userName || "",
+                  phone: userPhone || "",
+                });
+              }
+
+              const deduped = deduplicateAddresses(updated);
+              setAddresses(deduped);
+              try {
+                localStorage.setItem(userStorageKey, JSON.stringify(deduped));
+                localStorage.setItem(SAVED_ADDRESSES_STORAGE_KEY, JSON.stringify(deduped));
+              } catch {}
+              const defaultPickup = deduped.find((a: SavedAddress) => a.addressType === "pickup" && a.isDefault);
+              const defaultDropoff = deduped.find((a: SavedAddress) => a.addressType === "dropoff" && a.isDefault);
+              if (defaultPickup) localStorage.setItem(DEFAULT_PICKUP_STORAGE_KEY, JSON.stringify(defaultPickup));
+              if (defaultDropoff) localStorage.setItem(DEFAULT_DROPOFF_STORAGE_KEY, JSON.stringify(defaultDropoff));
+            } else if (initialAddress || city) {
+              const def = deduplicateAddresses(
+                getDefaultAddresses(initialAddress, city, postalCode, userName, userPhone)
+              );
+              setAddresses(def);
+            }
           }
+        } else if (initialAddress || city) {
+          const def = deduplicateAddresses(
+            getDefaultAddresses(initialAddress, city, postalCode, userName, userPhone)
+          );
+          setAddresses(def);
         }
       } catch {
         // ignore storage errors
@@ -154,12 +225,38 @@ export function useSavedAddresses(
       try {
         const backendList = await getCustomerAddresses();
         if (!cancelled && Array.isArray(backendList) && backendList.length > 0) {
-          const mapped = sortAddressesWithDefaultsFirst(backendList.map(mapDtoToSavedAddress));
-          setAddresses(mapped);
+          const mapped = backendList.map(mapDtoToSavedAddress);
+          const enriched = mapped.map((a) => {
+            if (a.isDefault && a.addressType === "pickup" && !a.phone && userPhone) {
+              return { ...a, phone: userPhone };
+            }
+            return a;
+          });
+
+          // Automatically ensure customer's pickup address is present if missing from backend list
+          const initialKey = (initialAddress || city) ? normalizeAddressKey(initialAddress, city, "pickup") : null;
+          const hasMatchingPickup = initialKey ? enriched.some(a => normalizeAddressKey(a.address, a.city, a.addressType) === initialKey) : false;
+          if (!hasMatchingPickup && (initialAddress || city)) {
+            enriched.unshift({
+              id: "profile-pickup",
+              addressType: "pickup",
+              label: "Home",
+              address: initialAddress,
+              city: city,
+              postalCode: postalCode || "00100",
+              isDefault: true,
+              contactName: userName || "",
+              phone: userPhone || "",
+            });
+          }
+
+          const deduped = deduplicateAddresses(enriched);
+          setAddresses(deduped);
           try {
-            localStorage.setItem(SAVED_ADDRESSES_STORAGE_KEY, JSON.stringify(mapped));
-            const defaultPickup = mapped.find((a) => a.addressType === "pickup" && a.isDefault);
-            const defaultDropoff = mapped.find((a) => a.addressType === "dropoff" && a.isDefault);
+            localStorage.setItem(userStorageKey, JSON.stringify(deduped));
+            localStorage.setItem(SAVED_ADDRESSES_STORAGE_KEY, JSON.stringify(deduped));
+            const defaultPickup = deduped.find((a) => a.addressType === "pickup" && a.isDefault);
+            const defaultDropoff = deduped.find((a) => a.addressType === "dropoff" && a.isDefault);
             if (defaultPickup) localStorage.setItem(DEFAULT_PICKUP_STORAGE_KEY, JSON.stringify(defaultPickup));
             if (defaultDropoff) localStorage.setItem(DEFAULT_DROPOFF_STORAGE_KEY, JSON.stringify(defaultDropoff));
           } catch {
@@ -175,20 +272,65 @@ export function useSavedAddresses(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialAddress, city, postalCode, userName, userPhone, userStorageKey]);
+
+  useEffect(() => {
+    if (initialAddress || userPhone || userName) {
+      setAddresses((prev) => {
+        const initialKey = (initialAddress || city) ? normalizeAddressKey(initialAddress, city, "pickup") : null;
+        const existingIdx = initialKey ? prev.findIndex(a => normalizeAddressKey(a.address, a.city, a.addressType) === initialKey) : -1;
+        let nextList: SavedAddress[];
+        if (existingIdx >= 0) {
+          nextList = prev.map((a, idx) =>
+            idx === existingIdx
+              ? {
+                  ...a,
+                  address: initialAddress || a.address,
+                  city: city || a.city,
+                  postalCode: postalCode || a.postalCode,
+                  contactName: userName || a.contactName,
+                  phone: userPhone || a.phone,
+                }
+              : a
+          );
+        } else if (initialAddress || city) {
+          nextList = [
+            {
+              id: "profile-pickup",
+              addressType: "pickup",
+              label: "Home",
+              address: initialAddress,
+              city: city,
+              postalCode: postalCode || "00100",
+              isDefault: true,
+              contactName: userName || "",
+              phone: userPhone || "",
+            },
+            ...prev,
+          ];
+        } else {
+          nextList = prev;
+        }
+        return deduplicateAddresses(nextList);
+      });
+    }
+  }, [initialAddress, city, postalCode, userName, userPhone]);
 
   const saveAddresses = (newAddresses: SavedAddress[]) => {
-    const sorted = sortAddressesWithDefaultsFirst(newAddresses);
-    setAddresses(sorted);
+    const deduped = deduplicateAddresses(newAddresses);
+    setAddresses(deduped);
     try {
-      localStorage.setItem(SAVED_ADDRESSES_STORAGE_KEY, JSON.stringify(sorted));
-      const defaultPickup = sorted.find((a) => a.addressType === "pickup" && a.isDefault);
+      localStorage.setItem(SAVED_ADDRESSES_STORAGE_KEY, JSON.stringify(deduped));
+      if (userName) {
+        localStorage.setItem(userStorageKey, JSON.stringify(deduped));
+      }
+      const defaultPickup = deduped.find((a) => a.addressType === "pickup" && a.isDefault);
       if (defaultPickup) {
         localStorage.setItem(DEFAULT_PICKUP_STORAGE_KEY, JSON.stringify(defaultPickup));
       } else {
         localStorage.removeItem(DEFAULT_PICKUP_STORAGE_KEY);
       }
-      const defaultDropoff = sorted.find((a) => a.addressType === "dropoff" && a.isDefault);
+      const defaultDropoff = deduped.find((a) => a.addressType === "dropoff" && a.isDefault);
       if (defaultDropoff) {
         localStorage.setItem(DEFAULT_DROPOFF_STORAGE_KEY, JSON.stringify(defaultDropoff));
       } else {
@@ -255,6 +397,15 @@ export function useSavedAddresses(
   };
 
   const addAddress = async (entry: Omit<SavedAddress, "id" | "isDefault">) => {
+    const entryKey = normalizeAddressKey(entry.address, entry.city, entry.addressType);
+    const existing = addresses.find(
+      (a) => normalizeAddressKey(a.address, a.city, a.addressType) === entryKey
+    );
+    if (existing) {
+      updateAddress(existing.id, entry);
+      return;
+    }
+
     const tempId = `addr-${Date.now()}`;
     const newEntry: SavedAddress = {
       ...entry,
@@ -278,7 +429,7 @@ export function useSavedAddresses(
       if (created) {
         const mapped = mapDtoToSavedAddress(created);
         setAddresses((prev) =>
-          prev.map((a) => (a.id === tempId ? mapped : a))
+          deduplicateAddresses(prev.map((a) => (a.id === tempId ? mapped : a)))
         );
       }
     } catch (err) {
@@ -334,4 +485,116 @@ export function useSavedAddresses(
     updateAddress,
     setAddresses: saveAddresses,
   };
+}
+
+export function autoSaveUsedAddress({
+  addressType,
+  address,
+  city,
+  postalCode = "00100",
+  contactName = "",
+  phone = "",
+  label = addressType === "pickup" ? "Home" : "Client",
+  userName = "",
+}: {
+  addressType: AddressType;
+  address: string;
+  city: string;
+  postalCode?: string;
+  contactName?: string;
+  phone?: string;
+  label?: SavedAddress["label"];
+  userName?: string;
+}): void {
+  if (typeof window === "undefined") return;
+  const cleanAddress = address.trim();
+  const cleanCity = city.trim();
+  if (!cleanAddress || !cleanCity) return;
+
+  const targetKey = normalizeAddressKey(cleanAddress, cleanCity, addressType);
+  const genericKey = SAVED_ADDRESSES_STORAGE_KEY;
+  const userKey = userName
+    ? `${SAVED_ADDRESSES_STORAGE_KEY}_${userName.trim().toLowerCase().replace(/\s+/g, "_")}`
+    : null;
+
+  const storageKeys = [genericKey];
+  if (userKey && !storageKeys.includes(userKey)) {
+    storageKeys.push(userKey);
+  }
+
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("nexdrop_customer_saved_addresses_") && !storageKeys.includes(k)) {
+        storageKeys.push(k);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  for (const key of storageKeys) {
+    try {
+      const stored = localStorage.getItem(key);
+      let list: SavedAddress[] = [];
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          list = deduplicateAddresses(parsed);
+        }
+      }
+
+      const existingIdx = list.findIndex(
+        (a) => normalizeAddressKey(a.address, a.city, a.addressType) === targetKey
+      );
+
+      if (existingIdx >= 0) {
+        list[existingIdx] = {
+          ...list[existingIdx],
+          city: cleanCity || list[existingIdx].city,
+          postalCode: postalCode.trim() || list[existingIdx].postalCode,
+          contactName: contactName.trim() || list[existingIdx].contactName,
+          phone: phone.trim() || list[existingIdx].phone,
+        };
+      } else {
+        const hasDefault = list.some((a) => a.addressType === addressType && a.isDefault);
+        const newAddress: SavedAddress = {
+          id: `addr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          addressType,
+          label,
+          address: cleanAddress,
+          city: cleanCity,
+          postalCode: postalCode.trim() || "00100",
+          contactName: contactName.trim() || userName,
+          phone: phone.trim(),
+          isDefault: addressType === "pickup" && !hasDefault,
+        };
+        list.push(newAddress);
+      }
+
+      const deduped = deduplicateAddresses(list);
+      localStorage.setItem(key, JSON.stringify(deduped));
+
+      const defaultPickup = deduped.find((a) => a.addressType === "pickup" && a.isDefault);
+      const defaultDropoff = deduped.find((a) => a.addressType === "dropoff" && a.isDefault);
+      if (defaultPickup) localStorage.setItem(DEFAULT_PICKUP_STORAGE_KEY, JSON.stringify(defaultPickup));
+      if (defaultDropoff) localStorage.setItem(DEFAULT_DROPOFF_STORAGE_KEY, JSON.stringify(defaultDropoff));
+    } catch {
+      // ignore localStorage errors
+    }
+  }
+
+  // Also sync with backend asynchronously
+  createCustomerAddress({
+    address_type: addressType,
+    label,
+    address: cleanAddress,
+    city: cleanCity,
+    postal_code: postalCode.trim() || "00100",
+    contact_name: contactName.trim() || userName,
+    phone: phone.trim(),
+    is_default: false,
+  }).catch(() => {
+    // offline or backend unreachable
+  });
 }

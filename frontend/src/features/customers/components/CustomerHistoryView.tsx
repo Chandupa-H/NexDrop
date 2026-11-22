@@ -30,10 +30,6 @@ export function CustomerHistoryView() {
   return (
     <div className="min-w-0 space-y-6">
       <PageHeader title="Delivery History" subtitle="Browse all bookings, newest first, and view shipment details." />
-      <p className="text-sm text-muted-foreground">
-        Customer authentication is incomplete. The service currently uses a fixed customer and may return demo data.
-        Displayed records are not verified PostgreSQL history. Details are read-only here.
-      </p>
       <CustomerParcelsTable
         showReceipts
         parcels={data.parcels} total={data.total} filter={filter}

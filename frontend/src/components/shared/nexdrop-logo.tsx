@@ -28,9 +28,16 @@ export function NexDropLogo({
       ? "text-white"
       : variant === "light"
       ? "text-emerald-950"
-      : "text-emerald-950";
+      : "text-emerald-950 dark:text-white print:!text-emerald-950";
 
   const dropColor = "text-emerald-500";
+
+  const subColor =
+    variant === "dark"
+      ? "text-emerald-300"
+      : variant === "light"
+      ? "text-emerald-900/80"
+      : "text-emerald-900/80 dark:text-emerald-300 print:!text-emerald-900/80";
 
   return (
     <div className={`inline-flex items-center gap-3 select-none ${className}`}>
@@ -81,19 +88,20 @@ export function NexDropLogo({
         <path
           d="M6 44C16 44 26 41 35 34C40 30 46 32 44 38C42 44 32 50 18 50C10 50 6 46 6 44Z"
           fill="url(#ribbonGrad1)"
+          className="print:fill-[#15803d]"
           filter="url(#softGlow)"
         />
 
         {/* Isometric 3D Parcel Box */}
-        <g filter="url(#softGlow)">
+        <g filter="url(#softGlow)" className="print:[filter:none]">
           {/* Top Face */}
-          <path d="M37 14L53 23L37 32L21 23L37 14Z" fill="url(#boxTopGrad)" />
+          <path d="M37 14L53 23L37 32L21 23L37 14Z" fill="url(#boxTopGrad)" className="print:fill-[#d97706]" />
           {/* Box Seam/Tape Top */}
           <path d="M29 18.5L45 27.5" stroke="#8d5622" strokeWidth="2.5" strokeLinecap="round" opacity="0.65" />
           {/* Left Face */}
-          <path d="M21 23L37 32V51L21 42V23Z" fill="url(#boxLeftGrad)" />
+          <path d="M21 23L37 32V51L21 42V23Z" fill="url(#boxLeftGrad)" className="print:fill-[#b45309]" />
           {/* Right Face */}
-          <path d="M37 32L53 23V42L37 51V32Z" fill="url(#boxRightGrad)" />
+          <path d="M37 32L53 23V42L37 51V32Z" fill="url(#boxRightGrad)" className="print:fill-[#78350f]" />
           {/* Box Tape Down Center */}
           <path d="M37 32V51" stroke="#6e3f14" strokeWidth="2.5" opacity="0.5" />
         </g>
@@ -102,10 +110,12 @@ export function NexDropLogo({
         <path
           d="M8 29C18 29 28 32 37 38C32 42 22 42 14 37C10 34.5 8 31 8 29Z"
           fill="url(#ribbonGrad2)"
+          className="print:fill-[#16a34a]"
         />
         <path
           d="M12 18C20 18 28 22 34 27C30 30 22 30 16 26C13 24 12 20 12 18Z"
           fill="url(#ribbonGrad3)"
+          className="print:fill-[#22c55e]"
         />
       </svg>
 
@@ -117,9 +127,7 @@ export function NexDropLogo({
             <span className={dropColor}>Drop</span>
           </div>
           <span
-            className={`font-semibold tracking-wider uppercase mt-0.5 ${currentSize.sub} ${
-              variant === "dark" ? "text-emerald-300" : "text-emerald-900/80"
-            }`}
+            className={`font-semibold tracking-wider uppercase mt-0.5 ${currentSize.sub} ${subColor}`}
           >
             Courier & Logistics
           </span>

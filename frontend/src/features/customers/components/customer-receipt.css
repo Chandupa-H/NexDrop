@@ -9,20 +9,53 @@
 }
 
 @media print {
+  @page {
+    size: auto;
+    margin: 0;
+  }
+
+  /* Force light mode variables during printing so dark mode does not wash out text on white paper */
+  :root,
+  .dark,
+  html.dark,
+  body.dark,
+  body:has(.customer-receipt-page),
+  .customer-receipt-paper {
+    --background: #ffffff !important;
+    --foreground: #111827 !important;
+    --card: #ffffff !important;
+    --card-foreground: #111827 !important;
+    --muted-foreground: #4b5563 !important;
+    --border: #e5e7eb !important;
+    --dashboard-text: #111827 !important;
+    --dashboard-muted: #4b5563 !important;
+    --dashboard-surface: #ffffff !important;
+    --dashboard-page-bg: #ffffff !important;
+    --dashboard-hairline: #e5e7eb !important;
+    --dashboard-primary: #15803d !important;
+    color-scheme: light !important;
+  }
+
   /* Scope shell overrides to this receipt route, without changing other pages. */
+  html,
+  body {
+    height: 100% !important;
+    color-scheme: light !important;
+  }
+
   body:has(.customer-receipt-page),
   body:has(.customer-receipt-page) .dashboard-shell-grid,
   body:has(.customer-receipt-page) .dashboard-main-column,
   body:has(.customer-receipt-page) .dashboard-page-scroll,
   body:has(.customer-receipt-page) .dashboard-page-container {
     display: block !important;
-    height: auto !important;
+    height: 100% !important;
     min-height: 0 !important;
     overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
     background: white !important;
-    color: black !important;
+    color: #111827 !important;
   }
 
   body:has(.customer-receipt-page) .dashboard-shell-grid > :not(.dashboard-main-column),
@@ -32,21 +65,144 @@
   }
 
   .customer-receipt-paper {
-    width: 100%;
-    max-width: none;
-    margin: 0;
-    padding: 12mm;
-    border: 0;
-    border-radius: 0;
-    background: white;
-    color: black;
-    box-shadow: none;
-    font-size: 11pt;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    min-height: 100vh !important;
+    max-height: 275mm !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 10mm 14mm 10mm 8mm !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-sizing: border-box !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    color-scheme: light !important;
+  }
+
+  /* Force strong, readable text contrast across all receipt blocks */
+  .customer-receipt-paper,
+  .customer-receipt-paper * {
+    color-scheme: light !important;
+  }
+
+  .customer-receipt-paper .text-foreground,
+  .customer-receipt-paper h2,
+  .customer-receipt-paper h3,
+  .customer-receipt-paper dt,
+  .customer-receipt-paper dd,
+  .customer-receipt-paper p {
+    color: #111827;
+  }
+
+  /* Receipt Delivered Status Badge in Print */
+  .customer-receipt-paper .receipt-status-badge span,
+  .customer-receipt-paper .receipt-status-badge [class*="bg-"] {
+    background-color: #15803d !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Secondary / label / timestamp text: high contrast charcoal/dark slate */
+  .customer-receipt-paper .text-muted-foreground,
+  .customer-receipt-paper dt {
+    color: #4b5563 !important;
+  }
+
+  /* Emphasized values: deep black */
+  .customer-receipt-paper dd,
+  .customer-receipt-paper .font-semibold,
+  .customer-receipt-paper .font-bold {
+    color: #111827 !important;
+  }
+
+  /* Emerald brand / verified / badges: solid high-contrast dark green for print */
+  .customer-receipt-paper .text-emerald-800,
+  .customer-receipt-paper .text-emerald-900,
+  .customer-receipt-paper .text-emerald-700,
+  .customer-receipt-paper .text-emerald-600,
+  .customer-receipt-paper .text-emerald-500,
+  .customer-receipt-paper .text-emerald-400,
+  .customer-receipt-paper .text-emerald-300 {
+    color: #15803d !important;
+  }
+
+  .customer-receipt-paper svg {
+    color: #15803d;
+  }
+
+  /* Route & Specs Card in print */
+  .customer-receipt-paper [class*="bg-emerald-"] {
+    background-color: #f0fdf4 !important;
+    border-color: #bbf7d0 !important;
+  }
+
+  /* Borders: solid crisp light gray */
+  .customer-receipt-paper [class*="border-"] {
+    border-color: #e5e7eb !important;
+  }
+
+  .customer-receipt-paper header .receipt-logo {
+    margin-left: -2mm !important;
+  }
+
+  .receipt-logo svg {
+    display: inline-block !important;
+    visibility: visible !important;
+    filter: none !important;
+  }
+
+  .receipt-logo svg * {
+    visibility: visible !important;
+    filter: none !important;
+  }
+
+  .receipt-logo svg path[fill*="ribbonGrad1"] {
+    fill: #15803d !important;
+  }
+
+  .receipt-logo svg path[fill*="boxTopGrad"] {
+    fill: #d97706 !important;
+  }
+
+  .receipt-logo svg path[fill*="boxLeftGrad"] {
+    fill: #b45309 !important;
+  }
+
+  .receipt-logo svg path[fill*="boxRightGrad"] {
+    fill: #78350f !important;
+  }
+
+  .receipt-logo svg path[fill*="ribbonGrad2"] {
+    fill: #16a34a !important;
+  }
+
+  .receipt-logo svg path[fill*="ribbonGrad3"] {
+    fill: #22c55e !important;
+  }
+
+  .customer-receipt-paper footer {
+    margin-top: auto !important;
+    padding-top: 1.5rem !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .customer-receipt-paper section,
   .customer-receipt-paper header,
   .customer-receipt-paper dl > div {
-    break-inside: avoid;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }

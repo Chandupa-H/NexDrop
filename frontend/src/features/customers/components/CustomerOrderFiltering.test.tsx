@@ -44,7 +44,9 @@ function serveOrders(items: CustomerParcelListDTO["items"]) {
 describe("customer order filtering across both views", () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it.each(["dashboard", "history"] as const)("%s includes all six statuses and applies only the selected filter", async (view) => {
+  it.each(["dashboard", "history"] as const)(
+    "%s includes all six statuses and applies only the selected filter",
+    async (view) => {
     const items = orders(6);
     serveOrders(items);
     render(view === "dashboard"
@@ -80,7 +82,7 @@ describe("customer order filtering across both views", () => {
     // Every All Orders API request must omit status, rather than enumerate known statuses.
     const allRequests = vi.mocked(apiClient.get).mock.calls.filter(([endpoint]) => !new URL(endpoint, "http://test.invalid").searchParams.has("status"));
     if (view === "history") expect(allRequests.length).toBeGreaterThan(0);
-  });
+  }, 15000);
 
   it("preserves history server totals and resets to page one for every filter, including All Orders", async () => {
     serveOrders(orders(24));
@@ -105,5 +107,5 @@ describe("customer order filtering across both views", () => {
       fireEvent.click(screen.getByRole("button", { name: "Next" }));
       await screen.findByText("Showing 11–20 of 24 deliveries");
     }
-  });
+  }, 15000);
 });

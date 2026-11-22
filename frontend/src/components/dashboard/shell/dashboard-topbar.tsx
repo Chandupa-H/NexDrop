@@ -4,10 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Bell, Menu, Search, ArrowLeft, Home, LogOut, Key, ChevronDown, Package } from "lucide-react";
+import { Bell, Menu, Search, ArrowLeft, Home, LogOut, Key, ChevronDown, Package, User } from "lucide-react";
 import { getTopbarTitle } from "@/lib/dashboard/topbar";
 import type { DashboardRoleConfig, DashboardUser } from "@/lib/dashboard/types";
 import { logoutAction } from "@/lib/auth/logout";
+import { ThemeToggle, ThemeToggleMenuItem } from "./theme-toggle";
 
 export function DashboardTopbar({
   config,
@@ -26,6 +27,7 @@ export function DashboardTopbar({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
 
   useEffect(() => {
     if (mobileSearchOpen) searchRef.current?.focus();
@@ -62,7 +64,7 @@ export function DashboardTopbar({
             className="dashboard-page-title"
             aria-live={config.topbarTitle ? undefined : "polite"}
           >
-            {getTopbarTitle(config, pathname)}
+            {getTopbarTitle(config, pathname, searchParams)}
           </div>
         </div>
 
@@ -109,7 +111,8 @@ export function DashboardTopbar({
           </button>
         </div>
 
-        <div className="dashboard-topbar-actions">
+        <div className="dashboard-topbar-actions flex items-center gap-2">
+          <ThemeToggle />
           <NotificationsPopover unreadCount={unreadNotifications} />
           {userSlot}
         </div>
@@ -227,6 +230,8 @@ export function TopbarProfileLink({
     });
   };
 
+  const isCustomer = user.roleLabel.toLowerCase() === "customer";
+
   return (
     <div className="relative" ref={rootRef}>
       <Link
@@ -268,15 +273,15 @@ export function TopbarProfileLink({
       {/* Account Popover Menu */}
       {isOpen && (
         <div
-          className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[#E5E7EB] bg-white p-2 shadow-2xl z-50 text-xs animate-in fade-in duration-150"
+          className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[#E5E7EB] dark:border-[#1c422e] bg-white dark:bg-[#0e2419] p-2 shadow-2xl z-50 text-xs animate-in fade-in duration-150"
           role="menu"
         >
           {/* User Info Header */}
-          <div className="p-3 border-b border-[#E5E7EB] bg-[#F8FAF8] rounded-lg mb-1">
-            <span className="font-bold text-gray-900 block truncate text-sm">
+          <div className="p-3 border-b border-[#E5E7EB] dark:border-[#1c422e] bg-[#F8FAF8] dark:bg-[#143625] rounded-lg mb-1 flex items-center justify-between gap-2">
+            <span className="font-bold text-gray-900 dark:text-gray-100 truncate text-sm">
               {user.name}
             </span>
-            <span className="text-[11px] text-[#064E3B] font-semibold bg-emerald-100 px-2 py-0.5 rounded-full inline-block mt-1">
+            <span className="text-[11px] text-[#064E3B] dark:text-[#22c55e] font-semibold bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full shrink-0">
               {user.roleLabel}
             </span>
           </div>
@@ -286,47 +291,75 @@ export function TopbarProfileLink({
             <Link
               href="/"
               onClick={() => setIsOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-[#F0FDF4] hover:text-[#064E3B] font-medium transition-colors"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-[#F0FDF4] hover:text-[#064E3B] dark:hover:bg-[#143525] dark:hover:text-[#22c55e] font-medium transition-colors"
               role="menuitem"
             >
-              <Home className="w-4 h-4 text-[#064E3B]" />
+              <Home className="w-4 h-4 text-[#064E3B] dark:text-[#22c55e]" />
               <span>Return to Home Page</span>
             </Link>
 
-            <Link
-              href="/merchant/dashboard?tab=orders"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-[#F0FDF4] hover:text-[#064E3B] font-medium transition-colors"
-              role="menuitem"
-            >
-              <Package className="w-4 h-4 text-gray-500" />
-              <span>All Shipments</span>
-            </Link>
+            {isCustomer ? (
+              <>
+                <Link
+                  href={profileHref || "/customer/profile"}
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-[#F0FDF4] hover:text-[#064E3B] dark:hover:bg-[#143525] dark:hover:text-[#22c55e] font-medium transition-colors"
+                  role="menuitem"
+                >
+                  <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span>Customer Profile</span>
+                </Link>
 
-            {profileHref && (
-              <Link
-                href={profileHref}
-                onClick={() => setIsOpen(false)}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 hover:bg-[#F0FDF4] hover:text-[#064E3B] font-medium transition-colors"
-                role="menuitem"
-              >
-                <Key className="w-4 h-4 text-gray-500" />
-                <span>API Keys & Integrations</span>
-              </Link>
+                <Link
+                  href="/customer/history"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-[#F0FDF4] hover:text-[#064E3B] dark:hover:bg-[#143525] dark:hover:text-[#22c55e] font-medium transition-colors"
+                  role="menuitem"
+                >
+                  <Package className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span>All Shipments</span>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/merchant/dashboard?tab=orders"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-[#F0FDF4] hover:text-[#064E3B] dark:hover:bg-[#143525] dark:hover:text-[#22c55e] font-medium transition-colors"
+                  role="menuitem"
+                >
+                  <Package className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  <span>All Shipments</span>
+                </Link>
+
+                {profileHref && (
+                  <Link
+                    href={profileHref}
+                    onClick={() => setIsOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-[#F0FDF4] hover:text-[#064E3B] dark:hover:bg-[#143525] dark:hover:text-[#22c55e] font-medium transition-colors"
+                    role="menuitem"
+                  >
+                    <Key className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span>API Keys & Integrations</span>
+                  </Link>
+                )}
+              </>
             )}
           </div>
 
-          <div className="border-t border-[#E5E7EB] my-1" />
+          <div className="border-t border-[#E5E7EB] dark:border-[#1c422e] my-1" />
+          <ThemeToggleMenuItem />
+          <div className="border-t border-[#E5E7EB] dark:border-[#1c422e] my-1" />
 
           {/* Sign Out Action */}
           <button
             type="button"
             disabled={isLoggingOut}
             onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 font-semibold transition-colors text-left"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 font-semibold transition-colors text-left"
             role="menuitem"
           >
-            <LogOut className="w-4 h-4 text-red-600" />
+            <LogOut className="w-4 h-4 text-red-600 dark:text-red-400" />
             <span>{isLoggingOut ? "Signing out..." : "Log out"}</span>
           </button>
         </div>

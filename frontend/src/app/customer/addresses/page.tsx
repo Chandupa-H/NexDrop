@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { PageHeader } from "@/components/dashboard";
 import { SavedAddressesCard } from "@/features/customers/components/SavedAddressesCard";
-import { getCustomerProfile } from "@/features/customers/api/customer.api";
+import { getCustomerProfile } from "@/features/customers/api/customer.server";
 import { mapCustomerProfile } from "@/features/customers/api/customer.mappers";
 
 export const metadata = {
@@ -27,6 +27,7 @@ async function CustomerAddressesContent() {
           city={profile.city}
           postalCode={profile.postalCode}
           userName={profile.fullName}
+          userPhone={profile.phone}
           title="All Saved Locations"
           subtitle="Complete address book for pickup origins and recipient destinations across Sri Lanka"
         />

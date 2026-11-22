@@ -25,6 +25,7 @@ import { ThemedSelect } from "@/components/ui/themed-select";
 import { SRI_LANKA_HUBS } from "../constants/destinations";
 import {
   useSavedAddresses,
+  deduplicateAddresses,
   type SavedAddress,
   type AddressType,
 } from "../hooks/useSavedAddresses";
@@ -36,6 +37,7 @@ export interface SavedAddressesCardProps {
   city?: string;
   postalCode?: string;
   userName?: string;
+  userPhone?: string;
   limit?: number;
   showViewAllLink?: boolean;
   isDashboardView?: boolean;
@@ -59,10 +61,11 @@ const CITIES = [
 ];
 
 export function SavedAddressesCard({
-  initialAddress = "45/2 Temple Road",
-  city = "Colombo 07",
-  postalCode = "00700",
-  userName = "Dihini Kankanamage",
+  initialAddress = "",
+  city = "",
+  postalCode = "",
+  userName = "",
+  userPhone = "",
   limit,
   showViewAllLink = false,
   isDashboardView = false,
@@ -78,7 +81,7 @@ export function SavedAddressesCard({
     addAddress,
     updateAddress,
     setAddresses,
-  } = useSavedAddresses(initialAddress, city, postalCode, userName);
+  } = useSavedAddresses(initialAddress, city, postalCode, userName, userPhone);
 
   const [activeTab, setActiveTab] = useState<"all" | "pickup" | "dropoff">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -93,10 +96,12 @@ export function SavedAddressesCard({
   const [newCity, setNewCity] = useState("");
   const [newPostalCode, setNewPostalCode] = useState("");
   const [newContactName, setNewContactName] = useState(userName);
-  const [newPhone, setNewPhone] = useState("+94 77 123 4567");
+  const [newPhone, setNewPhone] = useState(userPhone || "");
   const [newIsDefault, setNewIsDefault] = useState(false);
 
-  const filteredAddresses = addresses.filter((a) => {
+  const deduplicatedList = deduplicateAddresses(addresses);
+
+  const filteredAddresses = deduplicatedList.filter((a) => {
     if (activeTab === "all") return true;
     return a.addressType === activeTab;
   });
@@ -126,7 +131,7 @@ export function SavedAddressesCard({
     setNewCity("");
     setNewPostalCode("");
     setNewContactName(userName);
-    setNewPhone("+94 77 123 4567");
+    setNewPhone(userPhone || "");
     setNewIsDefault(false);
     setShowAddModal(true);
   };
@@ -140,7 +145,7 @@ export function SavedAddressesCard({
     setNewCity(item.city);
     setNewPostalCode(item.postalCode);
     setNewContactName(item.contactName || userName);
-    setNewPhone(item.phone || "+94 77 123 4567");
+    setNewPhone(item.phone || (item.addressType === "pickup" ? userPhone : "") || "");
     setNewIsDefault(Boolean(item.isDefault));
     setShowAddModal(true);
   };
@@ -203,8 +208,8 @@ export function SavedAddressesCard({
     }
   };
 
-  const pickupCount = addresses.filter((a) => a.addressType === "pickup").length;
-  const dropoffCount = addresses.filter((a) => a.addressType === "dropoff").length;
+  const pickupCount = deduplicatedList.filter((a) => a.addressType === "pickup").length;
+  const dropoffCount = deduplicatedList.filter((a) => a.addressType === "dropoff").length;
 
   const cardSubtitle =
     subtitle ||
@@ -251,7 +256,7 @@ export function SavedAddressesCard({
                   : "text-[var(--dashboard-muted)] hover:text-[var(--dashboard-text)] hover:bg-[var(--dashboard-control-bg)]"
               }`}
             >
-              All Addresses ({addresses.length})
+              All Addresses ({deduplicatedList.length})
             </button>
 
             <button
@@ -302,7 +307,7 @@ export function SavedAddressesCard({
                   }`}
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <div className="p-2.5 rounded-xl bg-white border border-[var(--dashboard-hairline)] shrink-0 mt-0.5 shadow-2xs">
+                    <div className="p-2.5 rounded-xl bg-white dark:bg-[var(--dashboard-surface)] border border-[var(--dashboard-hairline)] shrink-0 mt-0.5 shadow-2xs">
                       {getLabelIcon(item.label)}
                     </div>
                     <div className="min-w-0 space-y-1">
@@ -313,29 +318,35 @@ export function SavedAddressesCard({
 
                         {/* Distinct Purpose Badge */}
                         {isPickup ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <Truck className="w-3.5 h-3.5 text-emerald-600" /> Pickup Location
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                            <Truck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Pickup Location
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <MapPin className="w-3.5 h-3.5 text-emerald-600" /> Drop-off Destination
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Drop-off Destination
                           </span>
                         )}
 
                         {item.isDefault && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            <Star className="w-3.5 h-3.5 fill-emerald-700 text-emerald-700" /> Default {isPickup ? "Pickup" : "Destination"}
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700/50">
+                            <Star className="w-3.5 h-3.5 fill-emerald-700 dark:fill-emerald-400 text-emerald-700 dark:text-emerald-400" /> Default {isPickup ? "Pickup" : "Destination"}
                           </span>
                         )}
                       </div>
                       <p className="text-sm text-[var(--dashboard-muted)] truncate max-w-xl">
                         {item.address}, {item.city} ({item.postalCode})
                       </p>
-                      {item.contactName && (
-                        <p className="text-sm text-[var(--dashboard-muted)]">
-                          Contact: {item.contactName} • {item.phone}
-                        </p>
-                      )}
+                      {(() => {
+                        const contactName = item.contactName || (isPickup ? userName : "");
+                        const contactPhone = item.phone || (isPickup ? userPhone : "");
+                        if (!contactName && !contactPhone) return null;
+                        return (
+                          <p className="text-sm text-[var(--dashboard-muted)]">
+                            Contact: {contactName || "Customer"}
+                            {contactPhone ? ` • ${contactPhone}` : ""}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -434,7 +445,7 @@ export function SavedAddressesCard({
                     onClick={() => setNewAddressType("pickup")}
                     className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-colors cursor-pointer ${
                       newAddressType === "pickup"
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-800"
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-600 text-emerald-800 dark:text-emerald-200"
                         : "bg-[var(--dashboard-surface)] border-[var(--dashboard-hairline)] text-[var(--dashboard-text)] hover:bg-[var(--dashboard-neutral-bg)]"
                     }`}
                   >
@@ -450,7 +461,7 @@ export function SavedAddressesCard({
                     onClick={() => setNewAddressType("dropoff")}
                     className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-colors cursor-pointer ${
                       newAddressType === "dropoff"
-                        ? "bg-emerald-50 border-emerald-500 text-emerald-800"
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 dark:border-emerald-600 text-emerald-800 dark:text-emerald-200"
                         : "bg-[var(--dashboard-surface)] border-[var(--dashboard-hairline)] text-[var(--dashboard-text)] hover:bg-[var(--dashboard-neutral-bg)]"
                     }`}
                   >
@@ -566,7 +577,7 @@ export function SavedAddressesCard({
                     type="text"
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
-                    placeholder="e.g. +94 77 123 4567"
+                    placeholder="e.g. +94 7X XXX XXXX"
                     className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-[var(--dashboard-hairline)] bg-[var(--dashboard-page-bg)] text-[var(--dashboard-text)] outline-none focus:ring-2 focus:ring-[var(--dashboard-primary)]"
                   />
                 </div>
@@ -588,7 +599,7 @@ export function SavedAddressesCard({
                         }}
                         title={newIsDefault ? "Default address cannot be deleted" : "Delete Address"}
                         aria-label={newIsDefault ? "Default address cannot be deleted" : "Delete Address"}
-                        className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 bg-white border border-red-200 flex items-center justify-center rounded-lg cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-red-400 focus:outline-none focus:ring-0 outline-none select-none"
+                        className="h-9 w-9 p-0 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 bg-[var(--dashboard-surface)] border border-red-200 dark:border-red-900/40 flex items-center justify-center rounded-lg cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent focus:outline-none focus:ring-0 outline-none select-none"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -600,13 +611,13 @@ export function SavedAddressesCard({
                         aria-label={newIsDefault ? "Remove default status" : "Set as Default"}
                         className={`h-9 w-9 p-0 rounded-lg border flex items-center justify-center cursor-pointer transition-all focus:outline-none focus:ring-0 outline-none select-none ${
                           newIsDefault
-                            ? "bg-emerald-50 border-emerald-300 text-emerald-600 shadow-2xs"
-                            : "bg-white border-gray-200 text-gray-400 hover:text-emerald-600 hover:border-emerald-300 hover:bg-emerald-50/50"
+                            ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/60 text-emerald-600 dark:text-emerald-400 shadow-2xs"
+                            : "bg-[var(--dashboard-surface)] border-[var(--dashboard-hairline)] text-[var(--dashboard-muted)] hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 dark:hover:border-emerald-800/60 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20"
                         }`}
                       >
                         <Star
                           className={`w-4 h-4 transition-colors ${
-                            newIsDefault ? "fill-emerald-600 text-emerald-600" : ""
+                            newIsDefault ? "fill-emerald-600 text-emerald-600 dark:fill-emerald-400 dark:text-emerald-400" : ""
                           }`}
                         />
                       </button>

@@ -21,6 +21,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { NexDropLogo } from "@/components/shared/nexdrop-logo";
 import { supabase } from "@/lib/supabase/client";
+import { updateCustomerProfile } from "@/features/customers/api/customer.api";
 
 const CUSTOMER_ROLE_ID = "51e60818-d8c1-46e0-afc6-93d2da35ea4c";
 
@@ -74,31 +75,103 @@ export default function CustomerRegisterPage() {
         return;
       }
 
-      // 1. Update Supabase Auth user metadata
+      // 1. Update Supabase Auth user metadata with all profile fields
       await supabase.auth.updateUser({
         data: {
           role: "customer",
           full_name: fullName.trim(),
           phone: phone.trim(),
+          default_address: streetAddress.trim(),
+          city: city.trim() || "Colombo",
+          postal_code: postalCode.trim(),
+          delivery_notes: deliveryNotes.trim(),
         },
       });
 
       // 2. Upsert profile in Supabase profiles table
-      await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          role_id: CUSTOMER_ROLE_ID,
+      try {
+        await supabase.from("profiles").upsert(
+          {
+            id: user.id,
+            role_id: CUSTOMER_ROLE_ID,
+            full_name: fullName.trim(),
+            email: user.email,
+            phone: phone.trim(),
+            default_address: streetAddress.trim(),
+            city: city.trim() || "Colombo",
+            postal_code: postalCode.trim(),
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+      } catch {
+        await supabase.from("profiles").upsert(
+          {
+            id: user.id,
+            role_id: CUSTOMER_ROLE_ID,
+            full_name: fullName.trim(),
+            email: user.email,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+      }
+
+      // 3. Update backend customer profile and default address
+      try {
+        await updateCustomerProfile({
           full_name: fullName.trim(),
-          email: user.email,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" }
-      );
+          phone: phone.trim(),
+          default_address: streetAddress.trim(),
+          city: city.trim() || "Colombo",
+          postal_code: postalCode.trim(),
+        });
+      } catch (backendErr) {
+        console.warn("Backend update failed, using local session state:", backendErr);
+      }
+
+      // 4. Synchronize local default pickup address & address cache
+      try {
+        const defaultPickup = {
+          id: "1",
+          addressType: "pickup" as const,
+          label: "Home" as const,
+          address: streetAddress.trim(),
+          city: city.trim() || "Colombo",
+          postalCode: postalCode.trim(),
+          contactName: fullName.trim(),
+          phone: phone.trim(),
+          isDefault: true,
+        };
+        localStorage.setItem("nexdrop_customer_default_pickup", JSON.stringify(defaultPickup));
+        const stored = localStorage.getItem("nexdrop_customer_saved_addresses");
+        let addresses = stored ? JSON.parse(stored) : [];
+        if (Array.isArray(addresses) && addresses.length > 0) {
+          addresses = addresses.map((a: any) =>
+            a.isDefault && a.addressType === "pickup"
+              ? {
+                  ...a,
+                  address: streetAddress.trim(),
+                  city: city.trim() || "Colombo",
+                  postalCode: postalCode.trim(),
+                  contactName: fullName.trim(),
+                  phone: phone.trim(),
+                }
+              : a
+          );
+        } else {
+          addresses = [defaultPickup];
+        }
+        localStorage.setItem("nexdrop_customer_saved_addresses", JSON.stringify(addresses));
+      } catch {
+        // ignore storage errors
+      }
 
       setIsSuccess(true);
       setTimeout(() => {
-        router.push("/");
+        router.push("/customer/dashboard");
         router.refresh();
       }, 1500);
     } catch (err: unknown) {
