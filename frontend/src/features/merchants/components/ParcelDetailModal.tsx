@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Printer, Phone, MapPin, Truck, FileText, Package } from "lucide-react";
-import type { MerchantOrder } from "../types";
+import { Printer, Phone, MapPin, Truck, FileText } from "lucide-react";
+import type { MerchantOrder, OrderStatus } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  getOrderStatusBadgeVariant,
+  getOrderStatusLabel,
+  getOrderStatusLevel,
+  ORDER_STATUS_LEVELS,
+  isTerminalFailureStatus,
+} from "../utils/order-status";
 
 interface ParcelDetailModalProps {
   order: MerchantOrder | null;
@@ -23,46 +30,39 @@ export function ParcelDetailModal({
 
   if (!order) return null;
 
-  // Timeline steps
-  const steps = [
-    { key: "created", label: "Order Created", desc: "Order details received in system" },
-    { key: "picked_up", label: "Picked Up", desc: "Courier collected parcel from merchant" },
-    { key: "in_transit", label: "In Transit", desc: "Parcel processed at central hub" },
-    { key: "out_for_delivery", label: "Out for Delivery", desc: "Courier on route to destination" },
+  const isFailure = isTerminalFailureStatus(order.status);
+  const steps: Array<{
+    key: OrderStatus | "final";
+    level: number;
+    label: string;
+    desc: string;
+  }> = [
+    { key: "created", level: getOrderStatusLevel("created"), label: "Order Created", desc: "Order details received in system" },
+    { key: "picked_up", level: getOrderStatusLevel("picked_up"), label: "Picked Up", desc: "Courier collected parcel from merchant" },
+    { key: "in_transit", level: getOrderStatusLevel("in_transit"), label: "In Transit", desc: "Parcel processed at central hub" },
+    { key: "out_for_delivery", level: getOrderStatusLevel("out_for_delivery"), label: "Out for Delivery", desc: "Courier on route to destination" },
     {
-      key: order.status === "failed" ? "failed" : "delivered",
-      label: order.status === "failed" ? "Delivery Failed" : "Delivered",
-      desc:
-        order.status === "failed"
-          ? order.failureReason || "Unsuccessful attempt"
-          : "Handed over to recipient",
+      key: "final",
+      level: ORDER_STATUS_LEVELS.delivered,
+      label: isFailure
+        ? order.status === "cancelled"
+          ? "Cancelled"
+          : "Delivery Failed"
+        : "Delivered",
+      desc: isFailure
+        ? order.failureReason || "Unsuccessful attempt"
+        : "Handed over to recipient",
     },
   ];
 
-  const getStepState = (stepKey: string) => {
-    const orderLevels: Record<string, number> = {
-      created: 1,
-      in_transit: 3,
-      out_for_delivery: 4,
-      delivered: 5,
-      failed: 5,
-    };
+  const getStepState = (step: (typeof steps)[number]) => {
+    if (isFailure && step.key === "final") return "failed";
+    if (order.status === "delivered") return "completed";
+    if (step.key === "final") return "pending";
 
-    const currentLevel = orderLevels[order.status] ?? 1;
-    const stepLevels: Record<string, number> = {
-      created: 1,
-      picked_up: 2,
-      in_transit: 3,
-      out_for_delivery: 4,
-      delivered: 5,
-      failed: 5,
-    };
-
-    const thisLevel = stepLevels[stepKey] ?? 1;
-
-    if (order.status === "failed" && stepKey === "failed") return "failed";
-    if (thisLevel < currentLevel) return "completed";
-    if (thisLevel === currentLevel) return "active";
+    const currentLevel = getOrderStatusLevel(order.status);
+    if (step.level < currentLevel) return "completed";
+    if (step.level === currentLevel) return "active";
     return "pending";
   };
 
@@ -87,8 +87,8 @@ export function ParcelDetailModal({
                 <span className="font-mono text-base font-bold tracking-wider text-white">
                   {order.trackingNumber}
                 </span>
-                <Badge variant={order.status} className="capitalize">
-                  {order.status.replace(/_/g, " ")}
+                <Badge variant={getOrderStatusBadgeVariant(order.status)}>
+                  {getOrderStatusLabel(order.status)}
                 </Badge>
               </div>
               <p className="text-xs text-emerald-200 mt-0.5">
@@ -192,7 +192,7 @@ export function ParcelDetailModal({
                 </h4>
                 <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-[#E5E7EB]">
                   {steps.map((st) => {
-                    const state = getStepState(st.key);
+                    const state = getStepState(st);
                     const isCompleted = state === "completed";
                     const isActive = state === "active";
                     const isFailed = state === "failed";
@@ -203,7 +203,11 @@ export function ParcelDetailModal({
                     if (isFailed) dotClass = "bg-red-600 ring-4 ring-red-100 text-white";
 
                     return (
-                      <div key={st.key} className="relative flex items-start gap-3">
+                      <div
+                        key={st.key}
+                        className="relative flex items-start gap-3"
+                        data-step-state={state}
+                      >
                         <div
                           className={`absolute -left-6 top-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${dotClass}`}
                         >
@@ -218,6 +222,7 @@ export function ParcelDetailModal({
                                 ? "text-red-700 font-bold"
                                 : "text-gray-400"
                             }`}
+                            aria-current={isActive ? "step" : undefined}
                           >
                             {st.label}
                           </p>

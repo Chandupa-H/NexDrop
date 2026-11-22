@@ -1,6 +1,10 @@
 "use client";
 
 import type { MerchantOrder, MerchantKpis, ApiCredentials, WebhookConfig } from "../../types";
+import {
+  getOrderStatusBadgeVariant,
+  getOrderStatusLabel,
+} from "../../utils/order-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -289,8 +293,8 @@ export function OverviewTab({
                       </div>
                     </td>
                     <td className="px-6 py-3.5">
-                      <Badge variant={ord.status} className="capitalize">
-                        {ord.status.replace(/_/g, " ")}
+                      <Badge variant={getOrderStatusBadgeVariant(ord.status)}>
+                        {getOrderStatusLabel(ord.status)}
                       </Badge>
                     </td>
                     <td className="px-6 py-3.5 text-right">

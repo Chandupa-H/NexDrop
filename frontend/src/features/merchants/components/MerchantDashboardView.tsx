@@ -52,7 +52,7 @@ export function MerchantDashboardView() {
   const [credentials, setCredentials] = useState<ApiCredentials>(MOCK_API_CREDENTIALS);
   const [webhookConfig, setWebhookConfig] = useState<WebhookConfig>(MOCK_WEBHOOK_CONFIG);
   const [webhookLogs, setWebhookLogs] = useState<WebhookDeliveryLog[]>(MOCK_WEBHOOK_LOGS);
-  const [selectedOrder, setSelectedOrder] = useState<MerchantOrder | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [merchantId, setMerchantId] = useState<string>("me");
 
@@ -142,6 +142,70 @@ export function MerchantDashboardView() {
     };
   }, []);
 
+  useEffect(() => {
+    let intervalId: number | undefined;
+    let isMounted = true;
+    let requestInFlight = false;
+
+    const refreshOrders = async () => {
+      if (document.visibilityState !== "visible" || requestInFlight) return;
+      requestInFlight = true;
+      try {
+        const latestOrders = await apiClient.getMerchantOrders(merchantId);
+        if (isMounted && Array.isArray(latestOrders)) {
+          setOrders(latestOrders);
+        }
+      } catch (error) {
+        console.error("Failed to refresh merchant orders", error);
+      } finally {
+        requestInFlight = false;
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId);
+        intervalId = undefined;
+      }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      if (document.visibilityState === "visible") {
+        intervalId = window.setInterval(() => {
+          void refreshOrders();
+        }, 10_000);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshOrders();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (document.visibilityState === "visible") {
+        void refreshOrders();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+    startPolling();
+
+    return () => {
+      isMounted = false;
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [merchantId]);
+
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
   const kpis = useMemo(() => calculateMerchantKpis(orders), [orders]);
 
   const handleOrderCreated = (newOrder: MerchantOrder) => {
@@ -253,7 +317,7 @@ export function MerchantDashboardView() {
           kpis={kpis}
           credentials={credentials}
           webhookConfig={webhookConfig}
-          onSelectOrder={(ord) => setSelectedOrder(ord)}
+          onSelectOrder={(ord) => setSelectedOrderId(ord.id)}
           onNavigateTab={handleTabChange}
         />
       )}
@@ -262,7 +326,7 @@ export function MerchantDashboardView() {
         <OrdersTab
           orders={orders}
           kpis={kpis}
-          onSelectOrder={(ord) => setSelectedOrder(ord)}
+          onSelectOrder={(ord) => setSelectedOrderId(ord.id)}
           onNavigateCreate={() => handleTabChange("create")}
         />
       )}
@@ -296,7 +360,7 @@ export function MerchantDashboardView() {
       {/* Parcel Detail / Tracking Journey Modal */}
       <ParcelDetailModal
         order={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
+        onClose={() => setSelectedOrderId(null)}
         merchantName={merchantProfile.businessName}
         merchantAddress={merchantProfile.businessAddress}
       />

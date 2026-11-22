@@ -2,6 +2,11 @@
 
 import { useState, useMemo } from "react";
 import type { MerchantOrder, OrderStatus, MerchantKpis } from "../../types";
+import {
+  ORDER_STATUSES,
+  getOrderStatusBadgeVariant,
+  getOrderStatusLabel,
+} from "../../utils/order-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -115,16 +120,13 @@ export function OrdersTab({
       <div className="bg-white border border-[#E5E7EB] rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Status Filters */}
         <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              { key: "all", label: "All" },
-              { key: "created", label: "Created" },
-              { key: "in_transit", label: "In Transit" },
-              { key: "out_for_delivery", label: "Out for Delivery" },
-              { key: "delivered", label: "Delivered" },
-              { key: "failed", label: "Failed" },
-            ] as const
-          ).map((item) => {
+          {[
+            { key: "all" as const, label: "All" },
+            ...ORDER_STATUSES.map((status) => ({
+              key: status,
+              label: getOrderStatusLabel(status),
+            })),
+          ].map((item) => {
             const count = countByStatus(item.key);
             const active = filter === item.key;
             return (
@@ -272,8 +274,8 @@ export function OrdersTab({
                     </td>
 
                     <td className="px-5 py-3.5">
-                      <Badge variant={ord.status} className="capitalize text-[11px]">
-                        {ord.status.replace(/_/g, " ")}
+                      <Badge variant={getOrderStatusBadgeVariant(ord.status)} className="text-[11px]">
+                        {getOrderStatusLabel(ord.status)}
                       </Badge>
                     </td>
 

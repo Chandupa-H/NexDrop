@@ -1,9 +1,6 @@
-export type OrderStatus =
-  | "created"
-  | "in_transit"
-  | "out_for_delivery"
-  | "delivered"
-  | "failed";
+import type { OrderStatus as SharedOrderStatus } from "./utils/order-status";
+
+export type OrderStatus = SharedOrderStatus;
 
 export interface MerchantOrder {
   id: string;

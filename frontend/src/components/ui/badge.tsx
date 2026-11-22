@@ -9,9 +9,11 @@ export type BadgeVariant =
   | "secondary"
   | "destructive"
   | "created"
+  | "picked_up"
   | "in_transit"
   | "out_for_delivery"
   | "delivered"
+  | "cancelled"
   | "failed";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -32,9 +34,11 @@ export function Badge({
     destructive: "bg-rose-50 text-rose-700 border border-rose-200",
     // Status badges matching theme specs
     created: "bg-slate-100 text-slate-700 border border-slate-300",
+    picked_up: "bg-amber-50 text-amber-800 border border-amber-300",
     in_transit: "bg-amber-50 text-amber-800 border border-amber-300",
     out_for_delivery: "bg-sky-50 text-sky-800 border border-sky-300",
     delivered: "bg-emerald-50 text-emerald-800 border border-emerald-300",
+    cancelled: "bg-rose-50 text-rose-700 border border-rose-300",
     failed: "bg-rose-50 text-rose-700 border border-rose-300",
   };
 
